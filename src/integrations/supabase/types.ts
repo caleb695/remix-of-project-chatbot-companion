@@ -14,7 +14,213 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      chat_messages: {
+        Row: {
+          created_at: string
+          id: string
+          parts: Json
+          role: string
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          parts: Json
+          role: string
+          thread_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          parts?: Json
+          role?: string
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_threads: {
+        Row: {
+          created_at: string
+          id: string
+          repo_selection_id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          repo_selection_id: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          repo_selection_id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_threads_repo_selection_id_fkey"
+            columns: ["repo_selection_id"]
+            isOneToOne: false
+            referencedRelation: "repo_selections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      github_connections: {
+        Row: {
+          access_token: string
+          avatar_url: string | null
+          created_at: string
+          github_login: string
+          github_user_id: number
+          id: string
+          scope: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          avatar_url?: string | null
+          created_at?: string
+          github_login: string
+          github_user_id: number
+          id?: string
+          scope?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          avatar_url?: string | null
+          created_at?: string
+          github_login?: string
+          github_user_id?: number
+          id?: string
+          scope?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      openrouter_settings: {
+        Row: {
+          api_key: string
+          model: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          api_key: string
+          model?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          api_key?: string
+          model?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      repo_selections: {
+        Row: {
+          created_at: string
+          default_branch: string
+          github_repo_id: number
+          id: string
+          last_synced_at: string | null
+          name: string
+          owner: string
+          user_id: string
+          working_branch: string
+        }
+        Insert: {
+          created_at?: string
+          default_branch?: string
+          github_repo_id: number
+          id?: string
+          last_synced_at?: string | null
+          name: string
+          owner: string
+          user_id: string
+          working_branch?: string
+        }
+        Update: {
+          created_at?: string
+          default_branch?: string
+          github_repo_id?: number
+          id?: string
+          last_synced_at?: string | null
+          name?: string
+          owner?: string
+          user_id?: string
+          working_branch?: string
+        }
+        Relationships: []
+      }
+      working_files: {
+        Row: {
+          content: string | null
+          id: string
+          original_content: string | null
+          original_sha: string | null
+          path: string
+          repo_selection_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          id?: string
+          original_content?: string | null
+          original_sha?: string | null
+          path: string
+          repo_selection_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          id?: string
+          original_content?: string | null
+          original_sha?: string | null
+          path?: string
+          repo_selection_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "working_files_repo_selection_id_fkey"
+            columns: ["repo_selection_id"]
+            isOneToOne: false
+            referencedRelation: "repo_selections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
