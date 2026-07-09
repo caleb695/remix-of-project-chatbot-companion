@@ -148,7 +148,7 @@ export const Route = createFileRoute("/api/chat")({
         const result = streamText({
           model,
           system: `You are a coding assistant with tools to read, write, and delete files in the user's GitHub project (an in-app working copy — nothing is pushed until they commit). Prefer to call list_files first to explore, then read_file for context before write_file. Always write COMPLETE file contents in write_file, never diffs or snippets. Be concise in chat; do real work with tools.`,
-          messages: convertToModelMessages(messages),
+          messages: await convertToModelMessages(messages),
           tools,
           stopWhen: stepCountIs(50),
         });
