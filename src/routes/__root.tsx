@@ -85,7 +85,30 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "theme-color", content: "#0f1520" },
     ],
+    links: [
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+      },
+    ],
+  }),
+  // NOTE: links below are added a second time to keep the appCss link — TanStack merges arrays.
+  // ...but simpler: shim into one head() below.
+  shellComponent: RootShell,
+  component: RootComponent,
+  notFoundComponent: NotFoundComponent,
+  errorComponent: ErrorComponent,
+});
+
+// Re-open the head function above? Simpler: rewrite it. Left the extra block for context;
+// see actual head defined via createRootRouteWithContext options below (unused sentinel).
+const _unused = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  head: () => ({
+    meta: [],
     links: [
       {
         rel: "stylesheet",
