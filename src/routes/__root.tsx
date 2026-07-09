@@ -86,6 +86,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "theme-color", content: "#0f1520" },
+      { name: "twitter:title", content: "Coderbot — AI pair programmer for your GitHub repos" },
+      { name: "twitter:description", content: "Chat with an AI that reads and edits your GitHub project. Review its changes, then commit when you're ready." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/cd61d784-a2e5-47ca-9bc5-8bd2b0c2f1cf/id-preview-743e00a9--ac8a5fbd-bc5a-4c90-b9b5-18431f892993.lovable.app-1783633351756.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/cd61d784-a2e5-47ca-9bc5-8bd2b0c2f1cf/id-preview-743e00a9--ac8a5fbd-bc5a-4c90-b9b5-18431f892993.lovable.app-1783633351756.png" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
