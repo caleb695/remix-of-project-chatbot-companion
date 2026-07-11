@@ -26,14 +26,15 @@ export const Route = createFileRoute("/api/chat")({
 
         // Verify ownership of thread + repo
         const { data: thread } = await supa
-          .from("chat_threads").select("id, title").eq("id", threadId).maybeSingle();
+          .from("chat_threads").select("id, title, model, repo_selection_id").eq("id", threadId).maybeSingle();
         if (!thread) return new Response("Thread not found", { status: 404 });
 
         const { data: settings } = await supa
           .from("openrouter_settings").select("api_key, model").maybeSingle();
         if (!settings?.api_key) {
-          return new Response("Add your OpenRouter API key in settings first.", { status: 400 });
+          return new Response("Add your OpenRouter API key on the Account tab first.", { status: 400 });
         }
+        const modelId = thread.model || settings.model;
 
         // Persist the latest user message immediately
         const lastUser = messages[messages.length - 1];
@@ -143,7 +144,7 @@ export const Route = createFileRoute("/api/chat")({
           }),
         };
 
-        const model = openrouter(settings.model);
+        const model = openrouter(modelId);
 
         const result = streamText({
           model,
