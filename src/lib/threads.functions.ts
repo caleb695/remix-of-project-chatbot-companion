@@ -70,3 +70,36 @@ export const renameThread = createServerFn({ method: "POST" })
     if (error) throw error;
     return { ok: true };
   });
+
+export const getThread = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ context, data }) => {
+    const { data: row, error } = await context.supabase
+      .from("chat_threads")
+      .select("id, title, model, repo_selection_id, repo_selections(owner, name, working_branch)")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (error) throw error;
+    return row;
+  });
+
+export const updateThread = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      id: z.string().uuid(),
+      model: z.string().optional(),
+      repo_selection_id: z.string().uuid().optional(),
+    }).parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    const patch: Record<string, unknown> = {};
+    if (data.model !== undefined) patch.model = data.model;
+    if (data.repo_selection_id !== undefined) patch.repo_selection_id = data.repo_selection_id;
+    if (Object.keys(patch).length === 0) return { ok: true };
+    const { error } = await context.supabase
+      .from("chat_threads").update(patch).eq("id", data.id);
+    if (error) throw error;
+    return { ok: true };
+  });
