@@ -22,7 +22,7 @@ function Landing() {
   }, []);
 
   useEffect(() => {
-    if (authed) navigate({ to: "/repos" });
+    if (authed) navigate({ to: "/chat" });
   }, [authed, navigate]);
 
   return (

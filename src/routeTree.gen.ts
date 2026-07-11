@@ -13,11 +13,11 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
-import { Route as AuthenticatedReposRouteImport } from './routes/_authenticated/repos'
+import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
+import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
+import { Route as AuthenticatedChatIndexRouteImport } from './routes/_authenticated/chat.index'
 import { Route as ApiGithubCallbackRouteImport } from './routes/api/github.callback'
-import { Route as AuthenticatedReposRepoIdRouteImport } from './routes/_authenticated/repos.$repoId'
-import { Route as AuthenticatedReposRepoIdIndexRouteImport } from './routes/_authenticated/repos.$repoId.index'
-import { Route as AuthenticatedReposRepoIdThreadsThreadIdRouteImport } from './routes/_authenticated/repos.$repoId.threads.$threadId'
+import { Route as AuthenticatedChatThreadIdRouteImport } from './routes/_authenticated/chat.$threadId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -38,97 +38,95 @@ const ApiChatRoute = ApiChatRouteImport.update({
   path: '/api/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedReposRoute = AuthenticatedReposRouteImport.update({
-  id: '/repos',
-  path: '/repos',
+const AuthenticatedChatRoute = AuthenticatedChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAccountRoute = AuthenticatedAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedChatIndexRoute = AuthenticatedChatIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedChatRoute,
 } as any)
 const ApiGithubCallbackRoute = ApiGithubCallbackRouteImport.update({
   id: '/api/github/callback',
   path: '/api/github/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedReposRepoIdRoute =
-  AuthenticatedReposRepoIdRouteImport.update({
-    id: '/$repoId',
-    path: '/$repoId',
-    getParentRoute: () => AuthenticatedReposRoute,
-  } as any)
-const AuthenticatedReposRepoIdIndexRoute =
-  AuthenticatedReposRepoIdIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => AuthenticatedReposRepoIdRoute,
-  } as any)
-const AuthenticatedReposRepoIdThreadsThreadIdRoute =
-  AuthenticatedReposRepoIdThreadsThreadIdRouteImport.update({
-    id: '/threads/$threadId',
-    path: '/threads/$threadId',
-    getParentRoute: () => AuthenticatedReposRepoIdRoute,
+const AuthenticatedChatThreadIdRoute =
+  AuthenticatedChatThreadIdRouteImport.update({
+    id: '/$threadId',
+    path: '/$threadId',
+    getParentRoute: () => AuthenticatedChatRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/repos': typeof AuthenticatedReposRouteWithChildren
+  '/account': typeof AuthenticatedAccountRoute
+  '/chat': typeof AuthenticatedChatRouteWithChildren
   '/api/chat': typeof ApiChatRoute
-  '/repos/$repoId': typeof AuthenticatedReposRepoIdRouteWithChildren
+  '/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
-  '/repos/$repoId/': typeof AuthenticatedReposRepoIdIndexRoute
-  '/repos/$repoId/threads/$threadId': typeof AuthenticatedReposRepoIdThreadsThreadIdRoute
+  '/chat/': typeof AuthenticatedChatIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/repos': typeof AuthenticatedReposRouteWithChildren
+  '/account': typeof AuthenticatedAccountRoute
   '/api/chat': typeof ApiChatRoute
+  '/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
-  '/repos/$repoId': typeof AuthenticatedReposRepoIdIndexRoute
-  '/repos/$repoId/threads/$threadId': typeof AuthenticatedReposRepoIdThreadsThreadIdRoute
+  '/chat': typeof AuthenticatedChatIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
-  '/_authenticated/repos': typeof AuthenticatedReposRouteWithChildren
+  '/_authenticated/account': typeof AuthenticatedAccountRoute
+  '/_authenticated/chat': typeof AuthenticatedChatRouteWithChildren
   '/api/chat': typeof ApiChatRoute
-  '/_authenticated/repos/$repoId': typeof AuthenticatedReposRepoIdRouteWithChildren
+  '/_authenticated/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
-  '/_authenticated/repos/$repoId/': typeof AuthenticatedReposRepoIdIndexRoute
-  '/_authenticated/repos/$repoId/threads/$threadId': typeof AuthenticatedReposRepoIdThreadsThreadIdRoute
+  '/_authenticated/chat/': typeof AuthenticatedChatIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/auth'
-    | '/repos'
+    | '/account'
+    | '/chat'
     | '/api/chat'
-    | '/repos/$repoId'
+    | '/chat/$threadId'
     | '/api/github/callback'
-    | '/repos/$repoId/'
-    | '/repos/$repoId/threads/$threadId'
+    | '/chat/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
-    | '/repos'
+    | '/account'
     | '/api/chat'
+    | '/chat/$threadId'
     | '/api/github/callback'
-    | '/repos/$repoId'
-    | '/repos/$repoId/threads/$threadId'
+    | '/chat'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
-    | '/_authenticated/repos'
+    | '/_authenticated/account'
+    | '/_authenticated/chat'
     | '/api/chat'
-    | '/_authenticated/repos/$repoId'
+    | '/_authenticated/chat/$threadId'
     | '/api/github/callback'
-    | '/_authenticated/repos/$repoId/'
-    | '/_authenticated/repos/$repoId/threads/$threadId'
+    | '/_authenticated/chat/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -169,12 +167,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/repos': {
-      id: '/_authenticated/repos'
-      path: '/repos'
-      fullPath: '/repos'
-      preLoaderRoute: typeof AuthenticatedReposRouteImport
+    '/_authenticated/chat': {
+      id: '/_authenticated/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof AuthenticatedChatRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/account': {
+      id: '/_authenticated/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AuthenticatedAccountRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/chat/': {
+      id: '/_authenticated/chat/'
+      path: '/'
+      fullPath: '/chat/'
+      preLoaderRoute: typeof AuthenticatedChatIndexRouteImport
+      parentRoute: typeof AuthenticatedChatRoute
     }
     '/api/github/callback': {
       id: '/api/github/callback'
@@ -183,64 +195,37 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGithubCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/repos/$repoId': {
-      id: '/_authenticated/repos/$repoId'
-      path: '/$repoId'
-      fullPath: '/repos/$repoId'
-      preLoaderRoute: typeof AuthenticatedReposRepoIdRouteImport
-      parentRoute: typeof AuthenticatedReposRoute
-    }
-    '/_authenticated/repos/$repoId/': {
-      id: '/_authenticated/repos/$repoId/'
-      path: '/'
-      fullPath: '/repos/$repoId/'
-      preLoaderRoute: typeof AuthenticatedReposRepoIdIndexRouteImport
-      parentRoute: typeof AuthenticatedReposRepoIdRoute
-    }
-    '/_authenticated/repos/$repoId/threads/$threadId': {
-      id: '/_authenticated/repos/$repoId/threads/$threadId'
-      path: '/threads/$threadId'
-      fullPath: '/repos/$repoId/threads/$threadId'
-      preLoaderRoute: typeof AuthenticatedReposRepoIdThreadsThreadIdRouteImport
-      parentRoute: typeof AuthenticatedReposRepoIdRoute
+    '/_authenticated/chat/$threadId': {
+      id: '/_authenticated/chat/$threadId'
+      path: '/$threadId'
+      fullPath: '/chat/$threadId'
+      preLoaderRoute: typeof AuthenticatedChatThreadIdRouteImport
+      parentRoute: typeof AuthenticatedChatRoute
     }
   }
 }
 
-interface AuthenticatedReposRepoIdRouteChildren {
-  AuthenticatedReposRepoIdIndexRoute: typeof AuthenticatedReposRepoIdIndexRoute
-  AuthenticatedReposRepoIdThreadsThreadIdRoute: typeof AuthenticatedReposRepoIdThreadsThreadIdRoute
+interface AuthenticatedChatRouteChildren {
+  AuthenticatedChatThreadIdRoute: typeof AuthenticatedChatThreadIdRoute
+  AuthenticatedChatIndexRoute: typeof AuthenticatedChatIndexRoute
 }
 
-const AuthenticatedReposRepoIdRouteChildren: AuthenticatedReposRepoIdRouteChildren =
-  {
-    AuthenticatedReposRepoIdIndexRoute: AuthenticatedReposRepoIdIndexRoute,
-    AuthenticatedReposRepoIdThreadsThreadIdRoute:
-      AuthenticatedReposRepoIdThreadsThreadIdRoute,
-  }
-
-const AuthenticatedReposRepoIdRouteWithChildren =
-  AuthenticatedReposRepoIdRoute._addFileChildren(
-    AuthenticatedReposRepoIdRouteChildren,
-  )
-
-interface AuthenticatedReposRouteChildren {
-  AuthenticatedReposRepoIdRoute: typeof AuthenticatedReposRepoIdRouteWithChildren
+const AuthenticatedChatRouteChildren: AuthenticatedChatRouteChildren = {
+  AuthenticatedChatThreadIdRoute: AuthenticatedChatThreadIdRoute,
+  AuthenticatedChatIndexRoute: AuthenticatedChatIndexRoute,
 }
 
-const AuthenticatedReposRouteChildren: AuthenticatedReposRouteChildren = {
-  AuthenticatedReposRepoIdRoute: AuthenticatedReposRepoIdRouteWithChildren,
-}
-
-const AuthenticatedReposRouteWithChildren =
-  AuthenticatedReposRoute._addFileChildren(AuthenticatedReposRouteChildren)
+const AuthenticatedChatRouteWithChildren =
+  AuthenticatedChatRoute._addFileChildren(AuthenticatedChatRouteChildren)
 
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedReposRoute: typeof AuthenticatedReposRouteWithChildren
+  AuthenticatedAccountRoute: typeof AuthenticatedAccountRoute
+  AuthenticatedChatRoute: typeof AuthenticatedChatRouteWithChildren
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
-  AuthenticatedReposRoute: AuthenticatedReposRouteWithChildren,
+  AuthenticatedAccountRoute: AuthenticatedAccountRoute,
+  AuthenticatedChatRoute: AuthenticatedChatRouteWithChildren,
 }
 
 const AuthenticatedRouteRouteWithChildren =

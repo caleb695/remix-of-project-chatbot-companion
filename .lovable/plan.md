@@ -1,91 +1,107 @@
-## What we're building
+## Big picture
 
-A web app where signed-in users:
-1. Sign in with email or Google
-2. Connect their GitHub account via OAuth
-3. Pick one of their repos + branch
-4. Paste an OpenRouter API key and pick an OpenRouter model
-5. Chat with the AI in threads. The AI can **read** and **edit** files in an in-app working copy of the repo
-6. Review pending edits and click **Commit & Push** when they want those changes to land on GitHub
+Rework the app into a **mobile-first two-tab PWA-style layout** with all coding work happening in the browser + GitHub Actions (for long jobs). No local repo required — everything runs against the user's actual GitHub repo through the API.
 
-Nothing is pushed automatically. GitHub is only touched on explicit user action.
+## Layout (mobile-first, fits phone)
 
-## Stack decisions
+Fixed bottom tab bar with two icons:
 
-- Lovable Cloud (Supabase) for auth + Postgres + storage
-- Email/password + Google sign-in (managed by Lovable Cloud)
-- GitHub OAuth handled by us (needs a GitHub OAuth App — I will ask for `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` after Cloud is enabled)
-- OpenRouter called directly from a server function with the user's own key
-- Chat with AI SDK `useChat` + streaming server route
-- Threads live under `/repos/$repoConnectionId/threads/$threadId`
+- **Tab 1 — Account** (`/account`)
+  - Header: GitHub avatar + login
+  - "Connect GitHub" button if not connected
+  - List of all repos on the account (searchable). Tap a repo to mark it selected/available for chats.
+  - OpenRouter API key input + save (persisted to `openrouter_settings`)
+  - Sign out
+- **Tab 2 — Chat** (`/chat` and `/chat/$threadId`)
+  - Top bar: **☰ (three dots) on the left** → opens slide-in sidebar with:
+    - "＋ New chat" button at top
+    - List of past chats (persisted in `chat_threads`, ordered by updated_at)
+  - Main area: message list, fits viewport (`h-[100dvh]` layout, safe-area padding).
+  - Above the input row: **repo selector** (which repo this chat targets).
+  - Input row: **model picker on the LEFT** of the textarea + textarea + send button.
+    - Model picker opens a sheet with a search box and a **"Free" toggle** that filters to models where prompt+completion price = 0.
+    - Selected model is stored per-thread (new column `model` on `chat_threads`).
 
-## Data model (all with RLS scoped to `auth.uid()`)
+## GitHub Actions execution (long-running jobs)
 
-- `github_connections` — one row per user: `github_user_id`, `github_login`, `access_token` (encrypted), `avatar_url`
-- `repo_selections` — user's picked repos: `id`, `user_id`, `github_repo_id`, `owner`, `name`, `default_branch`, `working_branch`
-- `openrouter_settings` — per user: `api_key` (encrypted), `model` (e.g. `anthropic/claude-3.5-sonnet`)
-- `chat_threads` — `id`, `user_id`, `repo_selection_id`, `title`, `updated_at`
-- `chat_messages` — `id`, `thread_id`, `role`, `parts` (jsonb UIMessage parts), `created_at`
-- `working_files` — the in-app working copy: `id`, `repo_selection_id`, `path`, `content`, `sha` (original blob sha), `status` (`unchanged` | `modified` | `added` | `deleted`), `updated_at`
+Move actual file editing off the web server. The web app queues a "job" and a GitHub Actions workflow in the user's repo does the work using the OpenRouter key + our webhook.
 
-Secrets (API tokens, keys) stored server-side only, never sent to the browser.
+- On first use per repo, we commit a workflow file `.github/workflows/lovable-coder.yml` to the user's repo (via GitHub API) that:
+  1. Triggers on `repository_dispatch` event `lovable-coder-run` with payload `{ jobId }`
+  2. Checks out the repo
+  3. Calls our public API `/api/public/jobs/next` with the jobId to get the task + prior state
+  4. Runs the AI agent loop (Node script committed alongside the workflow) that:
+    - Calls OpenRouter with tools: `list_files`, `read_file`, `write_file`, `delete_file`, `run_command`, `search_code`
+    - Every N steps or before the **5h 30m soft-deadline**, POSTs current progress + tool history + working tree diff to `/api/public/jobs/checkpoint`
+  5. On timeout-approach: commits a checkpoint branch, saves state to our DB, triggers a fresh dispatch to continue (`continueOf: jobId`).
+  6. On completion: opens a PR or commits to the working branch (per user setting).
+- Web app kicks off jobs by:
+  - Inserting `chat_messages` + a `coding_jobs` row
+  - Calling GitHub REST `POST /repos/{o}/{r}/dispatches` with our stored token
+  - Chat UI subscribes to the `coding_jobs` row via Supabase realtime and streams progress updates as tool-call parts
+- Users should be able to choose running in the browser or GitHub actions in a chat.
+
+## Context-window maximization
+
+New tables + strategies so each model call sends only what's relevant:
+
+- `repo_files` — one row per file: `path`, `sha`, `size`, `summary` (LLM-generated 1-2 sentence description), `symbol_outline` (exports/functions/classes), `updated_at`
+- `repo_file_chunks` — chunked file contents (~800 tokens each) with `embedding vector(3072)` using `google/gemini-embedding-001` via Lovable AI
+- `repo_symbols` — extracted top-level symbol names per file for fast keyword lookup
+- `thread_summaries` — rolling summary of the conversation so old turns can be dropped from the prompt
+
+On each user message we build the model context by:
+
+1. Semantic search over `repo_file_chunks` (top K by cosine)
+2. Keyword match over `repo_symbols` for any identifier the user mentioned
+3. File tree outline (paths + short summaries only, no contents)
+4. Last N raw turns + `thread_summaries` for older history
+5. Pending working-tree diff from the current job
+
+Indexing runs as a separate background GitHub Actions job (`lovable-coder-index.yml`) triggered on repo sync and on push events, so we don't block chat.
+
+## Data model changes
+
+New tables (RLS scoped to `auth.uid()`):
+
+- `coding_jobs`: id, thread_id, repo_selection_id, status (`queued|running|checkpointed|completed|failed`), prompt, current_step, continue_of, workflow_run_id, checkpoint jsonb, diff jsonb, created_at
+- `repo_files`, `repo_file_chunks` (with `vector(3072)`), `repo_symbols`, `thread_summaries` as above
+- Enable `pgvector`
+
+Modify:
+
+- `chat_threads`: add `model text`, `last_summary_at timestamptz`
+- Drop the `working_files` sync-everything-to-DB approach (the DB now stores summaries/embeddings, not full working copies — the Actions runner is the source of truth for working files during a job)
 
 ## Routes
 
-- `/auth` — sign in / sign up (email + Google)
-- `/` — landing: if signed in, redirect to `/repos`
-- `/_authenticated/repos` — list connected repos + "Connect GitHub" and "Add repo" actions
-- `/_authenticated/repos/$repoId` — repo dashboard: thread list, file tree of working copy, "Commit & Push" button, settings (model + OpenRouter key)
-- `/_authenticated/repos/$repoId/threads/$threadId` — chat view
-- `/api/github/callback` — GitHub OAuth callback (public server route)
-- `/api/chat` — streaming chat endpoint (auth required)
-
-## Server functions & routes
-
-- `startGithubOAuth` — returns authorize URL with signed `state`
-- `/api/github/callback` — exchanges code for token, upserts `github_connections`
-- `listUserRepos` — proxies GitHub `/user/repos` with the stored token
-- `addRepoSelection(repoId)` — saves selection, initializes empty `working_files`
-- `syncRepoFromGithub(repoId)` — pulls tree + file contents on the chosen branch into `working_files` (respects a size cap and skips binaries)
-- `commitAndPush(repoId, message)` — creates a commit on `working_branch` with all `modified/added/deleted` files via GitHub's Git Data API, resets statuses to `unchanged`, refreshes shas
-- `saveOpenrouterSettings({apiKey, model})`
-- `listOpenrouterModels()` — proxies OpenRouter's `/models` so users can pick
-- `createThread(repoId)` / `deleteThread(id)` / `listThreads(repoId)`
-- `/api/chat` (POST) — auth-required streaming route. Loads thread, calls OpenRouter (OpenAI-compatible) with tools:
-  - `list_files` — returns paths in `working_files`
-  - `read_file(path)` — returns content
-  - `write_file(path, content)` — updates/creates in `working_files`, marks status
-  - `delete_file(path)` — marks deleted
-  - Persists user + assistant messages in `onFinish`
-
-The AI edits ONLY the in-app working copy. Nothing hits GitHub until the user clicks Commit & Push.
-
-## UI
-
-- Dark, developer-tool aesthetic. Mono font for code, clean sans for chrome. Tokens in `src/styles.css`.
-- Repo dashboard is a 3-pane layout: threads (left), chat (center) or file diff view (center when reviewing), file tree + status badges (right)
-- "Pending changes" chip with count on the dashboard header; button opens a diff review modal then Commit & Push
-
-## Technical notes (skim if non-technical)
-
-- GitHub tokens & OpenRouter keys stored in Supabase with a `pgsodium`/`vault`-style encryption column, or at minimum in a table only the service role can read (accessed via `requireSupabaseAuth` server functions that fetch on the user's behalf)
-- Working copy is capped (e.g. skip files > 500KB, skip common binary extensions, skip `node_modules`, `.git`, build artifacts) to keep the DB reasonable
-- Commit uses GitHub's Git Data API (create blobs → tree → commit → update ref) so multi-file commits are atomic
-- Chat uses AI SDK `streamText` with an OpenAI-compatible provider pointed at `https://openrouter.ai/api/v1`, `stopWhen: stepCountIs(50)` for tool loops
-- `listOpenrouterModels` also uses the user's key so we don't need our own
+- `/account` — Account tab
+- `/chat` — redirects to newest thread or creates one
+- `/chat/$threadId` — chat view (keyed by threadId)
+- Bottom tab bar rendered in `_authenticated/route.tsx`
+- `/api/public/jobs/next` `POST` — Actions runner fetches job spec (HMAC signed)
+- `/api/public/jobs/checkpoint` `POST` — Actions runner streams progress
+- `/api/public/jobs/complete` `POST` — final result
+- `/api/github/webhook` — receive push events to re-index
 
 ## Build order
 
-1. Enable Lovable Cloud + configure email/Google auth
-2. Ask user for GitHub OAuth App credentials
-3. Design system + shell layout + auth page
-4. DB schema + RLS + storage of tokens
-5. GitHub OAuth flow + repo picker + sync
-6. OpenRouter settings UI + model picker
-7. Threads + chat streaming with file tools
-8. Diff review + Commit & Push
-9. Polish (empty states, errors, loading)
+1. DB migration: new tables, pgvector, thread `model` column, drop working_files reads
+2. New layout shell with bottom tab bar (mobile-first)
+3. Account tab (repos list + OpenRouter key)
+4. Chat tab UI with sidebar, model picker (search + Free filter), repo selector
+5. In-browser short chat path (no tools) with rolling summary
+6. GitHub Actions workflow scaffolder + `repository_dispatch` job kickoff
+7. Public job endpoints + HMAC + realtime progress
+8. Indexing pipeline (embeddings + summaries) via second workflow
+9. Context assembler that combines RAG + summaries + diff
+10. Polish (empty states, mobile safe areas, errors)
 
 ## What I need from you
 
-Just approve and I'll start with Cloud + auth. When I get to the GitHub step I'll walk you through creating a GitHub OAuth App (2 minutes) and ask for the client ID/secret.
+Two quick confirmations before I start:
+
+1. **Auto-commit vs PR**: when the Actions job finishes, should it push straight to your `working_branch` or open a Pull Request? (PR is safer, direct-commit is faster.)
+2. **Workflow install**: OK for the app to commit `.github/workflows/lovable-coder.yml` + a small `scripts/lovable-coder/` runner into each repo the first time you use it? (Required for Actions execution.)
+
+Reply with your picks and I'll start building.
