@@ -4,12 +4,10 @@ import { z } from "zod";
 
 export const listThreads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ repoId: z.string().uuid() }).parse(input))
-  .handler(async ({ context, data }) => {
+  .handler(async ({ context }) => {
     const { data: rows, error } = await context.supabase
       .from("chat_threads")
-      .select("id, title, updated_at")
-      .eq("repo_selection_id", data.repoId)
+      .select("id, title, updated_at, model, repo_selection_id, repo_selections(owner, name)")
       .order("updated_at", { ascending: false });
     if (error) throw error;
     return rows ?? [];
@@ -17,11 +15,18 @@ export const listThreads = createServerFn({ method: "GET" })
 
 export const createThread = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ repoId: z.string().uuid() }).parse(input))
+  .inputValidator((input: unknown) => z.object({ repoId: z.string().uuid(), model: z.string().optional() }).parse(input))
   .handler(async ({ context, data }) => {
+    // If no model passed, use the user's saved default from openrouter_settings
+    let model = data.model ?? null;
+    if (!model) {
+      const { data: s } = await context.supabase
+        .from("openrouter_settings").select("model").maybeSingle();
+      model = s?.model ?? null;
+    }
     const { data: row, error } = await context.supabase
       .from("chat_threads")
-      .insert({ user_id: context.userId, repo_selection_id: data.repoId, title: "New chat" })
+      .insert({ user_id: context.userId, repo_selection_id: data.repoId, title: "New chat", model })
       .select()
       .single();
     if (error) throw error;
