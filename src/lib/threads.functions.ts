@@ -94,7 +94,7 @@ export const updateThread = createServerFn({ method: "POST" })
     }).parse(input),
   )
   .handler(async ({ context, data }) => {
-    const patch: Record<string, unknown> = {};
+    const patch: { model?: string; repo_selection_id?: string } = {};
     if (data.model !== undefined) patch.model = data.model;
     if (data.repo_selection_id !== undefined) patch.repo_selection_id = data.repo_selection_id;
     if (Object.keys(patch).length === 0) return { ok: true };
