@@ -6,9 +6,10 @@ export const Route = createFileRoute("/api/public/jobs/checkpoint")({
     let ctx; try { ctx = await authJobRequest(request); } catch (r) { return r as Response; }
     const { job, sb } = ctx;
     const body = await request.json().catch(() => ({}));
+    const ck = (body as { checkpoint?: unknown }).checkpoint;
     await sb.from("coding_jobs").update({
       status: "checkpointed",
-      checkpoint: (body as { checkpoint?: unknown }).checkpoint ?? {},
+      checkpoint: (ck ?? {}) as never,
       updated_at: new Date().toISOString(),
     }).eq("id", job.id);
     return Response.json({ ok: true });
