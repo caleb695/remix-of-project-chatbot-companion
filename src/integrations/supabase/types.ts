@@ -93,12 +93,17 @@ export type Database = {
       coding_jobs: {
         Row: {
           checkpoint: Json
+          commit_sha: string | null
           continue_of: string | null
           created_at: string
           current_step: number
           diff: Json
           error: string | null
+          finished_at: string | null
+          hmac_secret: string | null
           id: string
+          job_type: string
+          logs: string | null
           model: string | null
           progress: Json
           prompt: string
@@ -108,15 +113,21 @@ export type Database = {
           updated_at: string
           user_id: string
           workflow_run_id: string | null
+          working_branch: string | null
         }
         Insert: {
           checkpoint?: Json
+          commit_sha?: string | null
           continue_of?: string | null
           created_at?: string
           current_step?: number
           diff?: Json
           error?: string | null
+          finished_at?: string | null
+          hmac_secret?: string | null
           id?: string
+          job_type?: string
+          logs?: string | null
           model?: string | null
           progress?: Json
           prompt: string
@@ -126,15 +137,21 @@ export type Database = {
           updated_at?: string
           user_id: string
           workflow_run_id?: string | null
+          working_branch?: string | null
         }
         Update: {
           checkpoint?: Json
+          commit_sha?: string | null
           continue_of?: string | null
           created_at?: string
           current_step?: number
           diff?: Json
           error?: string | null
+          finished_at?: string | null
+          hmac_secret?: string | null
           id?: string
+          job_type?: string
+          logs?: string | null
           model?: string | null
           progress?: Json
           prompt?: string
@@ -144,6 +161,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           workflow_run_id?: string | null
+          working_branch?: string | null
         }
         Relationships: [
           {
@@ -330,10 +348,12 @@ export type Database = {
           default_branch: string
           github_repo_id: number
           id: string
+          indexed_at: string | null
           last_synced_at: string | null
           name: string
           owner: string
           user_id: string
+          workflow_installed_at: string | null
           working_branch: string
         }
         Insert: {
@@ -341,10 +361,12 @@ export type Database = {
           default_branch?: string
           github_repo_id: number
           id?: string
+          indexed_at?: string | null
           last_synced_at?: string | null
           name: string
           owner: string
           user_id: string
+          workflow_installed_at?: string | null
           working_branch?: string
         }
         Update: {
@@ -352,10 +374,12 @@ export type Database = {
           default_branch?: string
           github_repo_id?: number
           id?: string
+          indexed_at?: string | null
           last_synced_at?: string | null
           name?: string
           owner?: string
           user_id?: string
+          workflow_installed_at?: string | null
           working_branch?: string
         }
         Relationships: []

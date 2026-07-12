@@ -18,6 +18,10 @@ import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedChatIndexRouteImport } from './routes/_authenticated/chat.index'
 import { Route as ApiGithubCallbackRouteImport } from './routes/api/github.callback'
 import { Route as AuthenticatedChatThreadIdRouteImport } from './routes/_authenticated/chat.$threadId'
+import { Route as ApiPublicJobsLogRouteImport } from './routes/api/public/jobs/log'
+import { Route as ApiPublicJobsCompleteRouteImport } from './routes/api/public/jobs/complete'
+import { Route as ApiPublicJobsClaimRouteImport } from './routes/api/public/jobs/claim'
+import { Route as ApiPublicJobsCheckpointRouteImport } from './routes/api/public/jobs/checkpoint'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -64,6 +68,26 @@ const AuthenticatedChatThreadIdRoute =
     path: '/$threadId',
     getParentRoute: () => AuthenticatedChatRoute,
   } as any)
+const ApiPublicJobsLogRoute = ApiPublicJobsLogRouteImport.update({
+  id: '/api/public/jobs/log',
+  path: '/api/public/jobs/log',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicJobsCompleteRoute = ApiPublicJobsCompleteRouteImport.update({
+  id: '/api/public/jobs/complete',
+  path: '/api/public/jobs/complete',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicJobsClaimRoute = ApiPublicJobsClaimRouteImport.update({
+  id: '/api/public/jobs/claim',
+  path: '/api/public/jobs/claim',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicJobsCheckpointRoute = ApiPublicJobsCheckpointRouteImport.update({
+  id: '/api/public/jobs/checkpoint',
+  path: '/api/public/jobs/checkpoint',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -74,6 +98,10 @@ export interface FileRoutesByFullPath {
   '/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/chat/': typeof AuthenticatedChatIndexRoute
+  '/api/public/jobs/checkpoint': typeof ApiPublicJobsCheckpointRoute
+  '/api/public/jobs/claim': typeof ApiPublicJobsClaimRoute
+  '/api/public/jobs/complete': typeof ApiPublicJobsCompleteRoute
+  '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -83,6 +111,10 @@ export interface FileRoutesByTo {
   '/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/chat': typeof AuthenticatedChatIndexRoute
+  '/api/public/jobs/checkpoint': typeof ApiPublicJobsCheckpointRoute
+  '/api/public/jobs/claim': typeof ApiPublicJobsClaimRoute
+  '/api/public/jobs/complete': typeof ApiPublicJobsCompleteRoute
+  '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,6 +127,10 @@ export interface FileRoutesById {
   '/_authenticated/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/_authenticated/chat/': typeof AuthenticatedChatIndexRoute
+  '/api/public/jobs/checkpoint': typeof ApiPublicJobsCheckpointRoute
+  '/api/public/jobs/claim': typeof ApiPublicJobsClaimRoute
+  '/api/public/jobs/complete': typeof ApiPublicJobsCompleteRoute
+  '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,6 +143,10 @@ export interface FileRouteTypes {
     | '/chat/$threadId'
     | '/api/github/callback'
     | '/chat/'
+    | '/api/public/jobs/checkpoint'
+    | '/api/public/jobs/claim'
+    | '/api/public/jobs/complete'
+    | '/api/public/jobs/log'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -116,6 +156,10 @@ export interface FileRouteTypes {
     | '/chat/$threadId'
     | '/api/github/callback'
     | '/chat'
+    | '/api/public/jobs/checkpoint'
+    | '/api/public/jobs/claim'
+    | '/api/public/jobs/complete'
+    | '/api/public/jobs/log'
   id:
     | '__root__'
     | '/'
@@ -127,6 +171,10 @@ export interface FileRouteTypes {
     | '/_authenticated/chat/$threadId'
     | '/api/github/callback'
     | '/_authenticated/chat/'
+    | '/api/public/jobs/checkpoint'
+    | '/api/public/jobs/claim'
+    | '/api/public/jobs/complete'
+    | '/api/public/jobs/log'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -135,6 +183,10 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiGithubCallbackRoute: typeof ApiGithubCallbackRoute
+  ApiPublicJobsCheckpointRoute: typeof ApiPublicJobsCheckpointRoute
+  ApiPublicJobsClaimRoute: typeof ApiPublicJobsClaimRoute
+  ApiPublicJobsCompleteRoute: typeof ApiPublicJobsCompleteRoute
+  ApiPublicJobsLogRoute: typeof ApiPublicJobsLogRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -202,6 +254,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatThreadIdRouteImport
       parentRoute: typeof AuthenticatedChatRoute
     }
+    '/api/public/jobs/log': {
+      id: '/api/public/jobs/log'
+      path: '/api/public/jobs/log'
+      fullPath: '/api/public/jobs/log'
+      preLoaderRoute: typeof ApiPublicJobsLogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/complete': {
+      id: '/api/public/jobs/complete'
+      path: '/api/public/jobs/complete'
+      fullPath: '/api/public/jobs/complete'
+      preLoaderRoute: typeof ApiPublicJobsCompleteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/claim': {
+      id: '/api/public/jobs/claim'
+      path: '/api/public/jobs/claim'
+      fullPath: '/api/public/jobs/claim'
+      preLoaderRoute: typeof ApiPublicJobsClaimRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/checkpoint': {
+      id: '/api/public/jobs/checkpoint'
+      path: '/api/public/jobs/checkpoint'
+      fullPath: '/api/public/jobs/checkpoint'
+      preLoaderRoute: typeof ApiPublicJobsCheckpointRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -237,17 +317,11 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   ApiChatRoute: ApiChatRoute,
   ApiGithubCallbackRoute: ApiGithubCallbackRoute,
+  ApiPublicJobsCheckpointRoute: ApiPublicJobsCheckpointRoute,
+  ApiPublicJobsClaimRoute: ApiPublicJobsClaimRoute,
+  ApiPublicJobsCompleteRoute: ApiPublicJobsCompleteRoute,
+  ApiPublicJobsLogRoute: ApiPublicJobsLogRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
