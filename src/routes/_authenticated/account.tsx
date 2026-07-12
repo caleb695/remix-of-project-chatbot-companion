@@ -2,11 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery, queryOptions } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Suspense, useMemo, useState } from "react";
-import { Github, LogOut, Loader2, Search, Plus, Check, ExternalLink, Trash2, KeyRound } from "lucide-react";
+import { Github, LogOut, Loader2, Search, Plus, Check, ExternalLink, Trash2, KeyRound, Zap } from "lucide-react";
 import {
   startGithubOAuth, getGithubConnection, disconnectGithub,
   listRepoSelections, listUserRepos, addRepoSelection, removeRepoSelection,
 } from "@/lib/github.functions";
+import { installCoderWorkflow } from "@/lib/jobs.functions";
 import { getOpenrouterSettings, saveOpenrouterSettings } from "@/lib/openrouter.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,12 @@ function GithubSection() {
     mutationFn: (id: string) => removeSel({ data: { id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["repo_selections"] }),
   });
+  const installFn = useServerFn(installCoderWorkflow);
+  const installMut = useMutation({
+    mutationFn: (id: string) => installFn({ data: { repoId: id } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["repo_selections"] }); toast.success("Coder workflow installed"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   if (!conn.data) {
     return (
@@ -115,21 +122,37 @@ function GithubSection() {
       )}
       <div className="space-y-2">
         {sels.data.map((r) => (
-          <Card key={r.id} className="flex items-center justify-between p-3">
-            <div className="min-w-0">
-              <div className="truncate font-mono text-sm">{r.owner}/{r.name}</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">branch: {r.working_branch}</div>
+          <Card key={r.id} className="p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="truncate font-mono text-sm">{r.owner}/{r.name}</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">branch: {r.working_branch}</div>
+              </div>
+              <div className="flex shrink-0 items-center">
+                <Button asChild variant="ghost" size="sm">
+                  <a href={`https://github.com/${r.owner}/${r.name}`} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => removeMut.mutate(r.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <div className="flex shrink-0 items-center">
-              <Button asChild variant="ghost" size="sm">
-                <a href={`https://github.com/${r.owner}/${r.name}`} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                </a>
+            {r.workflow_installed_at ? (
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Check className="h-3 w-3 text-primary" /> Coder workflow installed
+              </div>
+            ) : (
+              <Button
+                variant="secondary" size="sm" className="w-full"
+                disabled={installMut.isPending}
+                onClick={() => installMut.mutate(r.id)}
+              >
+                <Zap className="mr-1.5 h-3.5 w-3.5" />
+                {installMut.isPending ? "Installing…" : "Install coder workflow"}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => removeMut.mutate(r.id)}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
+            )}
           </Card>
         ))}
       </div>
