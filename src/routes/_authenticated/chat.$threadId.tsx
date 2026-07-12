@@ -205,7 +205,10 @@ function JobsPanel({ threadId, activeJobId, onClear, repo }: {
   });
 
   if (!active) return null;
-  const d = detail.data ?? active;
+  const d = (detail.data ?? active) as {
+    id: string; status: string; prompt: string; error: string | null;
+    logs?: string | null; commit_sha?: string | null;
+  };
   const running = d.status === "queued" || d.status === "running";
 
   return (
@@ -224,9 +227,9 @@ function JobsPanel({ threadId, activeJobId, onClear, repo }: {
         )}
       </div>
       <div className="mt-1 truncate text-muted-foreground">{d.prompt}</div>
-      {"logs" in d && d.logs && (
+      {d.logs ? (
         <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-muted/50 p-2 font-mono text-[10px] text-muted-foreground">{d.logs}</pre>
-      )}
+      ) : null}
       {d.error && <p className="mt-2 text-destructive">{d.error}</p>}
       <div className="mt-2 flex gap-2">
         {running && (
