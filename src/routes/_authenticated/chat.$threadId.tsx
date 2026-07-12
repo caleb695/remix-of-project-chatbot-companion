@@ -4,11 +4,12 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Menu, Send, Loader2, Plus, Trash2, MessageSquare, Search, ChevronDown, X, Github } from "lucide-react";
+import { Menu, Send, Loader2, Plus, Trash2, MessageSquare, Search, ChevronDown, X, Github, Zap, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getThreadMessages, listThreads, createThread, deleteThread, getThread, updateThread } from "@/lib/threads.functions";
 import { listRepoSelections } from "@/lib/github.functions";
 import { listOpenrouterModels, getOpenrouterSettings } from "@/lib/openrouter.functions";
+import { enqueueCodingJob, listJobsForThread, getJob, cancelJob } from "@/lib/jobs.functions";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,7 +50,7 @@ type ThreadData = {
   title: string;
   model: string | null;
   repo_selection_id: string;
-  repo_selections: { owner: string; name: string; working_branch: string } | null;
+  repo_selections: { owner: string; name: string; working_branch: string; workflow_installed_at?: string | null } | null;
 };
 
 function ChatView({ threadId, initial, thread }: { threadId: string; initial: UIMessage[]; thread: ThreadData }) {
@@ -78,6 +79,14 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   useEffect(() => { inputRef.current?.focus(); }, [threadId]);
 
   const busy = status === "submitted" || status === "streaming";
+
+  const enqueueFn = useServerFn(enqueueCodingJob);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const runMut = useMutation({
+    mutationFn: (prompt: string) => enqueueFn({ data: { threadId, prompt } }),
+    onSuccess: (r) => { setActiveJobId(r.jobId); setInput(""); qc.invalidateQueries({ queryKey: ["jobs", threadId] }); toast.success("Coding job started on GitHub Actions"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const setModel = useMutation({
     mutationFn: (m: string) => updateFn({ data: { id: threadId, model: m } }),
@@ -113,6 +122,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
             </div>
           )}
           {error && <p className="text-sm text-destructive">{error.message}</p>}
+          <JobsPanel threadId={threadId} activeJobId={activeJobId} onClear={() => setActiveJobId(null)} repo={thread.repo_selections} />
         </div>
       </div>
 
@@ -141,11 +151,91 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
             placeholder="Message…"
             className="min-h-[44px] max-h-40 resize-none"
           />
+          <Button
+            type="button" size="icon" variant="secondary" className="shrink-0"
+            title="Run coding job on GitHub Actions"
+            disabled={runMut.isPending || !input.trim() || !thread.repo_selections?.workflow_installed_at}
+            onClick={() => runMut.mutate(input.trim())}
+          >
+            {runMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+          </Button>
           <Button type="submit" size="icon" disabled={busy || !input.trim()} className="shrink-0">
             <Send className="h-4 w-4" />
           </Button>
         </div>
+        {!thread.repo_selections?.workflow_installed_at && (
+          <p className="mx-auto mt-1 max-w-3xl text-center text-[10px] text-muted-foreground">
+            Install the coder workflow on this repo (Account tab) to enable the ⚡ coding job button.
+          </p>
+        )}
       </form>
+    </div>
+  );
+}
+
+function JobsPanel({ threadId, activeJobId, onClear, repo }: {
+  threadId: string;
+  activeJobId: string | null;
+  onClear: () => void;
+  repo: { owner: string; name: string } | null;
+}) {
+  const listFn = useServerFn(listJobsForThread);
+  const getFn = useServerFn(getJob);
+  const cancelFn = useServerFn(cancelJob);
+  const qc = useQueryClient();
+  const jobs = useQuery({
+    queryKey: ["jobs", threadId],
+    queryFn: () => listFn({ data: { threadId } }),
+    refetchInterval: 4000,
+  });
+  const active = jobs.data?.find((j) => j.id === activeJobId)
+    ?? jobs.data?.find((j) => j.status === "running" || j.status === "queued");
+  const detail = useQuery({
+    queryKey: ["job", active?.id],
+    queryFn: () => getFn({ data: { id: active!.id } }),
+    enabled: !!active,
+    refetchInterval: (q) => {
+      const s = q.state.data?.status;
+      return s === "completed" || s === "failed" ? false : 2500;
+    },
+  });
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => cancelFn({ data: { id } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs", threadId] }),
+  });
+
+  if (!active) return null;
+  const d = detail.data ?? active;
+  const running = d.status === "queued" || d.status === "running";
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="flex items-center gap-2">
+        <Zap className="h-3.5 w-3.5 text-primary" />
+        <span className="font-medium">Coding job · {d.status}</span>
+        {repo && (
+          <a
+            href={`https://github.com/${repo.owner}/${repo.name}/actions`}
+            target="_blank" rel="noreferrer"
+            className="ml-auto inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+          >
+            Actions <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
+      </div>
+      <div className="mt-1 truncate text-muted-foreground">{d.prompt}</div>
+      {"logs" in d && d.logs && (
+        <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-muted/50 p-2 font-mono text-[10px] text-muted-foreground">{d.logs}</pre>
+      )}
+      {d.error && <p className="mt-2 text-destructive">{d.error}</p>}
+      <div className="mt-2 flex gap-2">
+        {running && (
+          <Button size="sm" variant="outline" onClick={() => cancelMut.mutate(d.id)}>Cancel</Button>
+        )}
+        {!running && (
+          <Button size="sm" variant="ghost" onClick={onClear}>Dismiss</Button>
+        )}
+      </div>
     </div>
   );
 }
