@@ -7,7 +7,7 @@ export const getOpenrouterSettings = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data } = await context.supabase
       .from("openrouter_settings")
-      .select("model, updated_at, api_key")
+      .select("model, updated_at, api_key, mistral_api_key")
       .maybeSingle();
     if (!data) return null;
     return {
@@ -15,6 +15,8 @@ export const getOpenrouterSettings = createServerFn({ method: "GET" })
       updated_at: data.updated_at,
       has_key: Boolean(data.api_key),
       key_preview: data.api_key ? `${data.api_key.slice(0, 6)}…${data.api_key.slice(-4)}` : null,
+      has_mistral_key: Boolean(data.mistral_api_key),
+      mistral_key_preview: data.mistral_api_key ? `${data.mistral_api_key.slice(0, 4)}…${data.mistral_api_key.slice(-4)}` : null,
     };
   });
 
@@ -23,22 +25,21 @@ export const saveOpenrouterSettings = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({
       apiKey: z.string().min(10).max(500).optional(),
+      mistralApiKey: z.string().min(10).max(500).optional(),
       model: z.string().min(1).max(200),
     }).parse(input),
   )
   .handler(async ({ context, data }) => {
-    if (data.apiKey) {
-      const { error } = await context.supabase
-        .from("openrouter_settings")
-        .upsert({ user_id: context.userId, api_key: data.apiKey, model: data.model });
-      if (error) throw error;
-    } else {
-      const { error } = await context.supabase
-        .from("openrouter_settings")
-        .update({ model: data.model })
-        .eq("user_id", context.userId);
-      if (error) throw error;
-    }
+    // Load existing row (api_key is NOT NULL, so we must keep it when only updating other fields).
+    const { data: existing } = await context.supabase
+      .from("openrouter_settings").select("api_key, mistral_api_key").maybeSingle();
+    const api_key = data.apiKey ?? existing?.api_key;
+    if (!api_key) throw new Error("Add your OpenRouter API key first");
+    const mistral_api_key = data.mistralApiKey ?? existing?.mistral_api_key ?? null;
+    const { error } = await context.supabase
+      .from("openrouter_settings")
+      .upsert({ user_id: context.userId, api_key, mistral_api_key, model: data.model });
+    if (error) throw error;
     return { ok: true };
   });
 
