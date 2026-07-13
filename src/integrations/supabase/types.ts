@@ -111,7 +111,7 @@ export type Database = {
           prompt: string
           repo_selection_id: string
           status: string
-          thread_id: string
+          thread_id: string | null
           updated_at: string
           user_id: string
           workflow_run_id: string | null
@@ -137,7 +137,7 @@ export type Database = {
           prompt: string
           repo_selection_id: string
           status?: string
-          thread_id: string
+          thread_id?: string | null
           updated_at?: string
           user_id: string
           workflow_run_id?: string | null
@@ -163,7 +163,7 @@ export type Database = {
           prompt?: string
           repo_selection_id?: string
           status?: string
-          thread_id?: string
+          thread_id?: string | null
           updated_at?: string
           user_id?: string
           workflow_run_id?: string | null
