@@ -29,7 +29,7 @@ export const Route = createFileRoute("/api/chat")({
         if (!thread) return new Response("Thread not found", { status: 404 });
 
         const { data: settings } = await supa
-          .from("openrouter_settings").select("api_key, model").maybeSingle();
+          .from("openrouter_settings").select("api_key, model, mistral_api_key").maybeSingle();
         if (!settings?.api_key) {
           return new Response("Add your OpenRouter API key on the Account tab first.", { status: 400 });
         }
@@ -37,6 +37,9 @@ export const Route = createFileRoute("/api/chat")({
 
         // Persist the latest user message immediately
         const lastUser = messages[messages.length - 1];
+        const lastUserText = lastUser?.role === "user"
+          ? lastUser.parts.map((p) => (p.type === "text" ? p.text : "")).join(" ").trim()
+          : "";
         if (lastUser?.role === "user") {
           await supa.from("chat_messages").insert({
             thread_id: threadId,
@@ -46,12 +49,44 @@ export const Route = createFileRoute("/api/chat")({
           });
           // Auto-title first message
           if (thread.title === "New chat") {
-            const text = lastUser.parts
-              .map((p) => (p.type === "text" ? p.text : ""))
-              .join(" ")
-              .trim()
-              .slice(0, 60);
+            const text = lastUserText.slice(0, 60);
             if (text) await supa.from("chat_threads").update({ title: text }).eq("id", threadId);
+          }
+        }
+
+        // Build repo RAG context (semantic search over indexed chunks)
+        let ragContext = "";
+        if (thread.repo_selection_id && settings.mistral_api_key && lastUserText) {
+          try {
+            const embRes = await fetch("https://api.mistral.ai/v1/embeddings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.mistral_api_key}` },
+              body: JSON.stringify({ model: "mistral-embed", input: [lastUserText.slice(0, 4000)] }),
+            });
+            if (embRes.ok) {
+              const embBody = await embRes.json() as { data: { embedding: number[] }[] };
+              const vec = embBody.data[0]?.embedding;
+              if (vec) {
+                const { data: hits } = await supa.rpc("match_repo_chunks", {
+                  p_repo_selection_id: thread.repo_selection_id,
+                  p_query: vec as unknown as string,
+                  p_match_count: 8,
+                });
+                if (hits?.length) {
+                  ragContext = "Relevant repo code (semantic search):\n\n" +
+                    hits.map((h: { path: string; content: string }) =>
+                      `--- ${h.path} ---\n${(h.content ?? "").slice(0, 1200)}`).join("\n\n");
+                }
+              }
+            }
+          } catch { /* best-effort */ }
+
+          // Repo tree outline (paths + short summaries) if not too many
+          const { data: files } = await supa.from("repo_files")
+            .select("path, summary").eq("repo_selection_id", thread.repo_selection_id).limit(400);
+          if (files?.length) {
+            const outline = files.map((f) => f.summary ? `${f.path} — ${f.summary}` : f.path).join("\n").slice(0, 8000);
+            ragContext = `Repository file outline:\n${outline}\n\n${ragContext}`;
           }
         }
 
@@ -67,9 +102,13 @@ export const Route = createFileRoute("/api/chat")({
 
         const model = openrouter(modelId);
 
+        const systemPrompt =
+          `You are a helpful coding assistant. Discuss the user's repository and plan changes. When the user is ready to apply edits, tell them to click "Run coding job" — that runs an autonomous agent in their GitHub Actions that reads/writes files and pushes the commit for them. Do not pretend to edit files here; you have no file-editing tools in chat.` +
+          (ragContext ? `\n\n${ragContext}` : "");
+
         const result = streamText({
           model,
-          system: `You are a helpful coding assistant. Discuss the user's repository and plan changes. When the user is ready to apply edits, tell them to click "Run coding job" — that runs an autonomous agent in their GitHub Actions that reads/writes files and pushes the commit for them. Do not pretend to edit files here; you have no file-editing tools in chat.`,
+          system: systemPrompt,
           messages: await convertToModelMessages(messages),
         });
 
