@@ -186,7 +186,9 @@ function IndexRepoRow({ repoId }: { repoId: string }) {
   });
   const j = job.data;
   const running = j?.status === "queued" || j?.status === "running";
-  const pct = j?.progress_total ? Math.min(100, Math.round((j.progress_current / j.progress_total) * 100)) : 0;
+  const cur = j?.progress_current ?? 0;
+  const tot = j?.progress_total ?? 0;
+  const pct = tot > 0 ? Math.min(100, Math.round((cur / tot) * 100)) : 0;
   return (
     <div className="space-y-1.5">
       <Button
@@ -196,10 +198,10 @@ function IndexRepoRow({ repoId }: { repoId: string }) {
         title={!settings.data?.has_mistral_key ? "Add a Mistral key first" : undefined}
       >
         <Search className="mr-1.5 h-3.5 w-3.5" />
-        {running ? `Indexing ${j!.progress_current}/${j!.progress_total || "?"}…` :
+        {running ? `Indexing ${cur}/${tot || "?"}…` :
           j?.status === "completed" ? "Re-index repo" : "Index repo"}
       </Button>
-      {running && j!.progress_total > 0 && (
+      {running && tot > 0 && (
         <div className="h-1 w-full overflow-hidden rounded bg-muted">
           <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
         </div>
