@@ -17,14 +17,18 @@ export const Route = createFileRoute("/api/public/jobs/complete")({
       finished_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq("id", job.id);
-    // Append summary as an assistant message in the thread
-    if (body.summary) {
+    // Append summary as an assistant message in the thread (skip for index jobs)
+    if (body.summary && job.thread_id) {
       await sb.from("chat_messages").insert({
         thread_id: job.thread_id,
         user_id: job.user_id,
         role: "assistant",
         parts: [{ type: "text", text: (status === "completed" ? "✅ " : "❌ ") + body.summary + (body.commit_sha ? `\n\nCommit: \`${body.commit_sha.slice(0, 7)}\`` : "") }],
       });
+    }
+    // Mark repo indexed_at on successful index jobs
+    if (status === "completed" && job.job_type === "index") {
+      await sb.from("repo_selections").update({ indexed_at: new Date().toISOString() }).eq("id", job.repo_selection_id);
     }
     return Response.json({ ok: true });
   } } },

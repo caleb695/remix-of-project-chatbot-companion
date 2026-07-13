@@ -8,6 +8,7 @@ import {
   listRepoSelections, listUserRepos, addRepoSelection, removeRepoSelection,
 } from "@/lib/github.functions";
 import { installCoderWorkflow } from "@/lib/jobs.functions";
+import { enqueueIndexJob, getLatestIndexJob } from "@/lib/jobs.functions";
 import { getOpenrouterSettings, saveOpenrouterSettings } from "@/lib/openrouter.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -140,9 +141,12 @@ function GithubSection() {
               </div>
             </div>
             {r.workflow_installed_at ? (
-              <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                <Check className="h-3 w-3 text-primary" /> Coder workflow installed
-              </div>
+              <>
+                <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Check className="h-3 w-3 text-primary" /> Coder workflow installed
+                </div>
+                <IndexRepoRow repoId={r.id} />
+              </>
             ) : (
               <Button
                 variant="secondary" size="sm" className="w-full"
@@ -157,6 +161,53 @@ function GithubSection() {
         ))}
       </div>
     </section>
+  );
+}
+
+function IndexRepoRow({ repoId }: { repoId: string }) {
+  const qc = useQueryClient();
+  const enqueueFn = useServerFn(enqueueIndexJob);
+  const getLatestFn = useServerFn(getLatestIndexJob);
+  const settingsFn = useServerFn(getOpenrouterSettings);
+  const settings = useQuery({ queryKey: ["or_settings"], queryFn: () => settingsFn() });
+  const model = settings.data?.model ?? "openai/gpt-4o-mini";
+  const job = useQuery({
+    queryKey: ["index_job", repoId],
+    queryFn: () => getLatestFn({ data: { repoId } }),
+    refetchInterval: (q) => {
+      const s = q.state.data?.status;
+      return s === "queued" || s === "running" ? 2500 : false;
+    },
+  });
+  const runMut = useMutation({
+    mutationFn: () => enqueueFn({ data: { repoId, model } }),
+    onSuccess: () => { toast.success("Indexing started on GitHub Actions"); qc.invalidateQueries({ queryKey: ["index_job", repoId] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const j = job.data;
+  const running = j?.status === "queued" || j?.status === "running";
+  const cur = j?.progress_current ?? 0;
+  const tot = j?.progress_total ?? 0;
+  const pct = tot > 0 ? Math.min(100, Math.round((cur / tot) * 100)) : 0;
+  return (
+    <div className="space-y-1.5">
+      <Button
+        size="sm" variant="outline" className="w-full"
+        disabled={running || runMut.isPending || !settings.data?.has_mistral_key}
+        onClick={() => runMut.mutate()}
+        title={!settings.data?.has_mistral_key ? "Add a Mistral key first" : undefined}
+      >
+        <Search className="mr-1.5 h-3.5 w-3.5" />
+        {running ? `Indexing ${cur}/${tot || "?"}…` :
+          j?.status === "completed" ? "Re-index repo" : "Index repo"}
+      </Button>
+      {running && tot > 0 && (
+        <div className="h-1 w-full overflow-hidden rounded bg-muted">
+          <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {j?.status === "failed" && <p className="text-[10px] text-destructive">{j.error}</p>}
+    </div>
   );
 }
 
@@ -241,34 +292,58 @@ function OpenRouterSection() {
   const saveFn = useServerFn(saveOpenrouterSettings);
   const settings = useQuery({ queryKey: ["or_settings"], queryFn: () => getFn() });
   const [apiKey, setApiKey] = useState("");
+  const [mistralKey, setMistralKey] = useState("");
   const saveMut = useMutation({
-    mutationFn: () => saveFn({ data: { apiKey, model: settings.data?.model ?? "anthropic/claude-3.5-sonnet" } }),
+    mutationFn: () => saveFn({
+      data: {
+        apiKey: apiKey || undefined,
+        mistralApiKey: mistralKey || undefined,
+        model: settings.data?.model ?? "anthropic/claude-3.5-sonnet",
+      },
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["or_settings"] });
       qc.invalidateQueries({ queryKey: ["or_models"] });
       toast.success("Key saved");
       setApiKey("");
+      setMistralKey("");
     },
     onError: (e: Error) => toast.error(e.message),
   });
   return (
     <section className="space-y-2">
-      <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">OpenRouter</h2>
-      <Card className="p-4 space-y-3">
-        <Label htmlFor="or-key" className="flex items-center gap-1.5 text-xs">
-          <KeyRound className="h-3 w-3" /> API key
-        </Label>
-        <Input
-          id="or-key" type="password"
-          value={apiKey} onChange={(e) => setApiKey(e.target.value)}
-          placeholder={settings.data?.key_preview ?? "sk-or-…"}
-        />
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
+      <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">API keys</h2>
+      <Card className="p-4 space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="or-key" className="flex items-center gap-1.5 text-xs">
+            <KeyRound className="h-3 w-3" /> OpenRouter (chat & coding)
+          </Label>
+          <Input
+            id="or-key" type="password"
+            value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+            placeholder={settings.data?.key_preview ?? "sk-or-…"}
+          />
+          <p className="text-[11px] text-muted-foreground">
             <a className="underline" href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">Get a key</a>
             {settings.data?.has_key && " · saved"}
           </p>
-          <Button size="sm" disabled={!apiKey || saveMut.isPending} onClick={() => saveMut.mutate()}>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="mi-key" className="flex items-center gap-1.5 text-xs">
+            <KeyRound className="h-3 w-3" /> Mistral (embeddings for repo indexing)
+          </Label>
+          <Input
+            id="mi-key" type="password"
+            value={mistralKey} onChange={(e) => setMistralKey(e.target.value)}
+            placeholder={settings.data?.mistral_key_preview ?? "…"}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            <a className="underline" href="https://console.mistral.ai/api-keys" target="_blank" rel="noreferrer">Get a key</a>
+            {settings.data?.has_mistral_key && " · saved"} · used only for repo indexing embeddings
+          </p>
+        </div>
+        <div className="flex justify-end">
+          <Button size="sm" disabled={(!apiKey && !mistralKey) || saveMut.isPending} onClick={() => saveMut.mutate()}>
             {saveMut.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
