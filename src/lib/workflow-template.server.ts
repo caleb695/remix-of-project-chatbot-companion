@@ -37,6 +37,7 @@ export const RUNNER_MJS = `#!/usr/bin/env node
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 
 const JOB_ID = process.env.JOB_ID;
 const JOB_SECRET = process.env.JOB_SECRET;
@@ -99,8 +100,10 @@ function execTool(name, args) {
 async function main() {
   await log("Claiming job " + JOB_ID);
   const spec = await api("/api/public/jobs/claim");
-  // spec: { prompt, model, openrouter_key, system, messages, repo: {owner,name}, working_branch }
+  // spec: { job_type, prompt, model, openrouter_key, mistral_key, system, messages, repo, working_branch }
   await log("Model: " + spec.model);
+
+  if (spec.job_type === "index") { await runIndex(spec); return; }
 
   const messages = [
     { role: "system", content: spec.system },
