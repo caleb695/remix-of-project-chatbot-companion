@@ -106,6 +106,8 @@ export type Database = {
           logs: string | null
           model: string | null
           progress: Json
+          progress_current: number | null
+          progress_total: number | null
           prompt: string
           repo_selection_id: string
           status: string
@@ -130,6 +132,8 @@ export type Database = {
           logs?: string | null
           model?: string | null
           progress?: Json
+          progress_current?: number | null
+          progress_total?: number | null
           prompt: string
           repo_selection_id: string
           status?: string
@@ -154,6 +158,8 @@ export type Database = {
           logs?: string | null
           model?: string | null
           progress?: Json
+          progress_current?: number | null
+          progress_total?: number | null
           prompt?: string
           repo_selection_id?: string
           status?: string
@@ -226,18 +232,21 @@ export type Database = {
       openrouter_settings: {
         Row: {
           api_key: string
+          mistral_api_key: string | null
           model: string
           updated_at: string
           user_id: string
         }
         Insert: {
           api_key: string
+          mistral_api_key?: string | null
           model?: string
           updated_at?: string
           user_id: string
         }
         Update: {
           api_key?: string
+          mistral_api_key?: string | null
           model?: string
           updated_at?: string
           user_id?: string
@@ -513,7 +522,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      match_repo_chunks: {
+        Args: {
+          p_match_count?: number
+          p_query: string
+          p_repo_selection_id: string
+        }
+        Returns: {
+          chunk_id: string
+          content: string
+          path: string
+          repo_file_id: string
+          similarity: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
