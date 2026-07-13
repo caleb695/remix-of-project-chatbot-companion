@@ -142,3 +142,82 @@ export const cancelJob = createServerFn({ method: "POST" })
       .eq("id", data.id).in("status", ["queued", "running"]);
     return { ok: true };
   });
+
+export const enqueueIndexJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => z.object({
+    repoId: z.string().uuid(),
+    model: z.string().min(1).max(200),
+  }).parse(i))
+  .handler(async ({ context, data }) => {
+    const { data: repo, error: re } = await context.supabase
+      .from("repo_selections")
+      .select("id, owner, name, working_branch, workflow_installed_at").eq("id", data.repoId).single();
+    if (re) throw re;
+    if (!repo.workflow_installed_at) throw new Error("Install the coder workflow for this repo first");
+
+    const { data: or } = await context.supabase
+      .from("openrouter_settings").select("api_key, mistral_api_key").maybeSingle();
+    if (!or?.api_key) throw new Error("Save your OpenRouter API key first");
+    if (!or.mistral_api_key) throw new Error("Save your Mistral API key on the Account tab (used for embeddings)");
+
+    const { data: conn } = await context.supabase
+      .from("github_connections").select("access_token").maybeSingle();
+    if (!conn) throw new Error("Connect GitHub");
+
+    const secret = crypto.randomUUID() + crypto.randomUUID();
+    const appUrl = origin();
+
+    const { data: job, error: je } = await context.supabase
+      .from("coding_jobs").insert({
+        user_id: context.userId,
+        thread_id: null,
+        repo_selection_id: repo.id,
+        status: "queued",
+        prompt: "Index repository",
+        model: data.model,
+        job_type: "index",
+        hmac_secret: secret,
+        working_branch: repo.working_branch,
+        logs: "",
+      }).select().single();
+    if (je) throw je;
+
+    const dispatch = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.name}/dispatches`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${conn.access_token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      body: JSON.stringify({
+        event_type: "lovable-coding-job",
+        client_payload: {
+          job_id: job.id,
+          job_secret: secret,
+          app_url: appUrl,
+          working_branch: repo.working_branch,
+        },
+      }),
+    });
+    if (!dispatch.ok) {
+      const text = await dispatch.text();
+      await context.supabase.from("coding_jobs")
+        .update({ status: "failed", error: `dispatch: ${dispatch.status} ${text.slice(0, 400)}` })
+        .eq("id", job.id);
+      throw new Error(`GitHub dispatch failed: ${dispatch.status}`);
+    }
+    return { jobId: job.id };
+  });
+
+export const getLatestIndexJob = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => z.object({ repoId: z.string().uuid() }).parse(i))
+  .handler(async ({ context, data }) => {
+    const { data: row } = await context.supabase
+      .from("coding_jobs")
+      .select("id, status, progress_current, progress_total, error, finished_at, created_at")
+      .eq("repo_selection_id", data.repoId).eq("job_type", "index")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    return row;
+  });
