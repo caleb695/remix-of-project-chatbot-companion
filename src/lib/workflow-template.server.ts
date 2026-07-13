@@ -160,5 +160,108 @@ async function main() {
   }
 }
 
+// ============ Indexing mode ============
+const IGNORE_DIRS = new Set(["node_modules",".git","dist","build",".next",".turbo",".cache","coverage","out",".venv","venv","target",".output"]);
+const TEXT_EXT = /\\.(ts|tsx|js|jsx|mjs|cjs|py|rs|go|java|kt|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|sh|bash|zsh|yml|yaml|json|md|mdx|txt|toml|ini|css|scss|html|svelte|vue|astro|sql|graphql|prisma)$/i;
+const MAX_FILE_BYTES = 200_000;
+
+function walk(dir, base = dir, out = []) {
+  for (const name of fs.readdirSync(dir)) {
+    if (IGNORE_DIRS.has(name)) continue;
+    const p = path.join(dir, name);
+    const st = fs.statSync(p);
+    if (st.isDirectory()) walk(p, base, out);
+    else if (TEXT_EXT.test(name) && st.size <= MAX_FILE_BYTES) out.push({ path: path.relative(base, p).replaceAll("\\\\", "/"), size: st.size });
+  }
+  return out;
+}
+
+function sha1(s) { return crypto.createHash("sha1").update(s).digest("hex"); }
+
+function chunkText(text, target = 3200 /* ~800 tokens */, overlap = 400) {
+  const chunks = [];
+  let i = 0;
+  while (i < text.length) {
+    const end = Math.min(text.length, i + target);
+    chunks.push(text.slice(i, end));
+    if (end === text.length) break;
+    i = end - overlap;
+  }
+  return chunks;
+}
+
+function extractSymbols(text) {
+  const out = [];
+  const rx = /^\\s*export\\s+(?:async\\s+)?(?:function|class|const|let|var|interface|type|enum)\\s+([A-Za-z_$][\\w$]*)/gm;
+  let m; while ((m = rx.exec(text)) && out.length < 40) out.push({ name: m[1], kind: "export", line: text.slice(0, m.index).split("\\n").length });
+  return out;
+}
+
+async function embedBatch(mistralKey, inputs) {
+  const res = await fetch("https://api.mistral.ai/v1/embeddings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + mistralKey },
+    body: JSON.stringify({ model: "mistral-embed", input: inputs }),
+  });
+  if (!res.ok) throw new Error("mistral embed " + res.status + " " + (await res.text()).slice(0, 300));
+  const body = await res.json();
+  return body.data.map((d) => d.embedding);
+}
+
+async function summarize(openrouterKey, model, filePath, snippet) {
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + openrouterKey },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: "You summarize source files in ONE sentence (max 40 words): purpose + key exports. No preamble." },
+        { role: "user", content: "Path: " + filePath + "\\n\\n" + snippet.slice(0, 6000) },
+      ],
+      max_tokens: 100,
+      temperature: 0.2,
+    }),
+  });
+  if (!res.ok) return "";
+  const body = await res.json();
+  return (body.choices?.[0]?.message?.content ?? "").trim().slice(0, 300);
+}
+
+async function runIndex(spec) {
+  const files = walk(process.cwd());
+  await log("Indexing " + files.length + " files with mistral-embed…");
+  await api("/api/public/jobs/index-progress", { current: 0, total: files.length });
+
+  let done = 0;
+  for (const f of files) {
+    try {
+      const content = fs.readFileSync(f.path, "utf8");
+      const sha = sha1(content);
+      const chunks = chunkText(content);
+      // Batch embed (Mistral accepts up to ~ many inputs; keep to 32 per call)
+      const embeddings = [];
+      for (let i = 0; i < chunks.length; i += 32) {
+        const slice = chunks.slice(i, i + 32);
+        const embs = await embedBatch(spec.mistral_key, slice);
+        embeddings.push(...embs);
+      }
+      const summary = await summarize(spec.openrouter_key, spec.model, f.path, content);
+      const symbols = extractSymbols(content);
+      await api("/api/public/jobs/index-batch", {
+        file: { path: f.path, sha, size: f.size, language: (f.path.split(".").pop() || "").toLowerCase() || null, summary, symbols },
+        chunks: chunks.map((c, i) => ({ chunk_index: i, content: c, embedding: embeddings[i], token_count: Math.round(c.length / 4) })),
+      });
+    } catch (e) {
+      await log("skip " + f.path + ": " + (e.message ?? e).toString().slice(0, 200));
+    }
+    done++;
+    if (done % 5 === 0 || done === files.length) {
+      await api("/api/public/jobs/index-progress", { current: done, total: files.length });
+      await log("indexed " + done + "/" + files.length);
+    }
+  }
+  await api("/api/public/jobs/complete", { status: "completed", summary: "Indexed " + done + " files." });
+}
+
 main().catch(async (e) => { await log("FATAL " + (e.message ?? e)); try { await api("/api/public/jobs/complete", { status: "failed", error: String(e.message ?? e) }); } catch {} process.exit(1); });
 `;
