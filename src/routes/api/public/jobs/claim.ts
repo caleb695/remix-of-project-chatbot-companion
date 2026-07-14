@@ -17,16 +17,17 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       sb.from("github_connections").select("access_token").eq("user_id", job.user_id).maybeSingle(),
       sb.from("repo_selections").select("owner, name, working_branch").eq("id", job.repo_selection_id).single(),
     ]);
-    if (!or?.api_key) return new Response("no openrouter key", { status: 400 });
     if (!gh?.access_token) return new Response("no github token", { status: 400 });
 
-    // For index jobs, also load the mistral key
-    let mistralKey: string | null = null;
-    if (isIndex) {
-      const { data: m } = await sb.from("openrouter_settings").select("mistral_api_key").eq("user_id", job.user_id).maybeSingle();
-      mistralKey = m?.mistral_api_key ?? null;
-      if (!mistralKey) return new Response("no mistral key", { status: 400 });
-    }
+    // Load Mistral key for every job: coding jobs may route to Mistral directly
+    // (models prefixed with `mistral:`), and index jobs use it for embeddings.
+    const { data: m } = await sb.from("openrouter_settings").select("mistral_api_key").eq("user_id", job.user_id).maybeSingle();
+    const mistralKey: string | null = m?.mistral_api_key ?? null;
+    const usesMistral = (job.model ?? "").startsWith("mistral:");
+    if (isIndex && !mistralKey) return new Response("no mistral key", { status: 400 });
+    if (usesMistral && !mistralKey) return new Response("no mistral key", { status: 400 });
+    // OpenRouter key is required unless the coding job runs entirely on Mistral.
+    if (!or?.api_key && !usesMistral) return new Response("no openrouter key", { status: 400 });
 
     // Mark running
     await sb.from("coding_jobs").update({ status: "running", updated_at: new Date().toISOString() }).eq("id", job.id);
@@ -53,7 +54,7 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       job_type: job.job_type,
       prompt: job.prompt,
       model: job.model,
-      openrouter_key: or.api_key,
+      openrouter_key: or?.api_key ?? null,
       mistral_key: mistralKey,
       system,
       messages,
