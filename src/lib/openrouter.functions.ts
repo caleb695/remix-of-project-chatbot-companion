@@ -47,19 +47,43 @@ export const listOpenrouterModels = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { data } = await context.supabase
-      .from("openrouter_settings").select("api_key").maybeSingle();
+      .from("openrouter_settings").select("api_key, mistral_api_key").maybeSingle();
     if (!data?.api_key) throw new Error("Save your OpenRouter API key first");
     const res = await fetch("https://openrouter.ai/api/v1/models", {
       headers: { Authorization: `Bearer ${data.api_key}` },
     });
     if (!res.ok) throw new Error(`OpenRouter ${res.status}`);
     const body = await res.json() as { data: Array<{ id: string; name: string; context_length?: number; pricing?: { prompt: string; completion: string } }> };
-    return body.data
+    const orModels = body.data
       .map((m) => ({
         id: m.id,
         name: m.name,
         context_length: m.context_length,
         pricing: m.pricing,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      }));
+
+    // Also list Mistral models directly (used for coding/chat via the user's Mistral key).
+    // We prefix the id with `mistral:` so the chat + runner route it to api.mistral.ai instead of OpenRouter.
+    let mistralModels: typeof orModels = [];
+    if (data.mistral_api_key) {
+      try {
+        const mr = await fetch("https://api.mistral.ai/v1/models", {
+          headers: { Authorization: `Bearer ${data.mistral_api_key}` },
+        });
+        if (mr.ok) {
+          const mb = await mr.json() as { data: Array<{ id: string }> };
+          mistralModels = mb.data
+            // Skip pure embedding models — those aren't for chat/coding.
+            .filter((m) => !/embed/i.test(m.id))
+            .map((m) => ({
+              id: `mistral:${m.id}`,
+              name: `Mistral · ${m.id}`,
+              context_length: undefined,
+              pricing: undefined,
+            }));
+        }
+      } catch { /* ignore — mistral listing is best-effort */ }
+    }
+
+    return [...mistralModels, ...orModels].sort((a, b) => a.name.localeCompare(b.name));
   });

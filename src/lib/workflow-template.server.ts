@@ -114,12 +114,16 @@ async function main() {
   for (let step = 0; step < MAX_STEPS; step++) {
     if (Date.now() - START > TIME_LIMIT_MS) { await log("Time limit approaching; checkpointing."); break; }
     await log("Step " + (step + 1));
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const useMistral = spec.model.startsWith("mistral:");
+    const endpoint = useMistral ? "https://api.mistral.ai/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
+    const key = useMistral ? spec.mistral_key : spec.openrouter_key;
+    const modelId = useMistral ? spec.model.slice("mistral:".length) : spec.model;
+    const res = await fetch(endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + spec.openrouter_key },
-      body: JSON.stringify({ model: spec.model, messages, tools, tool_choice: "auto" }),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+      body: JSON.stringify({ model: modelId, messages, tools, tool_choice: "auto" }),
     });
-    if (!res.ok) { await log("OpenRouter error " + res.status + ": " + (await res.text()).slice(0, 500)); throw new Error("model call failed"); }
+    if (!res.ok) { await log("Model error " + res.status + ": " + (await res.text()).slice(0, 500)); throw new Error("model call failed"); }
     const body = await res.json();
     const msg = body.choices?.[0]?.message;
     if (!msg) throw new Error("no message");
@@ -208,12 +212,16 @@ async function embedBatch(mistralKey, inputs) {
   return body.data.map((d) => d.embedding);
 }
 
-async function summarize(openrouterKey, model, filePath, snippet) {
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+async function summarize(openrouterKey, mistralKey, model, filePath, snippet) {
+  const useMistral = model.startsWith("mistral:");
+  const endpoint = useMistral ? "https://api.mistral.ai/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
+  const modelId = useMistral ? model.slice("mistral:".length) : model;
+  const key = useMistral ? mistralKey : openrouterKey;
+  const res = await fetch(endpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + openrouterKey },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
     body: JSON.stringify({
-      model,
+      model: modelId,
       messages: [
         { role: "system", content: "You summarize source files in ONE sentence (max 40 words): purpose + key exports. No preamble." },
         { role: "user", content: "Path: " + filePath + "\\n\\n" + snippet.slice(0, 6000) },
@@ -245,7 +253,7 @@ async function runIndex(spec) {
         const embs = await embedBatch(spec.mistral_key, slice);
         embeddings.push(...embs);
       }
-      const summary = await summarize(spec.openrouter_key, spec.model, f.path, content);
+      const summary = await summarize(spec.openrouter_key, spec.mistral_key, spec.model, f.path, content);
       const symbols = extractSymbols(content);
       await api("/api/public/jobs/index-batch", {
         file: { path: f.path, sha, size: f.size, language: (f.path.split(".").pop() || "").toLowerCase() || null, summary, symbols },

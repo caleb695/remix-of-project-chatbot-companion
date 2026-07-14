@@ -90,17 +90,27 @@ export const Route = createFileRoute("/api/chat")({
           }
         }
 
-        const openrouter = createOpenAICompatible({
-          name: "openrouter",
-          baseURL: "https://openrouter.ai/api/v1",
-          headers: {
-            Authorization: `Bearer ${settings.api_key}`,
-            "HTTP-Referer": new URL(request.url).origin,
-            "X-Title": "Coderbot",
-          },
-        });
-
-        const model = openrouter(modelId);
+        // `mistral:<id>` routes directly to Mistral's OpenAI-compatible API using the user's Mistral key.
+        const useMistral = modelId.startsWith("mistral:");
+        if (useMistral && !settings.mistral_api_key) {
+          return new Response("This model routes through Mistral. Add your Mistral API key on the Account tab.", { status: 400 });
+        }
+        const provider = useMistral
+          ? createOpenAICompatible({
+              name: "mistral",
+              baseURL: "https://api.mistral.ai/v1",
+              headers: { Authorization: `Bearer ${settings.mistral_api_key}` },
+            })
+          : createOpenAICompatible({
+              name: "openrouter",
+              baseURL: "https://openrouter.ai/api/v1",
+              headers: {
+                Authorization: `Bearer ${settings.api_key}`,
+                "HTTP-Referer": new URL(request.url).origin,
+                "X-Title": "Coderbot",
+              },
+            });
+        const model = provider(useMistral ? modelId.slice("mistral:".length) : modelId);
 
         const systemPrompt =
           `You are a helpful coding assistant. Discuss the user's repository and plan changes. When the user is ready to apply edits, tell them to click "Run coding job" — that runs an autonomous agent in their GitHub Actions that reads/writes files and pushes the commit for them. Do not pretend to edit files here; you have no file-editing tools in chat.` +
