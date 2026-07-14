@@ -24,15 +24,60 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
     if (!conn) throw new Error("Connect GitHub first");
 
     const { WORKFLOW_YML, RUNNER_MJS } = await import("./workflow-template.server");
-    const { commitChanges } = await import("./github.server");
-    await commitChanges(
-      sel.owner, sel.name, sel.default_branch, conn.access_token,
-      [
-        { path: ".github/workflows/lovable-coder.yml", content: WORKFLOW_YML },
-        { path: "scripts/lovable-coder/runner.mjs", content: RUNNER_MJS },
-      ],
-      "chore: install Lovable coder workflow",
-    );
+    // Use the Contents API (PUT /repos/{owner}/{name}/contents/{path}) — one call per file.
+    // It's more forgiving than the tree/commit dance and gives a clearer error when the
+    // OAuth token lacks write permissions for the repo (e.g. org repo not authorized).
+    const branch = sel.working_branch || sel.default_branch;
+    const putFile = async (filePath: string, content: string) => {
+      // Look up existing SHA (needed when the file already exists so PUT counts as update).
+      let sha: string | undefined;
+      const head = await fetch(
+        `https://api.github.com/repos/${sel.owner}/${sel.name}/contents/${encodeURIComponent(filePath).replace(/%2F/g, "/")}?ref=${encodeURIComponent(branch)}`,
+        { headers: {
+          Authorization: `Bearer ${conn.access_token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "User-Agent": "coderbot-app",
+        } },
+      );
+      if (head.ok) {
+        const j = await head.json() as { sha?: string };
+        sha = j.sha;
+      }
+      const res = await fetch(
+        `https://api.github.com/repos/${sel.owner}/${sel.name}/contents/${encodeURIComponent(filePath).replace(/%2F/g, "/")}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${conn.access_token}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+            "User-Agent": "coderbot-app",
+          },
+          body: JSON.stringify({
+            message: `chore: install Lovable coder workflow (${filePath})`,
+            content: Buffer.from(content, "utf8").toString("base64"),
+            branch,
+            ...(sha ? { sha } : {}),
+          }),
+        },
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        if (res.status === 404) {
+          throw new Error(
+            `GitHub 404 writing ${filePath} on ${sel.owner}/${sel.name}@${branch}. ` +
+            `This usually means the OAuth token can't write to this repo — for an ` +
+            `organization repo, authorize the OAuth app on that org, or ask an admin to grant access. ` +
+            `Detail: ${text.slice(0, 200)}`,
+          );
+        }
+        throw new Error(`GitHub ${res.status} writing ${filePath}: ${text.slice(0, 300)}`);
+      }
+    };
+    await putFile(".github/workflows/lovable-coder.yml", WORKFLOW_YML);
+    await putFile("scripts/lovable-coder/runner.mjs", RUNNER_MJS);
 
     await context.supabase.from("repo_selections")
       .update({ workflow_installed_at: new Date().toISOString() })
