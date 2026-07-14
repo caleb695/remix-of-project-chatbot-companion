@@ -203,7 +203,7 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
 
     const { data: or } = await context.supabase
       .from("openrouter_settings").select("api_key, mistral_api_key").maybeSingle();
-    if (!or.mistral_api_key) throw new Error("Save your Mistral API key on the Account tab (used for embeddings)");
+    if (!or?.mistral_api_key) throw new Error("Save your Mistral API key on the Account tab (used for embeddings)");
     const usesMistralModel = data.model.startsWith("mistral:");
     if (!or.api_key && !usesMistralModel) throw new Error("Save your OpenRouter API key first (or pick a Mistral model)");
 
