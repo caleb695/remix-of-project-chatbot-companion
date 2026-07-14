@@ -114,12 +114,16 @@ async function main() {
   for (let step = 0; step < MAX_STEPS; step++) {
     if (Date.now() - START > TIME_LIMIT_MS) { await log("Time limit approaching; checkpointing."); break; }
     await log("Step " + (step + 1));
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const useMistral = spec.model.startsWith("mistral:");
+    const endpoint = useMistral ? "https://api.mistral.ai/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
+    const key = useMistral ? spec.mistral_key : spec.openrouter_key;
+    const modelId = useMistral ? spec.model.slice("mistral:".length) : spec.model;
+    const res = await fetch(endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + spec.openrouter_key },
-      body: JSON.stringify({ model: spec.model, messages, tools, tool_choice: "auto" }),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+      body: JSON.stringify({ model: modelId, messages, tools, tool_choice: "auto" }),
     });
-    if (!res.ok) { await log("OpenRouter error " + res.status + ": " + (await res.text()).slice(0, 500)); throw new Error("model call failed"); }
+    if (!res.ok) { await log("Model error " + res.status + ": " + (await res.text()).slice(0, 500)); throw new Error("model call failed"); }
     const body = await res.json();
     const msg = body.choices?.[0]?.message;
     if (!msg) throw new Error("no message");
