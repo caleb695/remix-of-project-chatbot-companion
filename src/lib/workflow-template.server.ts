@@ -213,11 +213,14 @@ async function embedBatch(mistralKey, inputs) {
 }
 
 async function summarize(openrouterKey, model, filePath, snippet) {
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const useMistral = model.startsWith("mistral:");
+  const endpoint = useMistral ? "https://api.mistral.ai/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
+  const modelId = useMistral ? model.slice("mistral:".length) : model;
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + openrouterKey },
     body: JSON.stringify({
-      model,
+      model: modelId,
       messages: [
         { role: "system", content: "You summarize source files in ONE sentence (max 40 words): purpose + key exports. No preamble." },
         { role: "user", content: "Path: " + filePath + "\\n\\n" + snippet.slice(0, 6000) },
