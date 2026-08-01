@@ -326,9 +326,9 @@ function ModelPicker({ current, onSelect }: { current: string; onSelect: (m: str
   const stripped = q.replace(/free/gi, "").trim().toLowerCase();
 
   const filtered = (models.data ?? []).filter((m) => {
-    const priceFree =
-      (!m.pricing?.prompt || parseFloat(m.pricing.prompt) === 0) &&
-      (!m.pricing?.completion || parseFloat(m.pricing.completion) === 0);
+    const priceFree = Boolean(m.pricing) &&
+      parseFloat(m.pricing?.prompt ?? "1") === 0 &&
+      parseFloat(m.pricing?.completion ?? "1") === 0;
     if (isFreeQuery && !priceFree) return false;
     if (!stripped) return true;
     return `${m.id} ${m.name}`.toLowerCase().includes(stripped);
@@ -393,9 +393,9 @@ function ModelPicker({ current, onSelect }: { current: string; onSelect: (m: str
           {hasKey && models.isLoading && <div className="grid place-items-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}
           {hasKey && models.error && <p className="p-4 text-sm text-destructive">{(models.error as Error).message}</p>}
           {filtered.map((m) => {
-            const priceFree =
-              (!m.pricing?.prompt || parseFloat(m.pricing.prompt) === 0) &&
-              (!m.pricing?.completion || parseFloat(m.pricing.completion) === 0);
+            const priceFree = Boolean(m.pricing) &&
+              parseFloat(m.pricing?.prompt ?? "1") === 0 &&
+              parseFloat(m.pricing?.completion ?? "1") === 0;
             const active = m.id === current;
             return (
               <button
