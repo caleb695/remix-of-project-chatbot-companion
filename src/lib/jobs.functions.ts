@@ -3,13 +3,6 @@ import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
-function origin() {
-  const req = getRequest();
-  const url = new URL(req.url);
-  // Prefer stable published URL when we're on lovable.app
-  return `${url.protocol}//${url.host}`;
-}
-
 export const installCoderWorkflow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => z.object({ repoId: z.string().uuid() }).parse(i))
@@ -111,7 +104,8 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
     if (!conn) throw new Error("Connect GitHub");
 
     const secret = crypto.randomUUID() + crypto.randomUUID();
-    const appUrl = origin();
+    const requestUrl = new URL(getRequest().url);
+    const appUrl = `${requestUrl.protocol}//${requestUrl.host}`;
 
     const { data: job, error: je } = await context.supabase
       .from("coding_jobs").insert({
@@ -229,7 +223,8 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
     if (!conn) throw new Error("Connect GitHub");
 
     const secret = crypto.randomUUID() + crypto.randomUUID();
-    const appUrl = origin();
+    const requestUrl = new URL(getRequest().url);
+    const appUrl = `${requestUrl.protocol}//${requestUrl.host}`;
 
     const { data: job, error: je } = await context.supabase
       .from("coding_jobs").insert({

@@ -388,7 +388,7 @@ function OpenRouterSection() {
           <Select value={currentEmbeddingProvider} onValueChange={(value) => {
             const provider = value as "mistral" | "openrouter" | "nvidia";
             setEmbeddingProvider(provider);
-            setEmbeddingModel(provider === "mistral" ? "mistral-embed" : provider === "nvidia" ? "nvidia/nv-embedqa-e5-v5" : "openai/text-embedding-3-small");
+            setEmbeddingModel(provider === "mistral" ? "mistral-embed" : provider === "nvidia" ? "nvidia/nv-embedqa-e5-v5" : "mistralai/mistral-embed");
           }}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>

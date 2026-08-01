@@ -3,12 +3,6 @@ import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
-function origin() {
-  const req = getRequest();
-  const url = new URL(req.url);
-  return `${url.protocol}//${url.host}`;
-}
-
 export const startGithubOAuth = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -16,7 +10,8 @@ export const startGithubOAuth = createServerFn({ method: "POST" })
     if (!clientId) throw new Error("GitHub OAuth is not configured yet. Ask the app owner to set GITHUB_CLIENT_ID.");
     const { signState } = await import("./oauth-state.server");
     const state = signState({ uid: context.userId, n: crypto.randomUUID() });
-    const redirect = `${origin()}/api/github/callback`;
+    const requestUrl = new URL(getRequest().url);
+    const redirect = `${requestUrl.protocol}//${requestUrl.host}/api/github/callback`;
     const url = new URL("https://github.com/login/oauth/authorize");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirect);
