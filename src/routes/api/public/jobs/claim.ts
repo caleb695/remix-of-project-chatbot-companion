@@ -13,21 +13,28 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       isIndex
         ? Promise.resolve({ data: [] as { role: string; parts: unknown }[] })
         : sb.from("chat_messages").select("role, parts").eq("thread_id", job.thread_id!).order("created_at"),
-      sb.from("openrouter_settings").select("api_key").eq("user_id", job.user_id).maybeSingle(),
+      sb.from("openrouter_settings")
+        .select("api_key, mistral_api_key, groq_api_key, nvidia_api_key, embedding_provider, embedding_model")
+        .eq("user_id", job.user_id).maybeSingle(),
       sb.from("github_connections").select("access_token").eq("user_id", job.user_id).maybeSingle(),
       sb.from("repo_selections").select("owner, name, working_branch").eq("id", job.repo_selection_id).single(),
     ]);
     if (!gh?.access_token) return new Response("no github token", { status: 400 });
 
-    // Load Mistral key for every job: coding jobs may route to Mistral directly
-    // (models prefixed with `mistral:`), and index jobs use it for embeddings.
-    const { data: m } = await sb.from("openrouter_settings").select("mistral_api_key").eq("user_id", job.user_id).maybeSingle();
-    const mistralKey: string | null = m?.mistral_api_key ?? null;
-    const usesMistral = (job.model ?? "").startsWith("mistral:");
-    if (isIndex && !mistralKey) return new Response("no mistral key", { status: 400 });
-    if (usesMistral && !mistralKey) return new Response("no mistral key", { status: 400 });
-    // OpenRouter key is required unless the coding job runs entirely on Mistral.
-    if (!or?.api_key && !usesMistral) return new Response("no openrouter key", { status: 400 });
+    if (!or) return new Response("no provider settings", { status: 400 });
+    const provider = (job.model ?? "").startsWith("mistral:") ? "mistral"
+      : (job.model ?? "").startsWith("groq:") ? "groq"
+      : (job.model ?? "").startsWith("nvidia:") ? "nvidia"
+      : "openrouter";
+    const providerKey = provider === "mistral" ? or.mistral_api_key
+      : provider === "groq" ? or.groq_api_key
+      : provider === "nvidia" ? or.nvidia_api_key
+      : or.api_key;
+    const embeddingKey = or.embedding_provider === "mistral" ? or.mistral_api_key
+      : or.embedding_provider === "nvidia" ? or.nvidia_api_key
+      : or.api_key;
+    if (!providerKey) return new Response(`no ${provider} key`, { status: 400 });
+    if (isIndex && !embeddingKey) return new Response(`no ${or.embedding_provider} embedding key`, { status: 400 });
 
     // Mark running
     await sb.from("coding_jobs").update({ status: "running", updated_at: new Date().toISOString() }).eq("id", job.id);
@@ -55,7 +62,12 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       prompt: job.prompt,
       model: job.model,
       openrouter_key: or?.api_key ?? null,
-      mistral_key: mistralKey,
+      mistral_key: or.mistral_api_key,
+      groq_key: or.groq_api_key,
+      nvidia_key: or.nvidia_api_key,
+      embedding_provider: or.embedding_provider,
+      embedding_model: or.embedding_model,
+      embedding_key: embeddingKey,
       system,
       messages,
       repo: { owner: sel!.owner, name: sel!.name },

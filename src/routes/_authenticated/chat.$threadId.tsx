@@ -315,7 +315,7 @@ function ModelPicker({ current, onSelect }: { current: string; onSelect: (m: str
   const modelsFn = useServerFn(listOpenrouterModels);
   const settingsFn = useServerFn(getOpenrouterSettings);
   const settings = useQuery({ queryKey: ["or_settings"], queryFn: () => settingsFn(), enabled: open });
-  const hasKey = settings.data?.has_key ?? false;
+  const hasKey = Boolean(settings.data?.has_key || settings.data?.has_mistral_key || settings.data?.has_groq_key || settings.data?.has_nvidia_key);
   const models = useQuery({
     queryKey: ["or_models"],
     queryFn: () => modelsFn(),
@@ -387,7 +387,7 @@ function ModelPicker({ current, onSelect }: { current: string; onSelect: (m: str
         <div className="flex-1 overflow-y-auto p-1">
           {!hasKey && (
             <p className="p-6 text-center text-sm text-muted-foreground">
-              Add your OpenRouter API key on the Account tab to load models.
+              Add an AI provider key on the Account tab to load models.
             </p>
           )}
           {hasKey && models.isLoading && <div className="grid place-items-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}

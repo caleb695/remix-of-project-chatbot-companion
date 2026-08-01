@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -83,6 +84,7 @@ function GithubSection() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["repo_selections"] }); toast.success("Coder workflow installed"); },
     onError: (e: Error) => toast.error(e.message),
   });
+  const hasWorkflowScope = new Set((conn.data?.scope ?? "").split(/[ ,]+/).filter(Boolean)).has("workflow");
 
   if (!conn.data) {
     return (
@@ -110,6 +112,14 @@ function GithubSection() {
         </div>
         <Button variant="ghost" size="sm" onClick={() => disconnectMut.mutate()}>Disconnect</Button>
       </div>
+      {!hasWorkflowScope && (
+        <Card className="border-destructive/40 p-3 text-xs">
+          <p className="text-muted-foreground">Reconnect GitHub once to grant permission to install workflow files.</p>
+          <Button className="mt-2 w-full" size="sm" variant="outline" onClick={() => connectMut.mutate()} disabled={connectMut.isPending}>
+            <Github className="mr-2 h-4 w-4" /> Reconnect GitHub
+          </Button>
+        </Card>
+      )}
 
       <div className="flex items-center justify-between pt-1">
         <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Your repos</h2>
@@ -150,7 +160,7 @@ function GithubSection() {
             ) : (
               <Button
                 variant="secondary" size="sm" className="w-full"
-                disabled={installMut.isPending}
+                disabled={installMut.isPending || !hasWorkflowScope}
                 onClick={() => installMut.mutate(r.id)}
               >
                 <Zap className="mr-1.5 h-3.5 w-3.5" />
@@ -170,7 +180,7 @@ function IndexRepoRow({ repoId }: { repoId: string }) {
   const getLatestFn = useServerFn(getLatestIndexJob);
   const settingsFn = useServerFn(getOpenrouterSettings);
   const settings = useQuery({ queryKey: ["or_settings"], queryFn: () => settingsFn() });
-  const model = settings.data?.model ?? "openai/gpt-4o-mini";
+  const model = settings.data?.model ?? "openai/gpt-5.6-sol";
   const job = useQuery({
     queryKey: ["index_job", repoId],
     queryFn: () => getLatestFn({ data: { repoId } }),
@@ -193,9 +203,13 @@ function IndexRepoRow({ repoId }: { repoId: string }) {
     <div className="space-y-1.5">
       <Button
         size="sm" variant="outline" className="w-full"
-        disabled={running || runMut.isPending || !settings.data?.has_mistral_key}
+        disabled={running || runMut.isPending || !settings.data || !(
+          settings.data.embedding_provider === "mistral" ? settings.data.has_mistral_key
+            : settings.data.embedding_provider === "nvidia" ? settings.data.has_nvidia_key
+            : settings.data.has_key
+        )}
         onClick={() => runMut.mutate()}
-        title={!settings.data?.has_mistral_key ? "Add a Mistral key first" : undefined}
+        title="Index with your selected embedding provider"
       >
         <Search className="mr-1.5 h-3.5 w-3.5" />
         {running ? `Indexing ${cur}/${tot || "?"}…` :
@@ -293,11 +307,21 @@ function OpenRouterSection() {
   const settings = useQuery({ queryKey: ["or_settings"], queryFn: () => getFn() });
   const [apiKey, setApiKey] = useState("");
   const [mistralKey, setMistralKey] = useState("");
+  const [groqKey, setGroqKey] = useState("");
+  const [nvidiaKey, setNvidiaKey] = useState("");
+  const [embeddingProvider, setEmbeddingProvider] = useState<"mistral" | "openrouter" | "nvidia">("mistral");
+  const [embeddingModel, setEmbeddingModel] = useState("mistral-embed");
+  const currentEmbeddingProvider = settings.data?.embedding_provider ?? embeddingProvider;
+  const currentEmbeddingModel = settings.data?.embedding_model ?? embeddingModel;
   const saveMut = useMutation({
     mutationFn: () => saveFn({
       data: {
         apiKey: apiKey || undefined,
         mistralApiKey: mistralKey || undefined,
+        groqApiKey: groqKey || undefined,
+        nvidiaApiKey: nvidiaKey || undefined,
+        embeddingProvider: currentEmbeddingProvider,
+        embeddingModel: currentEmbeddingModel,
         model: settings.data?.model ?? "anthropic/claude-3.5-sonnet",
       },
     }),
@@ -307,6 +331,8 @@ function OpenRouterSection() {
       toast.success("Key saved");
       setApiKey("");
       setMistralKey("");
+      setGroqKey("");
+      setNvidiaKey("");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -330,7 +356,7 @@ function OpenRouterSection() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="mi-key" className="flex items-center gap-1.5 text-xs">
-            <KeyRound className="h-3 w-3" /> Mistral (embeddings for repo indexing)
+            <KeyRound className="h-3 w-3" /> Mistral (chat, coding & embeddings)
           </Label>
           <Input
             id="mi-key" type="password"
@@ -339,11 +365,38 @@ function OpenRouterSection() {
           />
           <p className="text-[11px] text-muted-foreground">
             <a className="underline" href="https://console.mistral.ai/api-keys" target="_blank" rel="noreferrer">Get a key</a>
-            {settings.data?.has_mistral_key && " · saved"} · used only for repo indexing embeddings
+            {settings.data?.has_mistral_key && " · saved"}
           </p>
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="groq-key" className="flex items-center gap-1.5 text-xs"><KeyRound className="h-3 w-3" /> Groq Cloud (chat & coding)</Label>
+          <Input id="groq-key" type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder={settings.data?.groq_key_preview ?? "gsk_…"} />
+          <p className="text-[11px] text-muted-foreground"><a className="underline" href="https://console.groq.com/keys" target="_blank" rel="noreferrer">Get a key</a>{settings.data?.has_groq_key && " · saved"}</p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="nvidia-key" className="flex items-center gap-1.5 text-xs"><KeyRound className="h-3 w-3" /> NVIDIA NIM (chat, coding & embeddings)</Label>
+          <Input id="nvidia-key" type="password" value={nvidiaKey} onChange={(e) => setNvidiaKey(e.target.value)} placeholder={settings.data?.nvidia_key_preview ?? "nvapi-…"} />
+          <p className="text-[11px] text-muted-foreground"><a className="underline" href="https://build.nvidia.com/settings/api-keys" target="_blank" rel="noreferrer">Get a key</a>{settings.data?.has_nvidia_key && " · saved"}</p>
+        </div>
+        <div className="space-y-2 border-t border-border pt-4">
+          <Label className="text-xs">Repository embeddings</Label>
+          <Select value={currentEmbeddingProvider} onValueChange={(value) => {
+            const provider = value as "mistral" | "openrouter" | "nvidia";
+            setEmbeddingProvider(provider);
+            setEmbeddingModel(provider === "mistral" ? "mistral-embed" : provider === "nvidia" ? "nvidia/nv-embedqa-e5-v5" : "openai/text-embedding-3-small");
+          }}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mistral">Mistral</SelectItem>
+              <SelectItem value="openrouter">OpenRouter</SelectItem>
+              <SelectItem value="nvidia">NVIDIA NIM</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input value={currentEmbeddingModel} onChange={(e) => setEmbeddingModel(e.target.value)} placeholder="Embedding model ID" />
+          <p className="text-[11px] text-muted-foreground">Use a 1024-dimension embedding model to match the repository index.</p>
+        </div>
         <div className="flex justify-end">
-          <Button size="sm" disabled={(!apiKey && !mistralKey) || saveMut.isPending} onClick={() => saveMut.mutate()}>
+          <Button size="sm" disabled={(!apiKey && !mistralKey && !groqKey && !nvidiaKey && currentEmbeddingProvider === settings.data?.embedding_provider && currentEmbeddingModel === settings.data?.embedding_model) || saveMut.isPending} onClick={() => saveMut.mutate()}>
             {saveMut.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
