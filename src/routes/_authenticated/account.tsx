@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery, queryOptions } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { Github, LogOut, Loader2, Search, Plus, Check, ExternalLink, Trash2, KeyRound, Zap } from "lucide-react";
 import {
   startGithubOAuth, getGithubConnection, disconnectGithub,
@@ -311,8 +311,13 @@ function OpenRouterSection() {
   const [nvidiaKey, setNvidiaKey] = useState("");
   const [embeddingProvider, setEmbeddingProvider] = useState<"mistral" | "openrouter" | "nvidia">("mistral");
   const [embeddingModel, setEmbeddingModel] = useState("mistral-embed");
-  const currentEmbeddingProvider = settings.data?.embedding_provider ?? embeddingProvider;
-  const currentEmbeddingModel = settings.data?.embedding_model ?? embeddingModel;
+  useEffect(() => {
+    if (!settings.data) return;
+    setEmbeddingProvider(settings.data.embedding_provider as "mistral" | "openrouter" | "nvidia");
+    setEmbeddingModel(settings.data.embedding_model);
+  }, [settings.data]);
+  const currentEmbeddingProvider = embeddingProvider;
+  const currentEmbeddingModel = embeddingModel;
   const saveMut = useMutation({
     mutationFn: () => saveFn({
       data: {
