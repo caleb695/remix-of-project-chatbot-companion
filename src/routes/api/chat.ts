@@ -29,10 +29,10 @@ export const Route = createFileRoute("/api/chat")({
         if (!thread) return new Response("Thread not found", { status: 404 });
 
         const { data: settings } = await supa
-          .from("openrouter_settings").select("api_key, model, mistral_api_key").maybeSingle();
-        if (!settings?.api_key) {
-          return new Response("Add your OpenRouter API key on the Account tab first.", { status: 400 });
-        }
+          .from("openrouter_settings")
+          .select("api_key, model, mistral_api_key, groq_api_key, nvidia_api_key, embedding_provider, embedding_model")
+          .maybeSingle();
+        if (!settings) return new Response("Add an AI provider key on the Account tab first.", { status: 400 });
         const modelId = thread.model || settings.model;
 
         // Persist the latest user message immediately
@@ -56,12 +56,18 @@ export const Route = createFileRoute("/api/chat")({
 
         // Build repo RAG context (semantic search over indexed chunks)
         let ragContext = "";
-        if (thread.repo_selection_id && settings.mistral_api_key && lastUserText) {
+        const embeddingKey = settings.embedding_provider === "mistral" ? settings.mistral_api_key
+          : settings.embedding_provider === "nvidia" ? settings.nvidia_api_key
+          : settings.api_key;
+        const embeddingUrl = settings.embedding_provider === "mistral" ? "https://api.mistral.ai/v1/embeddings"
+          : settings.embedding_provider === "nvidia" ? "https://integrate.api.nvidia.com/v1/embeddings"
+          : "https://openrouter.ai/api/v1/embeddings";
+        if (thread.repo_selection_id && embeddingKey && lastUserText) {
           try {
-            const embRes = await fetch("https://api.mistral.ai/v1/embeddings", {
+            const embRes = await fetch(embeddingUrl, {
               method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.mistral_api_key}` },
-              body: JSON.stringify({ model: "mistral-embed", input: [lastUserText.slice(0, 4000)] }),
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${embeddingKey}` },
+              body: JSON.stringify({ model: settings.embedding_model, input: [lastUserText.slice(0, 4000)] }),
             });
             if (embRes.ok) {
               const embBody = await embRes.json() as { data: { embedding: number[] }[] };
@@ -90,27 +96,20 @@ export const Route = createFileRoute("/api/chat")({
           }
         }
 
-        // `mistral:<id>` routes directly to Mistral's OpenAI-compatible API using the user's Mistral key.
-        const useMistral = modelId.startsWith("mistral:");
-        if (useMistral && !settings.mistral_api_key) {
-          return new Response("This model routes through Mistral. Add your Mistral API key on the Account tab.", { status: 400 });
-        }
-        const provider = useMistral
-          ? createOpenAICompatible({
-              name: "mistral",
-              baseURL: "https://api.mistral.ai/v1",
-              headers: { Authorization: `Bearer ${settings.mistral_api_key}` },
-            })
-          : createOpenAICompatible({
-              name: "openrouter",
-              baseURL: "https://openrouter.ai/api/v1",
-              headers: {
-                Authorization: `Bearer ${settings.api_key}`,
-                "HTTP-Referer": new URL(request.url).origin,
-                "X-Title": "Coderbot",
-              },
-            });
-        const model = provider(useMistral ? modelId.slice("mistral:".length) : modelId);
+        const route = modelId.startsWith("mistral:")
+          ? { name: "mistral", prefix: "mistral:", baseURL: "https://api.mistral.ai/v1", key: settings.mistral_api_key }
+          : modelId.startsWith("groq:")
+            ? { name: "groq", prefix: "groq:", baseURL: "https://api.groq.com/openai/v1", key: settings.groq_api_key }
+            : modelId.startsWith("nvidia:")
+              ? { name: "nvidia", prefix: "nvidia:", baseURL: "https://integrate.api.nvidia.com/v1", key: settings.nvidia_api_key }
+              : { name: "openrouter", prefix: "", baseURL: "https://openrouter.ai/api/v1", key: settings.api_key };
+        if (!route.key) return new Response(`Add your ${route.name} API key on the Account tab.`, { status: 400 });
+        const provider = createOpenAICompatible({
+          name: route.name, baseURL: route.baseURL,
+          headers: { Authorization: `Bearer ${route.key}`,
+            ...(route.name === "openrouter" ? { "HTTP-Referer": new URL(request.url).origin, "X-Title": "Coderbot" } : {}) },
+        });
+        const model = provider(modelId.slice(route.prefix.length));
 
         const systemPrompt =
           `You are a helpful coding assistant. Discuss the user's repository and plan changes. When the user is ready to apply edits, tell them to click "Run coding job" — that runs an autonomous agent in their GitHub Actions that reads/writes files and pushes the commit for them. Do not pretend to edit files here; you have no file-editing tools in chat.` +

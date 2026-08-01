@@ -20,7 +20,7 @@ export const startGithubOAuth = createServerFn({ method: "POST" })
     const url = new URL("https://github.com/login/oauth/authorize");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirect);
-    url.searchParams.set("scope", "repo read:user");
+    url.searchParams.set("scope", "repo workflow read:user");
     url.searchParams.set("state", state);
     return { url: url.toString() };
   });
@@ -30,7 +30,7 @@ export const getGithubConnection = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data } = await context.supabase
       .from("github_connections")
-      .select("github_login, avatar_url, created_at")
+      .select("github_login, avatar_url, created_at, scope")
       .maybeSingle();
     return data;
   });

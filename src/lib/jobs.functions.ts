@@ -20,8 +20,12 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
     if (sel.workflow_installed_at) return { ok: true, alreadyInstalled: true };
 
     const { data: conn } = await context.supabase
-      .from("github_connections").select("access_token").maybeSingle();
+      .from("github_connections").select("access_token, scope").maybeSingle();
     if (!conn) throw new Error("Connect GitHub first");
+    const scopes = new Set((conn.scope ?? "").split(/[ ,]+/).filter(Boolean));
+    if (!scopes.has("workflow")) {
+      throw new Error('Reconnect GitHub from the Account tab to grant the required “workflow” permission, then try again.');
+    }
 
     const { WORKFLOW_YML, RUNNER_MJS } = await import("./workflow-template.server");
     // Use the Contents API (PUT /repos/{owner}/{name}/contents/{path}) — one call per file.
@@ -68,8 +72,8 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
         if (res.status === 404) {
           throw new Error(
             `GitHub 404 writing ${filePath} on ${sel.owner}/${sel.name}@${branch}. ` +
-            `This usually means the OAuth token can't write to this repo — for an ` +
-            `organization repo, authorize the OAuth app on that org, or ask an admin to grant access. ` +
+            `Reconnect GitHub to grant the required “workflow” permission. If this is an organization repo, ` +
+            `an organization admin may also need to approve the OAuth app. ` +
             `Detail: ${text.slice(0, 200)}`,
           );
         }
@@ -202,10 +206,23 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
     if (!repo.workflow_installed_at) throw new Error("Install the coder workflow for this repo first");
 
     const { data: or } = await context.supabase
-      .from("openrouter_settings").select("api_key, mistral_api_key").maybeSingle();
-    if (!or?.mistral_api_key) throw new Error("Save your Mistral API key on the Account tab (used for embeddings)");
-    const usesMistralModel = data.model.startsWith("mistral:");
-    if (!or.api_key && !usesMistralModel) throw new Error("Save your OpenRouter API key first (or pick a Mistral model)");
+      .from("openrouter_settings")
+      .select("api_key, mistral_api_key, groq_api_key, nvidia_api_key, embedding_provider")
+      .maybeSingle();
+    if (!or) throw new Error("Add an AI provider key on the Account tab first");
+    const provider = data.model.startsWith("mistral:") ? "mistral"
+      : data.model.startsWith("groq:") ? "groq"
+      : data.model.startsWith("nvidia:") ? "nvidia"
+      : "openrouter";
+    const chatKey = provider === "mistral" ? or.mistral_api_key
+      : provider === "groq" ? or.groq_api_key
+      : provider === "nvidia" ? or.nvidia_api_key
+      : or.api_key;
+    const embeddingKey = or.embedding_provider === "mistral" ? or.mistral_api_key
+      : or.embedding_provider === "nvidia" ? or.nvidia_api_key
+      : or.api_key;
+    if (!chatKey) throw new Error(`Add your ${provider} API key first`);
+    if (!embeddingKey) throw new Error(`Add your ${or.embedding_provider} API key for repository embeddings`);
 
     const { data: conn } = await context.supabase
       .from("github_connections").select("access_token").maybeSingle();
