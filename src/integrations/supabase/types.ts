@@ -231,23 +231,35 @@ export type Database = {
       }
       openrouter_settings: {
         Row: {
-          api_key: string
+          api_key: string | null
+          embedding_model: string
+          embedding_provider: string
+          groq_api_key: string | null
           mistral_api_key: string | null
           model: string
+          nvidia_api_key: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
-          api_key: string
+          api_key?: string | null
+          embedding_model?: string
+          embedding_provider?: string
+          groq_api_key?: string | null
           mistral_api_key?: string | null
           model?: string
+          nvidia_api_key?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
-          api_key?: string
+          api_key?: string | null
+          embedding_model?: string
+          embedding_provider?: string
+          groq_api_key?: string | null
           mistral_api_key?: string | null
           model?: string
+          nvidia_api_key?: string | null
           updated_at?: string
           user_id?: string
         }

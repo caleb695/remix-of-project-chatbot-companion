@@ -315,7 +315,7 @@ function ModelPicker({ current, onSelect }: { current: string; onSelect: (m: str
   const modelsFn = useServerFn(listOpenrouterModels);
   const settingsFn = useServerFn(getOpenrouterSettings);
   const settings = useQuery({ queryKey: ["or_settings"], queryFn: () => settingsFn(), enabled: open });
-  const hasKey = settings.data?.has_key ?? false;
+  const hasKey = Boolean(settings.data?.has_key || settings.data?.has_mistral_key || settings.data?.has_groq_key || settings.data?.has_nvidia_key);
   const models = useQuery({
     queryKey: ["or_models"],
     queryFn: () => modelsFn(),
@@ -326,9 +326,9 @@ function ModelPicker({ current, onSelect }: { current: string; onSelect: (m: str
   const stripped = q.replace(/free/gi, "").trim().toLowerCase();
 
   const filtered = (models.data ?? []).filter((m) => {
-    const priceFree =
-      (!m.pricing?.prompt || parseFloat(m.pricing.prompt) === 0) &&
-      (!m.pricing?.completion || parseFloat(m.pricing.completion) === 0);
+    const priceFree = Boolean(m.pricing) &&
+      parseFloat(m.pricing?.prompt ?? "1") === 0 &&
+      parseFloat(m.pricing?.completion ?? "1") === 0;
     if (isFreeQuery && !priceFree) return false;
     if (!stripped) return true;
     return `${m.id} ${m.name}`.toLowerCase().includes(stripped);
@@ -387,15 +387,15 @@ function ModelPicker({ current, onSelect }: { current: string; onSelect: (m: str
         <div className="flex-1 overflow-y-auto p-1">
           {!hasKey && (
             <p className="p-6 text-center text-sm text-muted-foreground">
-              Add your OpenRouter API key on the Account tab to load models.
+              Add an AI provider key on the Account tab to load models.
             </p>
           )}
           {hasKey && models.isLoading && <div className="grid place-items-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}
           {hasKey && models.error && <p className="p-4 text-sm text-destructive">{(models.error as Error).message}</p>}
           {filtered.map((m) => {
-            const priceFree =
-              (!m.pricing?.prompt || parseFloat(m.pricing.prompt) === 0) &&
-              (!m.pricing?.completion || parseFloat(m.pricing.completion) === 0);
+            const priceFree = Boolean(m.pricing) &&
+              parseFloat(m.pricing?.prompt ?? "1") === 0 &&
+              parseFloat(m.pricing?.completion ?? "1") === 0;
             const active = m.id === current;
             return (
               <button

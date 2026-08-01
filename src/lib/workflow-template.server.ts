@@ -100,7 +100,7 @@ function execTool(name, args) {
 async function main() {
   await log("Claiming job " + JOB_ID);
   const spec = await api("/api/public/jobs/claim");
-  // spec: { job_type, prompt, model, openrouter_key, mistral_key, system, messages, repo, working_branch }
+  // spec includes provider keys, embedding config, system, messages, repo, and branch.
   await log("Model: " + spec.model);
 
   if (spec.job_type === "index") { await runIndex(spec); return; }
@@ -114,10 +114,10 @@ async function main() {
   for (let step = 0; step < MAX_STEPS; step++) {
     if (Date.now() - START > TIME_LIMIT_MS) { await log("Time limit approaching; checkpointing."); break; }
     await log("Step " + (step + 1));
-    const useMistral = spec.model.startsWith("mistral:");
-    const endpoint = useMistral ? "https://api.mistral.ai/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
-    const key = useMistral ? spec.mistral_key : spec.openrouter_key;
-    const modelId = useMistral ? spec.model.slice("mistral:".length) : spec.model;
+    const route = chatRoute(spec, spec.model);
+    const endpoint = route.base + "/chat/completions";
+    const key = route.key;
+    const modelId = route.model;
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
@@ -201,22 +201,32 @@ function extractSymbols(text) {
   return out;
 }
 
-async function embedBatch(mistralKey, inputs) {
-  const res = await fetch("https://api.mistral.ai/v1/embeddings", {
+function chatRoute(spec, model) {
+  if (model.startsWith("mistral:")) return { base: "https://api.mistral.ai/v1", key: spec.mistral_key, model: model.slice(8) };
+  if (model.startsWith("groq:")) return { base: "https://api.groq.com/openai/v1", key: spec.groq_key, model: model.slice(5) };
+  if (model.startsWith("nvidia:")) return { base: "https://integrate.api.nvidia.com/v1", key: spec.nvidia_key, model: model.slice(7) };
+  return { base: "https://openrouter.ai/api/v1", key: spec.openrouter_key, model };
+}
+
+async function embedBatch(spec, inputs) {
+  const base = spec.embedding_provider === "mistral" ? "https://api.mistral.ai/v1"
+    : spec.embedding_provider === "nvidia" ? "https://integrate.api.nvidia.com/v1"
+    : "https://openrouter.ai/api/v1";
+  const res = await fetch(base + "/embeddings", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + mistralKey },
-    body: JSON.stringify({ model: "mistral-embed", input: inputs }),
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + spec.embedding_key },
+    body: JSON.stringify({ model: spec.embedding_model, input: inputs }),
   });
-  if (!res.ok) throw new Error("mistral embed " + res.status + " " + (await res.text()).slice(0, 300));
+  if (!res.ok) throw new Error(spec.embedding_provider + " embed " + res.status + " " + (await res.text()).slice(0, 300));
   const body = await res.json();
   return body.data.map((d) => d.embedding);
 }
 
-async function summarize(openrouterKey, mistralKey, model, filePath, snippet) {
-  const useMistral = model.startsWith("mistral:");
-  const endpoint = useMistral ? "https://api.mistral.ai/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
-  const modelId = useMistral ? model.slice("mistral:".length) : model;
-  const key = useMistral ? mistralKey : openrouterKey;
+async function summarize(spec, model, filePath, snippet) {
+  const route = chatRoute(spec, model);
+  const endpoint = route.base + "/chat/completions";
+  const modelId = route.model;
+  const key = route.key;
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
@@ -237,7 +247,7 @@ async function summarize(openrouterKey, mistralKey, model, filePath, snippet) {
 
 async function runIndex(spec) {
   const files = walk(process.cwd());
-  await log("Indexing " + files.length + " files with mistral-embed…");
+  await log("Indexing " + files.length + " files with " + spec.embedding_model + "…");
   await api("/api/public/jobs/index-progress", { current: 0, total: files.length });
 
   let done = 0;
@@ -250,10 +260,10 @@ async function runIndex(spec) {
       const embeddings = [];
       for (let i = 0; i < chunks.length; i += 32) {
         const slice = chunks.slice(i, i + 32);
-        const embs = await embedBatch(spec.mistral_key, slice);
+        const embs = await embedBatch(spec, slice);
         embeddings.push(...embs);
       }
-      const summary = await summarize(spec.openrouter_key, spec.mistral_key, spec.model, f.path, content);
+      const summary = await summarize(spec, spec.model, f.path, content);
       const symbols = extractSymbols(content);
       await api("/api/public/jobs/index-batch", {
         file: { path: f.path, sha, size: f.size, language: (f.path.split(".").pop() || "").toLowerCase() || null, summary, symbols },

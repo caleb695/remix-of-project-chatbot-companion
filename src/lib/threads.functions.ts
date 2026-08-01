@@ -77,7 +77,7 @@ export const getThread = createServerFn({ method: "GET" })
   .handler(async ({ context, data }) => {
     const { data: row, error } = await context.supabase
       .from("chat_threads")
-      .select("id, title, model, repo_selection_id, repo_selections(owner, name, working_branch)")
+      .select("id, title, model, repo_selection_id, repo_selections(owner, name, working_branch, workflow_installed_at)")
       .eq("id", data.id)
       .maybeSingle();
     if (error) throw error;

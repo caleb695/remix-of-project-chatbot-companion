@@ -1,0 +1,1 @@
+ALTER TABLE public.openrouter_settings ALTER COLUMN api_key DROP NOT NULL;
