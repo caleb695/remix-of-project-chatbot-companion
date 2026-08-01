@@ -222,8 +222,7 @@ async function embedBatch(spec, inputs) {
   return body.data.map((d) => d.embedding);
 }
 
-async function summarize(openrouterKey, mistralKey, model, filePath, snippet) {
-  const spec = arguments[6];
+async function summarize(spec, model, filePath, snippet) {
   const route = chatRoute(spec, model);
   const endpoint = route.base + "/chat/completions";
   const modelId = route.model;
@@ -264,7 +263,7 @@ async function runIndex(spec) {
         const embs = await embedBatch(spec, slice);
         embeddings.push(...embs);
       }
-      const summary = await summarize(spec.openrouter_key, spec.mistral_key, spec.model, f.path, content, null, spec);
+      const summary = await summarize(spec, spec.model, f.path, content);
       const symbols = extractSymbols(content);
       await api("/api/public/jobs/index-batch", {
         file: { path: f.path, sha, size: f.size, language: (f.path.split(".").pop() || "").toLowerCase() || null, summary, symbols },
