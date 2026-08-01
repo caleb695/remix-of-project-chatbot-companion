@@ -63,7 +63,7 @@ export const Route = createFileRoute("/api/github/callback")({
 
           return new Response(null, {
             status: 302,
-            headers: { Location: "/repos?connected=1" },
+            headers: { Location: "/account?connected=1" },
           });
         } catch (err) {
           console.error("github callback error", err);
