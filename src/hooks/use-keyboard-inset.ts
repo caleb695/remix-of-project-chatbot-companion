@@ -1,0 +1,28 @@
+import { useEffect, useState } from "react";
+
+/**
+ * Height (px) currently covered by the on-screen keyboard.
+ * iOS Safari keeps `position: fixed` glued to the layout viewport, so anything
+ * pinned to the bottom must be translated up by this amount to stay visible.
+ */
+export function useKeyboardInset() {
+  const [inset, setInset] = useState(0);
+
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const update = () => {
+      const covered = window.innerHeight - vv.height - vv.offsetTop;
+      setInset(covered > 40 ? Math.round(covered) : 0);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  return inset;
+}
