@@ -1,105 +1,52 @@
-# Build plan
+# Agentic Coder — build plan
 
-Two phases. Phase 1 is the core end-to-end coding loop you already approved. Phase 2 is the repo-indexing/RAG feature you added last.
+Everything you listed is doable, but it's ~4 distinct systems. I want to build it in 4 phases so each one actually works before the next lands. Phase 1 fixes the broken/annoying things you hit today.
 
-## Decisions locked in
-- **Commit style:** push straight to the repo's `working_branch` when the user hits a "Commit" button in chat.
-- **Workflow install:** on first use of a repo, the app commits `.github/workflows/lovable-coder.yml` + `scripts/lovable-coder/*` into that repo.
-- Long jobs run in GitHub Actions; short chats (no file edits) run in-browser via OpenRouter directly.
+## Phase 1 — Make it a real agent + fix the interface
 
----
+**Real editing, staged until you commit**
+- Chat gets actual tools (`list_files`, `read_file`, `write_file`, `delete_file`, `search`) that write to the in-app working copy (the `working_files` table), never straight to GitHub. No more roleplaying.
+- A **Commit** bar appears above the composer whenever there are staged changes: shows changed file count, lets you view the diff, and pushes to your working branch on click. The ⚡ button becomes "Run in Actions" for long/heavy tasks only, and I'll fix its current error.
 
-## Phase 1 — Coding pipeline
+**Agent loop (build/debug/improve modes)**
+- The agent runs a tool loop: plan → edit → check (typecheck/lint/build via Actions or static checks) → fix → re-check, repeated until clean, then it reports what it did.
+- **Modes** selector on the composer: `Plan` (chat/brainstorm only, no writes), `Build` (full agentic coding), `Debug` (find + fix real issues), `Improve` (features, cleanup, perf). Mode changes the system prompt and which tools are allowed.
 
-### 1. Workflow installer (server fn)
-`installCoderWorkflow({ repoId })`:
-- Uses the user's GitHub token to commit two files to the repo's default branch:
-  - `.github/workflows/lovable-coder.yml` — triggers on `repository_dispatch` (`event_type: lovable-coding-job`).
-  - `scripts/lovable-coder/runner.mjs` — Node script that polls our public API.
-- Idempotent (skip if files exist).
-- Stores `workflow_installed_at` on `repo_selections`.
+**Live process indicator**
+- Status line always visible: `Waiting → Planning → Coding → Checking code → Debugging → Done`.
+- Tapping it opens a full-screen activity view streaming the agent's thoughts and actions for that task (`Edited src/foo.ts`, `Ran bun test`, `I think…`) — full history for the task, no raw code.
 
-### 2. Job queue
-Uses existing `coding_jobs` table. New server fn `enqueueCodingJob({ threadId, messageId })`:
-- Insert `coding_jobs` row: `queued`, HMAC secret, working branch.
-- Fire `POST /repos/{o}/{r}/dispatches` with `{ event_type, client_payload: { jobId } }`.
-- Returns jobId; chat UI polls status.
+**Mobile composer rebuild (iPhone)**
+- Composer pinned to the bottom using the visual-viewport API so it sits right above the iOS keyboard and stays visible while typing.
+- Textarea spans edge-to-edge, grows upward as you type (up to ~45% of the screen), message list shrinks accordingly.
+- Controls move to a compact row above the textarea instead of crowding it.
 
-### 3. Public HMAC-signed endpoints (`/api/public/jobs/*`)
-All verify `X-Signature = hmac_sha256(jobId + timestamp, job.hmac_secret)`:
-- `POST /api/public/jobs/claim` — runner claims job → returns job spec, thread messages, context bundle, GitHub token (short-lived), OpenRouter key.
-- `POST /api/public/jobs/checkpoint` — runner posts progress `{ status: 'checkpointed', checkpoint }` before the 6h timeout.
-- `POST /api/public/jobs/log` — append streaming log lines (shown live in chat).
-- `POST /api/public/jobs/complete` — final status + summary + list of files changed.
+**Model picker fixes**
+- Only providers with a saved API key appear. Free filter removed.
 
-### 4. Runner script (in user's repo)
-- Clones repo shallow into `$RUNNER_TEMP`.
-- Loop: call OpenRouter with tools (`read_file`, `write_file`, `run_shell`, `list_dir`, `search`), apply edits to disk.
-- Every 20 min or every ~50 tool calls → checkpoint (git commit to a scratch branch `lovable/job-<id>` + POST checkpoint).
-- On completion: `git push origin <working_branch>` (fast-forward or force-with-lease onto working branch), POST complete.
-- On 5h30m elapsed: checkpoint + exit cleanly. App re-dispatches a `continueOf` job that resumes from `checkpoint.branch`.
+**Branch into new chat**
+- Button that summarizes the current chat (key points + main ideas, via your selected model), creates a new thread, injects the summary as system context, and navigates you there.
 
-### 5. Chat UI additions
-- Send button: if message is short/questiony → run in-browser (existing `/api/chat`). If it requests code changes → show "Run coding job" button that calls `enqueueCodingJob`.
-- Live job panel in the thread showing status, log tail, "Cancel", "Commit to <branch>" button (job auto-commits on success, but a manual retry-commit is available if a checkpoint exists).
-- Once completed, message shows diff summary + link to GitHub commit.
+## Phase 2 — Sub-agents
+- Button next to the model picker to add sub-agents; each gets its own model and an optional instruction ("what this one should do").
+- Main agent splits the task, works its own part, delegates the rest, and reports each sub-agent's progress alongside its own.
+- One clickable process row per sub-agent in the activity view, with its own thought/action history.
+- Rate-limit policy: on RPM limits, wait 10s and retry indefinitely; on any other limit (quota/credits/context), stop that agent and show the error text below the process rows.
 
----
+## Phase 3 — File uploads
+- Attach any file type, plus iPhone photo library, from the composer.
+- Per-attachment toggle: **Code-only** (agent can't read contents, only reference/use the file in code) vs **Readable** (agent reads it into context, including vision for images).
+- Files stored in backend storage, wired into the working copy so committed files land in the repo.
 
-## Phase 2 — Repo index / RAG (do after Phase 1 works)
+## Phase 4 — Kaggle notebooks
+- Kaggle username + API key on the Account tab.
+- Pick a Kaggle notebook as a coding target instead of a GitHub repo, using Kaggle's kernels API (pull source, edit, push new version).
+- Same agent loop, modes, and process view; target selector in the chat header switches between GitHub repo and Kaggle notebook.
 
-### 6. Index button on Account tab
-Under each repo card add "Index repo" button. Opens sheet:
-- Model picker (reuses the free-filter picker from chat), defaulting to a cheap free model.
-- Starts a background job (same GitHub Actions runner, `job_type='index'`).
+## Technical notes
+- Agent loop runs server-side (`streamText` + `stopWhen(stepCountIs(50+))`) for interactive work; the existing GitHub Actions runner stays for long jobs, with its checkpoint/resume so 6h limits don't kill a task.
+- Thoughts/actions persist to a new `agent_events` table (job/thread scoped, RLS by user) so the activity view can replay past steps, not just live ones.
+- Sub-agents run as parallel `streamText` calls sharing the same working copy, each emitting into `agent_events` with its own agent id.
+- All provider calls keep your own keys (OpenRouter/Mistral/Groq/NVIDIA); rate-limit retry wraps the shared fetch layer.
 
-### 7. Indexing runner path
-Runner script when `job_type === 'index'`:
-1. Walk repo files (skip binaries, node_modules, etc — reuse existing filters).
-2. For each file:
-   - Compute sha; skip if `repo_files.sha` unchanged.
-   - Chunk file into ~800-token windows with 100-token overlap.
-   - Embed chunks via **Lovable AI Gateway** `google/gemini-embedding-001` (3072-dim, free-tier friendly) → insert into `repo_file_chunks(embedding vector(3072))`.
-   - Ask the picked OpenRouter model for a **short** per-file summary (≤ 60 tokens: purpose + key exports) → `repo_files.summary`.
-   - Extract top-level symbols (function/class/const exports) via lightweight regex per language → `repo_symbols`.
-3. Post progress checkpoints (files/total) → live progress bar in Account tab.
-
-### 8. Context assembler (used by chat + coding runner)
-When the user sends a message in a chat tied to an indexed repo, before hitting the model we build the context in this order (hard token budget e.g. 40k, tunable):
-1. **Repo tree outline** (paths only, folded), ≤ 1k tokens.
-2. **Semantic search**: embed the user's message → top-K (K=8) chunks by cosine over `repo_file_chunks`.
-3. **Symbol keyword search**: any identifier-looking token in the message → matching `repo_symbols` rows → pull their file summaries.
-4. **Rolling thread summary**: `thread_summaries` holds a compressed summary of everything older than the last 6 messages; refreshed whenever the thread exceeds a threshold (background server fn, cheap model).
-5. **Recent messages**: last 6 turns verbatim.
-6. **Pending diff** (Phase 1 checkpoint, if resuming): the runner's uncommitted changes.
-
-Dedupe by file path; if a full file is small (<300 lines) and heavily referenced, include the whole file instead of chunks.
-
-### 9. Token-saving strategies applied
-- Summaries capped at 60 tokens/file; never include a summary and full file both.
-- Chunk overlap only 100 tokens (not 200) to reduce duplication.
-- Cache embeddings by sha — never re-embed unchanged files.
-- Rolling thread summary keeps chat history bounded regardless of length.
-- Symbol table is text-only (~1 line per symbol), used for quick keyword hits without embedding search.
-- Store `model_version` on `repo_file_chunks` so switching models triggers targeted re-embed, not full rebuild.
-
-### 10. Re-index triggers
-- Manual "Re-index" button.
-- Auto: after each successful coding job's push, enqueue an incremental index job (only files whose sha changed).
-
----
-
-## Ordering
-Build strictly in this order; each step is verifiable before the next.
-1. Workflow installer + `.github/workflows/lovable-coder.yml` template
-2. `enqueueCodingJob` + `coding_jobs` status UI in chat
-3. Public job endpoints + HMAC
-4. Runner script (basic: read/write/commit, no checkpointing)
-5. Checkpoint/resume
-6. Phase 2: index button → embeddings pipeline
-7. Context assembler wired into `/api/chat` and runner's model calls
-8. Rolling thread summaries
-9. Auto re-index after commit
-
-## Open question
-For the embedding model in Phase 2 I want to use `google/gemini-embedding-001` via **Lovable AI Gateway** (uses your Lovable Cloud credits, no extra key). The user's own OpenRouter key handles the coding/summarizing models. OK to mix providers like that, or do you want everything routed through OpenRouter using the user's key?
+Say go and I'll start on Phase 1.

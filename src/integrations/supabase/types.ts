@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_events: {
+        Row: {
+          agent_id: string
+          agent_label: string
+          created_at: string
+          id: string
+          kind: string
+          phase: string
+          task_id: string
+          text: string
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          agent_id?: string
+          agent_label?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          phase?: string
+          task_id: string
+          text: string
+          thread_id: string
+          user_id: string
+        }
+        Update: {
+          agent_id?: string
+          agent_label?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          phase?: string
+          task_id?: string
+          text?: string
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_events_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           created_at: string
@@ -54,8 +101,10 @@ export type Database = {
           created_at: string
           id: string
           last_summary_at: string | null
+          mode: string
           model: string | null
           repo_selection_id: string
+          seed_summary: string | null
           title: string
           updated_at: string
           user_id: string
@@ -64,8 +113,10 @@ export type Database = {
           created_at?: string
           id?: string
           last_summary_at?: string | null
+          mode?: string
           model?: string | null
           repo_selection_id: string
+          seed_summary?: string | null
           title?: string
           updated_at?: string
           user_id: string
@@ -74,8 +125,10 @@ export type Database = {
           created_at?: string
           id?: string
           last_summary_at?: string | null
+          mode?: string
           model?: string | null
           repo_selection_id?: string
+          seed_summary?: string | null
           title?: string
           updated_at?: string
           user_id?: string
