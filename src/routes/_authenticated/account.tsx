@@ -81,7 +81,7 @@ function GithubSection() {
   const installFn = useServerFn(installCoderWorkflow);
   const installMut = useMutation({
     mutationFn: (id: string) => installFn({ data: { repoId: id } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["repo_selections"] }); toast.success("Coder workflow installed"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["repo_selections"] }); toast.success("Coder workflow installed / updated"); },
     onError: (e: Error) => toast.error(e.message),
   });
   const hasWorkflowScope = new Set((conn.data?.scope ?? "").split(/[ ,]+/).filter(Boolean)).has("workflow");
