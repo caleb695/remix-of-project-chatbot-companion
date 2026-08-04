@@ -114,7 +114,7 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
       thread_id: data.threadId,
       user_id: context.userId,
       role: "user",
-      parts: [{ type: "text", text: data.prompt }] as unknown as object,
+      parts: [{ type: "text", text: data.prompt }],
     });
     if (thread.title === "New chat") {
       await context.supabase.from("chat_threads")
