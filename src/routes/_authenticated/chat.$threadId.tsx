@@ -167,6 +167,12 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   };
 
   const jobFn = useServerFn(getJob);
+  const cancelFn = useServerFn(cancelJob);
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => cancelFn({ data: { id } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["job", activeJobId] }); toast.success("Run cancelled"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const job = useQuery({
     queryKey: ["job", activeJobId],
     queryFn: () => jobFn({ data: { id: activeJobId! } }),
