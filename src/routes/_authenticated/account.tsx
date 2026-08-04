@@ -81,7 +81,7 @@ function GithubSection() {
   const installFn = useServerFn(installCoderWorkflow);
   const installMut = useMutation({
     mutationFn: (id: string) => installFn({ data: { repoId: id } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["repo_selections"] }); toast.success("Coder workflow installed"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["repo_selections"] }); toast.success("Coder workflow installed / updated"); },
     onError: (e: Error) => toast.error(e.message),
   });
   const hasWorkflowScope = new Set((conn.data?.scope ?? "").split(/[ ,]+/).filter(Boolean)).has("workflow");
@@ -154,6 +154,14 @@ function GithubSection() {
               <>
                 <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                   <Check className="h-3 w-3 text-primary" /> Coder workflow installed
+                  <button
+                    type="button"
+                    className="ml-auto text-[11px] text-primary underline disabled:opacity-50"
+                    disabled={installMut.isPending || !hasWorkflowScope}
+                    onClick={() => installMut.mutate(r.id)}
+                  >
+                    {installMut.isPending ? "Updating…" : "Update runner"}
+                  </button>
                 </div>
                 <IndexRepoRow repoId={r.id} />
               </>

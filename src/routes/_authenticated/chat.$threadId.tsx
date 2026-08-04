@@ -100,7 +100,12 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     body: { threadId, repoId },
   }), [threadId, repoId]);
 
-  const { messages, sendMessage, status, error, stop } = useChat({ id: threadId, messages: initial, transport });
+  const { messages, sendMessage, setMessages, status, error, stop } = useChat({ id: threadId, messages: initial, transport });
+  // Server-side runs append their turns in the database; mirror them in here.
+  useEffect(() => {
+    if (initial.length > messages.length) setMessages(initial);
+  }, [initial, messages.length, setMessages]);
+
   const [input, setInput] = useState("");
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -108,6 +113,9 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const [composerH, setComposerH] = useState(120);
 
   const busy = status === "submitted" || status === "streaming";
+  // Build/Debug/Improve runs happen on GitHub Actions so they survive closing
+  // the tab. Plan mode stays as a live in-page conversation.
+  const durable = mode !== "plan" && Boolean(thread.repo_selections?.workflow_installed_at);
 
   useLayoutEffect(() => {
     if (!composerRef.current) return;
@@ -130,9 +138,27 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   useEffect(() => { scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: "smooth" }); }, [messages, status, composerH]);
   useEffect(() => { inputRef.current?.focus(); }, [threadId]);
 
+  // live phase for the process indicator
+  const eventsFn = useServerFn(listAgentEvents);
+  const enqueueFn = useServerFn(enqueueCodingJob);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const runMut = useMutation({
+    mutationFn: (prompt: string) => enqueueFn({ data: { threadId, prompt, mode, taskId: crypto.randomUUID() } }),
+    onSuccess: (r) => {
+      setActiveJobId(r.jobId);
+      setTaskId(r.taskId);
+      setInput("");
+      qc.invalidateQueries({ queryKey: ["jobs", threadId] });
+      qc.invalidateQueries({ queryKey: ["messages", threadId] });
+      toast.success("Running on GitHub Actions — safe to close the tab");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const submit = () => {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || runMut.isPending) return;
+    if (durable) { runMut.mutate(text); return; }
     const id = crypto.randomUUID();
     setTaskId(id);
     sendMessage({ text }, { body: { taskId: id, mode } });
@@ -140,25 +166,41 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     requestAnimationFrame(autoGrow);
   };
 
-  // live phase for the process indicator
-  const eventsFn = useServerFn(listAgentEvents);
+  const jobFn = useServerFn(getJob);
+  const cancelFn = useServerFn(cancelJob);
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => cancelFn({ data: { id } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["job", activeJobId] }); toast.success("Run cancelled"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const job = useQuery({
+    queryKey: ["job", activeJobId],
+    queryFn: () => jobFn({ data: { id: activeJobId! } }),
+    enabled: Boolean(activeJobId),
+    refetchInterval: 3000,
+  });
+  const jobRunning = job.data ? ["queued", "running", "checkpointed"].includes(job.data.status) : false;
+  const working = busy || runMut.isPending || jobRunning;
+
   const events = useQuery({
     queryKey: ["agent_events", threadId, taskId],
     queryFn: () => eventsFn({ data: { threadId, ...(taskId ? { taskId } : {}) } }),
     enabled: Boolean(taskId),
-    refetchInterval: busy || activityOpen ? 1500 : false,
+    refetchInterval: working || activityOpen ? 1500 : false,
   });
   const lastEvent = events.data?.[events.data.length - 1];
-  const phase = status === "submitted" && !lastEvent ? "waiting" : (lastEvent?.phase ?? (busy ? "planning" : "done"));
+  const phase = working && !lastEvent ? "waiting" : (lastEvent?.phase ?? (working ? "planning" : "done"));
   const limitError = events.data?.filter((e) => e.kind === "error").slice(-1)[0]?.text ?? null;
 
-  const enqueueFn = useServerFn(enqueueCodingJob);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const runMut = useMutation({
-    mutationFn: (prompt: string) => enqueueFn({ data: { threadId, prompt } }),
-    onSuccess: (r) => { setActiveJobId(r.jobId); setInput(""); qc.invalidateQueries({ queryKey: ["jobs", threadId] }); toast.success("Long-running job started on GitHub Actions"); },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // Pull the agent's final message into the transcript when a run finishes.
+  const prevRunning = useRef(false);
+  useEffect(() => {
+    if (prevRunning.current && !jobRunning) {
+      qc.invalidateQueries({ queryKey: ["messages", threadId] });
+      qc.invalidateQueries({ queryKey: ["staged", repoId] });
+    }
+    prevRunning.current = jobRunning;
+  }, [jobRunning, qc, threadId, repoId]);
 
   const setModel = useMutation({
     mutationFn: (m: string) => updateFn({ data: { id: threadId, model: m } }),
@@ -229,15 +271,15 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
           paddingBottom: kb > 0 ? 6 : "calc(3.75rem + env(safe-area-inset-bottom))",
         }}
       >
-        <CommitBar repoId={repoId} busy={busy} branch={thread.repo_selections?.working_branch ?? "main"} />
+        <CommitBar repoId={repoId} busy={working} branch={thread.repo_selections?.working_branch ?? "main"} />
 
-        {(taskId || busy) && (
+        {(taskId || working) && (
           <button
             type="button"
             onClick={() => { if (phase !== "waiting") setActivityOpen(true); }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-muted-foreground"
           >
-            {busy ? <Loader2 className="h-3 w-3 animate-spin text-primary" /> : <Check className="h-3 w-3 text-primary" />}
+            {working ? <Loader2 className="h-3 w-3 animate-spin text-primary" /> : <Check className="h-3 w-3 text-primary" />}
             <span className="font-medium text-foreground">{PHASE_LABEL[phase] ?? phase}</span>
             {lastEvent && phase !== "waiting" && <span className="truncate">· {lastEvent.text}</span>}
             {phase !== "waiting" && <ArrowUpRight className="ml-auto h-3 w-3 shrink-0" />}
@@ -246,19 +288,18 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
         {limitError && (
           <p className="px-3 pb-1 text-[11px] text-destructive">{limitError}</p>
         )}
+        {job.data?.status === "failed" && job.data.error && (
+          <p className="px-3 pb-1 text-[11px] text-destructive">Run failed: {job.data.error}</p>
+        )}
 
         <div className="px-2 pt-1">
           <div className="mb-1.5 flex items-center gap-1.5 overflow-x-auto">
             <ModePicker mode={mode} onChange={changeMode} />
             <ModelPicker current={model} onSelect={(m) => setModel.mutate(m)} />
-            <Button
-              type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0"
-              title="Run as a long job on GitHub Actions"
-              disabled={runMut.isPending || !input.trim() || !thread.repo_selections?.workflow_installed_at}
-              onClick={() => runMut.mutate(input.trim())}
-            >
-              {runMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-            </Button>
+            <span className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
+              <Zap className="h-3 w-3 text-primary" />
+              {durable ? "Runs on GitHub Actions" : mode === "plan" ? "Live chat" : "Install the workflow first"}
+            </span>
           </div>
           <div className="flex items-end gap-2">
             <Textarea
@@ -275,13 +316,16 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
               placeholder={mode === "plan" ? "Plan or ask anything…" : "Describe the change…"}
               className="min-h-[44px] flex-1 resize-none text-base leading-snug"
             />
-            {busy ? (
-              <Button type="button" size="icon" variant="secondary" className="h-11 w-11 shrink-0" onClick={() => stop()}>
+            {busy || jobRunning ? (
+              <Button
+                type="button" size="icon" variant="secondary" className="h-11 w-11 shrink-0"
+                onClick={() => { if (jobRunning && activeJobId) cancelMut.mutate(activeJobId); else stop(); }}
+              >
                 <X className="h-4 w-4" />
               </Button>
             ) : (
-              <Button type="button" size="icon" className="h-11 w-11 shrink-0" disabled={!input.trim()} onClick={submit}>
-                <Send className="h-4 w-4" />
+              <Button type="button" size="icon" className="h-11 w-11 shrink-0" disabled={!input.trim() || runMut.isPending} onClick={submit}>
+                {runMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             )}
           </div>
@@ -293,7 +337,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
         onOpenChange={setActivityOpen}
         events={events.data ?? []}
         phase={phase}
-        busy={busy}
+        busy={working}
       />
     </div>
   );

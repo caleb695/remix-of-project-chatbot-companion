@@ -21,6 +21,8 @@ import { Route as AuthenticatedChatThreadIdRouteImport } from './routes/_authent
 import { Route as ApiPublicJobsLogRouteImport } from './routes/api/public/jobs/log'
 import { Route as ApiPublicJobsIndexProgressRouteImport } from './routes/api/public/jobs/index-progress'
 import { Route as ApiPublicJobsIndexBatchRouteImport } from './routes/api/public/jobs/index-batch'
+import { Route as ApiPublicJobsEventRouteImport } from './routes/api/public/jobs/event'
+import { Route as ApiPublicJobsContinueRouteImport } from './routes/api/public/jobs/continue'
 import { Route as ApiPublicJobsCompleteRouteImport } from './routes/api/public/jobs/complete'
 import { Route as ApiPublicJobsClaimRouteImport } from './routes/api/public/jobs/claim'
 import { Route as ApiPublicJobsCheckpointRouteImport } from './routes/api/public/jobs/checkpoint'
@@ -86,6 +88,16 @@ const ApiPublicJobsIndexBatchRoute = ApiPublicJobsIndexBatchRouteImport.update({
   path: '/api/public/jobs/index-batch',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicJobsEventRoute = ApiPublicJobsEventRouteImport.update({
+  id: '/api/public/jobs/event',
+  path: '/api/public/jobs/event',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicJobsContinueRoute = ApiPublicJobsContinueRouteImport.update({
+  id: '/api/public/jobs/continue',
+  path: '/api/public/jobs/continue',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicJobsCompleteRoute = ApiPublicJobsCompleteRouteImport.update({
   id: '/api/public/jobs/complete',
   path: '/api/public/jobs/complete',
@@ -114,6 +126,8 @@ export interface FileRoutesByFullPath {
   '/api/public/jobs/checkpoint': typeof ApiPublicJobsCheckpointRoute
   '/api/public/jobs/claim': typeof ApiPublicJobsClaimRoute
   '/api/public/jobs/complete': typeof ApiPublicJobsCompleteRoute
+  '/api/public/jobs/continue': typeof ApiPublicJobsContinueRoute
+  '/api/public/jobs/event': typeof ApiPublicJobsEventRoute
   '/api/public/jobs/index-batch': typeof ApiPublicJobsIndexBatchRoute
   '/api/public/jobs/index-progress': typeof ApiPublicJobsIndexProgressRoute
   '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
@@ -129,6 +143,8 @@ export interface FileRoutesByTo {
   '/api/public/jobs/checkpoint': typeof ApiPublicJobsCheckpointRoute
   '/api/public/jobs/claim': typeof ApiPublicJobsClaimRoute
   '/api/public/jobs/complete': typeof ApiPublicJobsCompleteRoute
+  '/api/public/jobs/continue': typeof ApiPublicJobsContinueRoute
+  '/api/public/jobs/event': typeof ApiPublicJobsEventRoute
   '/api/public/jobs/index-batch': typeof ApiPublicJobsIndexBatchRoute
   '/api/public/jobs/index-progress': typeof ApiPublicJobsIndexProgressRoute
   '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
@@ -147,6 +163,8 @@ export interface FileRoutesById {
   '/api/public/jobs/checkpoint': typeof ApiPublicJobsCheckpointRoute
   '/api/public/jobs/claim': typeof ApiPublicJobsClaimRoute
   '/api/public/jobs/complete': typeof ApiPublicJobsCompleteRoute
+  '/api/public/jobs/continue': typeof ApiPublicJobsContinueRoute
+  '/api/public/jobs/event': typeof ApiPublicJobsEventRoute
   '/api/public/jobs/index-batch': typeof ApiPublicJobsIndexBatchRoute
   '/api/public/jobs/index-progress': typeof ApiPublicJobsIndexProgressRoute
   '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
@@ -165,6 +183,8 @@ export interface FileRouteTypes {
     | '/api/public/jobs/checkpoint'
     | '/api/public/jobs/claim'
     | '/api/public/jobs/complete'
+    | '/api/public/jobs/continue'
+    | '/api/public/jobs/event'
     | '/api/public/jobs/index-batch'
     | '/api/public/jobs/index-progress'
     | '/api/public/jobs/log'
@@ -180,6 +200,8 @@ export interface FileRouteTypes {
     | '/api/public/jobs/checkpoint'
     | '/api/public/jobs/claim'
     | '/api/public/jobs/complete'
+    | '/api/public/jobs/continue'
+    | '/api/public/jobs/event'
     | '/api/public/jobs/index-batch'
     | '/api/public/jobs/index-progress'
     | '/api/public/jobs/log'
@@ -197,6 +219,8 @@ export interface FileRouteTypes {
     | '/api/public/jobs/checkpoint'
     | '/api/public/jobs/claim'
     | '/api/public/jobs/complete'
+    | '/api/public/jobs/continue'
+    | '/api/public/jobs/event'
     | '/api/public/jobs/index-batch'
     | '/api/public/jobs/index-progress'
     | '/api/public/jobs/log'
@@ -211,6 +235,8 @@ export interface RootRouteChildren {
   ApiPublicJobsCheckpointRoute: typeof ApiPublicJobsCheckpointRoute
   ApiPublicJobsClaimRoute: typeof ApiPublicJobsClaimRoute
   ApiPublicJobsCompleteRoute: typeof ApiPublicJobsCompleteRoute
+  ApiPublicJobsContinueRoute: typeof ApiPublicJobsContinueRoute
+  ApiPublicJobsEventRoute: typeof ApiPublicJobsEventRoute
   ApiPublicJobsIndexBatchRoute: typeof ApiPublicJobsIndexBatchRoute
   ApiPublicJobsIndexProgressRoute: typeof ApiPublicJobsIndexProgressRoute
   ApiPublicJobsLogRoute: typeof ApiPublicJobsLogRoute
@@ -302,6 +328,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicJobsIndexBatchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/jobs/event': {
+      id: '/api/public/jobs/event'
+      path: '/api/public/jobs/event'
+      fullPath: '/api/public/jobs/event'
+      preLoaderRoute: typeof ApiPublicJobsEventRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/continue': {
+      id: '/api/public/jobs/continue'
+      path: '/api/public/jobs/continue'
+      fullPath: '/api/public/jobs/continue'
+      preLoaderRoute: typeof ApiPublicJobsContinueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/jobs/complete': {
       id: '/api/public/jobs/complete'
       path: '/api/public/jobs/complete'
@@ -361,6 +401,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicJobsCheckpointRoute: ApiPublicJobsCheckpointRoute,
   ApiPublicJobsClaimRoute: ApiPublicJobsClaimRoute,
   ApiPublicJobsCompleteRoute: ApiPublicJobsCompleteRoute,
+  ApiPublicJobsContinueRoute: ApiPublicJobsContinueRoute,
+  ApiPublicJobsEventRoute: ApiPublicJobsEventRoute,
   ApiPublicJobsIndexBatchRoute: ApiPublicJobsIndexBatchRoute,
   ApiPublicJobsIndexProgressRoute: ApiPublicJobsIndexProgressRoute,
   ApiPublicJobsLogRoute: ApiPublicJobsLogRoute,

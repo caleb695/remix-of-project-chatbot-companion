@@ -157,6 +157,7 @@ export type Database = {
           id: string
           job_type: string
           logs: string | null
+          mode: string
           model: string | null
           progress: Json
           progress_current: number | null
@@ -164,6 +165,7 @@ export type Database = {
           prompt: string
           repo_selection_id: string
           status: string
+          task_id: string | null
           thread_id: string | null
           updated_at: string
           user_id: string
@@ -183,6 +185,7 @@ export type Database = {
           id?: string
           job_type?: string
           logs?: string | null
+          mode?: string
           model?: string | null
           progress?: Json
           progress_current?: number | null
@@ -190,6 +193,7 @@ export type Database = {
           prompt: string
           repo_selection_id: string
           status?: string
+          task_id?: string | null
           thread_id?: string | null
           updated_at?: string
           user_id: string
@@ -209,6 +213,7 @@ export type Database = {
           id?: string
           job_type?: string
           logs?: string | null
+          mode?: string
           model?: string | null
           progress?: Json
           progress_current?: number | null
@@ -216,6 +221,7 @@ export type Database = {
           prompt?: string
           repo_selection_id?: string
           status?: string
+          task_id?: string | null
           thread_id?: string | null
           updated_at?: string
           user_id?: string
