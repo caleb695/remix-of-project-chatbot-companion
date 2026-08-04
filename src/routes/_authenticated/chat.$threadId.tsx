@@ -108,6 +108,9 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const [composerH, setComposerH] = useState(120);
 
   const busy = status === "submitted" || status === "streaming";
+  // Build/Debug/Improve runs happen on GitHub Actions so they survive closing
+  // the tab. Plan mode stays as a live in-page conversation.
+  const durable = mode !== "plan" && Boolean(thread.repo_selections?.workflow_installed_at);
 
   useLayoutEffect(() => {
     if (!composerRef.current) return;
@@ -130,9 +133,27 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   useEffect(() => { scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: "smooth" }); }, [messages, status, composerH]);
   useEffect(() => { inputRef.current?.focus(); }, [threadId]);
 
+  // live phase for the process indicator
+  const eventsFn = useServerFn(listAgentEvents);
+  const enqueueFn = useServerFn(enqueueCodingJob);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const runMut = useMutation({
+    mutationFn: (prompt: string) => enqueueFn({ data: { threadId, prompt, mode, taskId: crypto.randomUUID() } }),
+    onSuccess: (r) => {
+      setActiveJobId(r.jobId);
+      setTaskId(r.taskId);
+      setInput("");
+      qc.invalidateQueries({ queryKey: ["jobs", threadId] });
+      qc.invalidateQueries({ queryKey: ["messages", threadId] });
+      toast.success("Running on GitHub Actions — safe to close the tab");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const submit = () => {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || runMut.isPending) return;
+    if (durable) { runMut.mutate(text); return; }
     const id = crypto.randomUUID();
     setTaskId(id);
     sendMessage({ text }, { body: { taskId: id, mode } });
@@ -140,25 +161,35 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     requestAnimationFrame(autoGrow);
   };
 
-  // live phase for the process indicator
-  const eventsFn = useServerFn(listAgentEvents);
+  const jobFn = useServerFn(getJob);
+  const job = useQuery({
+    queryKey: ["job", activeJobId],
+    queryFn: () => jobFn({ data: { id: activeJobId! } }),
+    enabled: Boolean(activeJobId),
+    refetchInterval: 3000,
+  });
+  const jobRunning = job.data ? ["queued", "running", "checkpointed"].includes(job.data.status) : false;
+  const working = busy || runMut.isPending || jobRunning;
+
   const events = useQuery({
     queryKey: ["agent_events", threadId, taskId],
     queryFn: () => eventsFn({ data: { threadId, ...(taskId ? { taskId } : {}) } }),
     enabled: Boolean(taskId),
-    refetchInterval: busy || activityOpen ? 1500 : false,
+    refetchInterval: working || activityOpen ? 1500 : false,
   });
   const lastEvent = events.data?.[events.data.length - 1];
-  const phase = status === "submitted" && !lastEvent ? "waiting" : (lastEvent?.phase ?? (busy ? "planning" : "done"));
+  const phase = working && !lastEvent ? "waiting" : (lastEvent?.phase ?? (working ? "planning" : "done"));
   const limitError = events.data?.filter((e) => e.kind === "error").slice(-1)[0]?.text ?? null;
 
-  const enqueueFn = useServerFn(enqueueCodingJob);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const runMut = useMutation({
-    mutationFn: (prompt: string) => enqueueFn({ data: { threadId, prompt } }),
-    onSuccess: (r) => { setActiveJobId(r.jobId); setInput(""); qc.invalidateQueries({ queryKey: ["jobs", threadId] }); toast.success("Long-running job started on GitHub Actions"); },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // Pull the agent's final message into the transcript when a run finishes.
+  const prevRunning = useRef(false);
+  useEffect(() => {
+    if (prevRunning.current && !jobRunning) {
+      qc.invalidateQueries({ queryKey: ["messages", threadId] });
+      qc.invalidateQueries({ queryKey: ["staged", repoId] });
+    }
+    prevRunning.current = jobRunning;
+  }, [jobRunning, qc, threadId, repoId]);
 
   const setModel = useMutation({
     mutationFn: (m: string) => updateFn({ data: { id: threadId, model: m } }),
