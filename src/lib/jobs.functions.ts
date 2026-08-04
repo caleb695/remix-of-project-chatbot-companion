@@ -10,7 +10,7 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
     const { data: sel, error } = await context.supabase
       .from("repo_selections").select("*").eq("id", data.repoId).single();
     if (error) throw error;
-    if (sel.workflow_installed_at) return { ok: true, alreadyInstalled: true };
+    const { RUNNER_VERSION } = await import("./workflow-template.server");
 
     const { data: conn } = await context.supabase
       .from("github_connections").select("access_token, scope").maybeSingle();
@@ -21,6 +21,7 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
     }
 
     const { WORKFLOW_YML, RUNNER_MJS } = await import("./workflow-template.server");
+    void RUNNER_VERSION;
     // Use the Contents API (PUT /repos/{owner}/{name}/contents/{path}) — one call per file.
     // It's more forgiving than the tree/commit dance and gives a clearer error when the
     // OAuth token lacks write permissions for the repo (e.g. org repo not authorized).
@@ -87,11 +88,13 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({
     threadId: z.string().uuid(),
     prompt: z.string().min(1).max(20000),
+    mode: z.enum(["plan", "build", "debug", "improve"]).optional(),
+    taskId: z.string().optional(),
   }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: thread, error: te } = await context.supabase
       .from("chat_threads")
-      .select("id, model, repo_selection_id, repo_selections(owner, name, working_branch, workflow_installed_at)")
+      .select("id, title, model, mode, repo_selection_id, repo_selections(owner, name, working_branch, workflow_installed_at)")
       .eq("id", data.threadId).single();
     if (te) throw te;
     if (!thread.repo_selections) throw new Error("Thread has no repo");
@@ -102,6 +105,31 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
     const { data: conn } = await context.supabase
       .from("github_connections").select("access_token").maybeSingle();
     if (!conn) throw new Error("Connect GitHub");
+
+    const mode = data.mode ?? ((thread.mode as string) || "build");
+    const taskId = data.taskId ?? crypto.randomUUID();
+
+    // Persist the user's turn so it survives closing the tab, and title new chats.
+    await context.supabase.from("chat_messages").insert({
+      thread_id: data.threadId,
+      user_id: context.userId,
+      role: "user",
+      parts: [{ type: "text", text: data.prompt }] as unknown as object,
+    });
+    if (thread.title === "New chat") {
+      await context.supabase.from("chat_threads")
+        .update({ title: data.prompt.slice(0, 60) }).eq("id", data.threadId);
+    }
+    await context.supabase.from("agent_events").insert({
+      user_id: context.userId,
+      thread_id: data.threadId,
+      task_id: taskId,
+      agent_id: "main",
+      agent_label: "Main agent",
+      phase: "planning",
+      kind: "status",
+      text: "Queued on GitHub Actions — you can close this tab, the run continues.",
+    });
 
     const secret = crypto.randomUUID() + crypto.randomUUID();
     const requestUrl = new URL(getRequest().url);
@@ -116,6 +144,8 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
         prompt: data.prompt,
         model: thread.model,
         job_type: "code",
+        mode,
+        task_id: taskId,
         hmac_secret: secret,
         working_branch: repo.working_branch,
         logs: "",
@@ -148,7 +178,7 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
       throw new Error(`GitHub dispatch failed: ${dispatch.status}`);
     }
 
-    return { jobId: job.id };
+    return { jobId: job.id, taskId };
   });
 
 export const getJob = createServerFn({ method: "GET" })
