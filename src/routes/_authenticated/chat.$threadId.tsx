@@ -265,15 +265,15 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
           paddingBottom: kb > 0 ? 6 : "calc(3.75rem + env(safe-area-inset-bottom))",
         }}
       >
-        <CommitBar repoId={repoId} busy={busy} branch={thread.repo_selections?.working_branch ?? "main"} />
+        <CommitBar repoId={repoId} busy={working} branch={thread.repo_selections?.working_branch ?? "main"} />
 
-        {(taskId || busy) && (
+        {(taskId || working) && (
           <button
             type="button"
             onClick={() => { if (phase !== "waiting") setActivityOpen(true); }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-muted-foreground"
           >
-            {busy ? <Loader2 className="h-3 w-3 animate-spin text-primary" /> : <Check className="h-3 w-3 text-primary" />}
+            {working ? <Loader2 className="h-3 w-3 animate-spin text-primary" /> : <Check className="h-3 w-3 text-primary" />}
             <span className="font-medium text-foreground">{PHASE_LABEL[phase] ?? phase}</span>
             {lastEvent && phase !== "waiting" && <span className="truncate">· {lastEvent.text}</span>}
             {phase !== "waiting" && <ArrowUpRight className="ml-auto h-3 w-3 shrink-0" />}
@@ -282,19 +282,18 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
         {limitError && (
           <p className="px-3 pb-1 text-[11px] text-destructive">{limitError}</p>
         )}
+        {job.data?.status === "failed" && job.data.error && (
+          <p className="px-3 pb-1 text-[11px] text-destructive">Run failed: {job.data.error}</p>
+        )}
 
         <div className="px-2 pt-1">
           <div className="mb-1.5 flex items-center gap-1.5 overflow-x-auto">
             <ModePicker mode={mode} onChange={changeMode} />
             <ModelPicker current={model} onSelect={(m) => setModel.mutate(m)} />
-            <Button
-              type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0"
-              title="Run as a long job on GitHub Actions"
-              disabled={runMut.isPending || !input.trim() || !thread.repo_selections?.workflow_installed_at}
-              onClick={() => runMut.mutate(input.trim())}
-            >
-              {runMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-            </Button>
+            <span className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
+              <Zap className="h-3 w-3 text-primary" />
+              {durable ? "Runs on GitHub Actions" : mode === "plan" ? "Live chat" : "Install the workflow first"}
+            </span>
           </div>
           <div className="flex items-end gap-2">
             <Textarea
@@ -311,13 +310,16 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
               placeholder={mode === "plan" ? "Plan or ask anything…" : "Describe the change…"}
               className="min-h-[44px] flex-1 resize-none text-base leading-snug"
             />
-            {busy ? (
-              <Button type="button" size="icon" variant="secondary" className="h-11 w-11 shrink-0" onClick={() => stop()}>
+            {busy || jobRunning ? (
+              <Button
+                type="button" size="icon" variant="secondary" className="h-11 w-11 shrink-0"
+                onClick={() => { if (jobRunning && activeJobId) cancelMut.mutate(activeJobId); else stop(); }}
+              >
                 <X className="h-4 w-4" />
               </Button>
             ) : (
-              <Button type="button" size="icon" className="h-11 w-11 shrink-0" disabled={!input.trim()} onClick={submit}>
-                <Send className="h-4 w-4" />
+              <Button type="button" size="icon" className="h-11 w-11 shrink-0" disabled={!input.trim() || runMut.isPending} onClick={submit}>
+                {runMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             )}
           </div>
@@ -329,7 +331,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
         onOpenChange={setActivityOpen}
         events={events.data ?? []}
         phase={phase}
-        busy={busy}
+        busy={working}
       />
     </div>
   );
