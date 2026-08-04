@@ -100,7 +100,12 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     body: { threadId, repoId },
   }), [threadId, repoId]);
 
-  const { messages, sendMessage, status, error, stop } = useChat({ id: threadId, messages: initial, transport });
+  const { messages, sendMessage, setMessages, status, error, stop } = useChat({ id: threadId, messages: initial, transport });
+  // Server-side runs append their turns in the database; mirror them in here.
+  useEffect(() => {
+    if (initial.length > messages.length) setMessages(initial);
+  }, [initial, messages.length, setMessages]);
+
   const [input, setInput] = useState("");
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
