@@ -10,7 +10,6 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
     const { data: sel, error } = await context.supabase
       .from("repo_selections").select("*").eq("id", data.repoId).single();
     if (error) throw error;
-    const { RUNNER_VERSION } = await import("./workflow-template.server");
 
     const { data: conn } = await context.supabase
       .from("github_connections").select("access_token, scope").maybeSingle();
@@ -20,8 +19,8 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
       throw new Error('Reconnect GitHub from the Account tab to grant the required “workflow” permission, then try again.');
     }
 
+    // Always (re)write the files so installs also pick up runner updates.
     const { WORKFLOW_YML, RUNNER_MJS } = await import("./workflow-template.server");
-    void RUNNER_VERSION;
     // Use the Contents API (PUT /repos/{owner}/{name}/contents/{path}) — one call per file.
     // It's more forgiving than the tree/commit dance and gives a clearer error when the
     // OAuth token lacks write permissions for the repo (e.g. org repo not authorized).
