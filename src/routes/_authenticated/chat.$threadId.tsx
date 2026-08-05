@@ -532,6 +532,41 @@ function CommitBar({ repoId, busy, branch }: { repoId: string; busy: boolean; br
 
 /* --------------------------------- jobs ---------------------------------- */
 
+function KaggleCommitBar({ notebookId, busy }: { notebookId: string; busy: boolean }) {
+  const stagedFn = useServerFn(getKaggleStaged);
+  const pushFn = useServerFn(pushKaggleNotebook);
+  const qc = useQueryClient();
+  const staged = useQuery({
+    queryKey: ["kaggle_staged", notebookId],
+    queryFn: () => stagedFn({ data: { id: notebookId } }),
+    refetchInterval: busy ? 3000 : 15000,
+  });
+  const pushMut = useMutation({
+    mutationFn: () => pushFn({ data: { id: notebookId } }),
+    onSuccess: () => {
+      toast.success("Pushed a new notebook version to Kaggle");
+      qc.invalidateQueries({ queryKey: ["kaggle_staged", notebookId] });
+      qc.invalidateQueries({ queryKey: ["kaggle_notebooks"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  if (!staged.data?.dirty) return null;
+  return (
+    <div className="flex items-center gap-2 border-b border-border/60 bg-primary/5 px-3 py-1.5">
+      <FileDiff className="h-3.5 w-3.5 text-primary" />
+      <span className="truncate text-[11px]">
+        Staged notebook edits · <span className="font-mono">{staged.data.ref}</span>
+      </span>
+      <Button
+        size="sm" className="ml-auto h-7 px-2.5 text-[11px]"
+        disabled={pushMut.isPending} onClick={() => pushMut.mutate()}
+      >
+        {pushMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Commit to Kaggle"}
+      </Button>
+    </div>
+  );
+}
+
 function JobsPanel({ threadId, activeJobId, onClear, repo }: {
   threadId: string;
   activeJobId: string | null;
