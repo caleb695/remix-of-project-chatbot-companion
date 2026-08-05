@@ -11,6 +11,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { getThreadMessages, listThreads, createThread, deleteThread, getThread, updateThread } from "@/lib/threads.functions";
 import { listRepoSelections, commitAndPush } from "@/lib/github.functions";
+import { getKaggleStaged, pushKaggleNotebook, listKaggleNotebooks } from "@/lib/kaggle.functions";
 import { listOpenrouterModels, getOpenrouterSettings } from "@/lib/openrouter.functions";
 import { enqueueCodingJob, listJobsForThread, getJob, cancelJob } from "@/lib/jobs.functions";
 import { listAgentEvents, getStagedChanges, setThreadMode, branchThread } from "@/lib/agent.functions";
@@ -216,6 +217,10 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     mutationFn: (id: string) => updateFn({ data: { id: threadId, repo_selection_id: id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["thread", threadId] }),
   });
+  const setNotebook = useMutation({
+    mutationFn: (id: string) => updateFn({ data: { id: threadId, kaggle_notebook_id: id } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["thread", threadId] }),
+  });
 
   const changeMode = (m: Mode) => { setMode(m); modeFn({ data: { id: threadId, mode: m } }).catch(() => {}); };
 
@@ -237,7 +242,11 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
         <ThreadsSidebarTrigger activeId={threadId} />
         <div className="min-w-0 flex-1 text-center">
           <div className="truncate text-[13px] font-medium">{thread.title}</div>
-          <RepoPill thread={thread} onChange={(id) => setRepo.mutate(id)} />
+          <RepoPill
+            thread={thread}
+            onChange={(id) => setRepo.mutate(id)}
+            onChangeNotebook={(id) => setNotebook.mutate(id)}
+          />
         </div>
         <Button
           size="icon" variant="ghost" className="h-8 w-8 shrink-0"
@@ -669,24 +678,35 @@ function MessageBubble({ message }: { message: UIMessage }) {
 
 /* ------------------------------- repo + model ----------------------------- */
 
-function RepoPill({ thread, onChange }: { thread: ThreadData; onChange: (id: string) => void }) {
+function RepoPill({ thread, onChange, onChangeNotebook }: {
+  thread: ThreadData;
+  onChange: (id: string) => void;
+  onChangeNotebook: (id: string) => void;
+}) {
   const reposFn = useServerFn(listRepoSelections);
+  const notebooksFn = useServerFn(listKaggleNotebooks);
   const [open, setOpen] = useState(false);
   const repos = useQuery({ queryKey: ["repo_selections"], queryFn: () => reposFn(), enabled: open });
-  const label = thread.repo_selections ? `${thread.repo_selections.owner}/${thread.repo_selections.name}` : "no repo";
+  const notebooks = useQuery({ queryKey: ["kaggle_notebooks"], queryFn: () => notebooksFn().catch(() => []), enabled: open });
+  const label = thread.kaggle_notebooks
+    ? `${thread.kaggle_notebooks.owner}/${thread.kaggle_notebooks.slug}`
+    : thread.repo_selections ? `${thread.repo_selections.owner}/${thread.repo_selections.name}` : "no target";
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button className="mx-auto mt-0.5 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:text-foreground">
-          <Github className="h-3 w-3" />
+          {thread.kaggle_notebooks ? <NotebookPen className="h-3 w-3" /> : <Github className="h-3 w-3" />}
           <span className="max-w-[180px] truncate">{label}</span>
           <ChevronDown className="h-3 w-3" />
         </button>
       </SheetTrigger>
       <SheetContent side="bottom" className="max-h-[70vh]">
-        <SheetHeader><SheetTitle>Repo for this chat</SheetTitle></SheetHeader>
+        <SheetHeader><SheetTitle>What this chat codes on</SheetTitle></SheetHeader>
         <div className="mt-4 space-y-1 overflow-y-auto">
           {repos.isLoading && <Loader2 className="mx-auto h-4 w-4 animate-spin" />}
+          {(repos.data ?? []).length > 0 && (
+            <p className="px-3 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">GitHub repos</p>
+          )}
           {(repos.data ?? []).map((r) => (
             <button
               key={r.id}
@@ -696,6 +716,21 @@ function RepoPill({ thread, onChange }: { thread: ThreadData; onChange: (id: str
               }`}
             >
               <span className="font-mono">{r.owner}/{r.name}</span>
+            </button>
+          ))}
+          {(notebooks.data ?? []).length > 0 && (
+            <p className="px-3 pb-1 pt-3 text-[10px] uppercase tracking-wide text-muted-foreground">Kaggle notebooks</p>
+          )}
+          {(notebooks.data ?? []).map((nb) => (
+            <button
+              key={nb.id}
+              onClick={() => { onChangeNotebook(nb.id); setOpen(false); }}
+              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent ${
+                nb.id === thread.kaggle_notebook_id ? "bg-accent" : ""
+              }`}
+            >
+              <NotebookPen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate font-mono">{nb.owner}/{nb.slug}</span>
             </button>
           ))}
         </div>
