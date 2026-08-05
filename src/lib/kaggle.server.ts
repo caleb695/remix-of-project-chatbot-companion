@@ -1,0 +1,185 @@
+// Server-only Kaggle API helpers + agent tools for notebook coding.
+import { tool } from "ai";
+import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+const API = "https://www.kaggle.com/api/v1";
+
+export function kaggleHeaders(username: string, key: string) {
+  const basic = Buffer.from(`${username}:${key}`, "utf8").toString("base64");
+  return {
+    Authorization: `Basic ${basic}`,
+    "Content-Type": "application/json",
+    "User-Agent": "coderbot-app",
+  };
+}
+
+async function kaggleFetch(
+  username: string, key: string, path: string,
+  init?: { method?: string; body?: unknown },
+) {
+  const res = await fetch(`${API}${path}`, {
+    method: init?.method ?? "GET",
+    headers: kaggleHeaders(username, key),
+    ...(init?.body ? { body: JSON.stringify(init.body) } : {}),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(
+      res.status === 401 || res.status === 403
+        ? "Kaggle rejected your credentials. Check your username and API key on the Account tab."
+        : `Kaggle ${res.status}: ${text.slice(0, 300)}`,
+    );
+  }
+  try { return JSON.parse(text); } catch { return text as unknown; }
+}
+
+export type KaggleKernel = { ref: string; title: string; lastRunTime?: string; isPrivate?: boolean };
+
+export async function listKernels(username: string, key: string) {
+  const rows = (await kaggleFetch(username, key,
+    `/kernels/list?user=${encodeURIComponent(username)}&page_size=100&sort_by=dateRun`)) as KaggleKernel[];
+  return Array.isArray(rows) ? rows : [];
+}
+
+export type KaggleBlob = {
+  metadata?: {
+    title?: string; language?: string; kernelType?: string; isPrivate?: boolean;
+    enableGpu?: boolean; enableInternet?: boolean; datasetDataSources?: string[];
+  };
+  blob?: { source?: string; language?: string; kernelType?: string; slug?: string };
+};
+
+export async function pullKernel(username: string, key: string, owner: string, slug: string) {
+  return (await kaggleFetch(username, key,
+    `/kernels/pull?user_name=${encodeURIComponent(owner)}&kernel_slug=${encodeURIComponent(slug)}`)) as KaggleBlob;
+}
+
+export async function pushKernel(username: string, key: string, nb: {
+  owner: string; slug: string; title: string; source: string; language: string;
+  kernelType: string; isPrivate: boolean; enableGpu: boolean; enableInternet: boolean;
+  datasetSources: string[];
+}) {
+  return await kaggleFetch(username, key, "/kernels/push", {
+    method: "POST",
+    body: {
+      id: null,
+      slug: `${nb.owner}/${nb.slug}`,
+      newTitle: nb.title,
+      text: nb.source,
+      language: nb.language,
+      kernelType: nb.kernelType,
+      isPrivate: nb.isPrivate,
+      enableGpu: nb.enableGpu,
+      enableInternet: nb.enableInternet,
+      datasetDataSources: nb.datasetSources,
+      competitionDataSources: [],
+      kernelDataSources: [],
+      categoryIds: [],
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ tools */
+
+type Sb = SupabaseClient<any, any, any>;
+
+/** Agent tools for a single Kaggle notebook (one source document + a checker). */
+export function buildKaggleTools(
+  ctx: { sb: Sb; notebookId: string },
+  opts: { allowWrites: boolean },
+) {
+  const { sb, notebookId } = ctx;
+  const load = async () => {
+    const { data, error } = await sb.from("kaggle_notebooks")
+      .select("owner, slug, title, language, working_source, original_source, status")
+      .eq("id", notebookId).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data;
+  };
+
+  const readOnly = {
+    read_notebook: tool({
+      description: "Read the full source of the Kaggle notebook you are working on.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const nb = await load();
+        if (!nb) return { error: "Notebook not found" };
+        if (!nb.working_source) return { error: "Notebook not synced yet. Ask the user to press Sync on the Account tab." };
+        return { notebook: `${nb.owner}/${nb.slug}`, language: nb.language, source: nb.working_source.slice(0, 120_000) };
+      },
+    }),
+    search_notebook: tool({
+      description: "Search the notebook source for a string or regex. Returns matching line numbers.",
+      inputSchema: z.object({ query: z.string(), regex: z.boolean().optional() }),
+      execute: async ({ query, regex }) => {
+        const nb = await load();
+        const src = nb?.working_source ?? "";
+        let re: RegExp;
+        try { re = regex ? new RegExp(query, "i") : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"); }
+        catch (e) { return { error: `Bad pattern: ${String(e)}` }; }
+        const hits: Array<{ line: number; text: string }> = [];
+        src.split("\n").forEach((l: string, i: number) => {
+          if (hits.length < 60 && re.test(l)) hits.push({ line: i + 1, text: l.slice(0, 200) });
+        });
+        return { count: hits.length, hits };
+      },
+    }),
+    check_code: tool({
+      description:
+        "Static review of the notebook source: unbalanced brackets, merge markers, obviously broken Python indentation, leftover TODO/FIXME, empty source. Call after editing and fix anything reported, then check again until clean.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const nb = await load();
+        const src = nb?.working_source ?? "";
+        const problems: string[] = [];
+        if (!src.trim()) problems.push("Notebook source is empty");
+        if (/^<{7}|^>{7}|^={7}$/m.test(src)) problems.push("Leftover merge conflict markers");
+        for (const [o, c, label] of [["{", "}", "braces"], ["(", ")", "parens"], ["[", "]", "brackets"]] as const) {
+          const a = src.split(o).length - 1, b = src.split(c).length - 1;
+          if (a !== b) problems.push(`Unbalanced ${label} (${a} vs ${b})`);
+        }
+        if (/\b(TODO|FIXME)\b/.test(src)) problems.push("Contains TODO/FIXME left in the code");
+        const lines = src.split("\n");
+        lines.forEach((l: string, i: number) => {
+          if (/:\s*$/.test(l.trim()) && /^(def|class|if|for|while|with|try|else|elif|except)\b/.test(l.trim())) {
+            const next = lines[i + 1];
+            if (next !== undefined && next.trim() && next.search(/\S/) <= l.search(/\S/)) {
+              problems.push(`Line ${i + 2}: block opened on line ${i + 1} is not indented`);
+            }
+          }
+        });
+        return { problems, clean: problems.length === 0 };
+      },
+    }),
+  };
+
+  if (!opts.allowWrites) return readOnly;
+
+  const save = async (source: string) => {
+    const { error } = await sb.from("kaggle_notebooks")
+      .update({ working_source: source, status: "modified", updated_at: new Date().toISOString() })
+      .eq("id", notebookId);
+    if (error) return { error: error.message };
+    return { ok: true, bytes: source.length };
+  };
+
+  return {
+    ...readOnly,
+    write_notebook: tool({
+      description: "Replace the entire notebook source. Pass the COMPLETE new source. Staged only — not pushed to Kaggle until the user commits.",
+      inputSchema: z.object({ source: z.string() }),
+      execute: async ({ source }) => save(source),
+    }),
+    edit_notebook: tool({
+      description: "Replace an exact substring inside the notebook source. Prefer this for targeted edits.",
+      inputSchema: z.object({ find: z.string(), replace: z.string(), replace_all: z.boolean().optional() }),
+      execute: async ({ find, replace, replace_all }) => {
+        const nb = await load();
+        const src = nb?.working_source ?? "";
+        if (!src.includes(find)) return { error: "The `find` text does not appear in the notebook. Read it again." };
+        return save(replace_all ? src.split(find).join(replace) : src.replace(find, replace));
+      },
+    }),
+  };
+}
