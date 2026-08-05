@@ -46,10 +46,11 @@ export const Route = createFileRoute("/api/chat")({
 
         const { data: thread } = await supa
           .from("chat_threads")
-          .select("id, title, model, mode, seed_summary, repo_selection_id")
+          .select("id, title, model, mode, seed_summary, target, repo_selection_id, kaggle_notebook_id")
           .eq("id", threadId)
           .maybeSingle();
         if (!thread) return new Response("Thread not found", { status: 404 });
+        const isKaggle = thread.target === "kaggle" && Boolean(thread.kaggle_notebook_id);
 
         const mode: Mode = (body.mode ?? (thread.mode as Mode) ?? "build");
 
@@ -114,7 +115,7 @@ export const Route = createFileRoute("/api/chat")({
             : settings.embedding_provider === "nvidia"
               ? "https://integrate.api.nvidia.com/v1/embeddings"
               : "https://openrouter.ai/api/v1/embeddings";
-        if (thread.repo_selection_id && embeddingKey && lastUserText) {
+        if (!isKaggle && thread.repo_selection_id && embeddingKey && lastUserText) {
           try {
             const embRes = await fetch(embeddingUrl, {
               method: "POST",
@@ -196,17 +197,30 @@ export const Route = createFileRoute("/api/chat")({
         const model = provider(modelId.slice(route.prefix.length));
 
         // ---- tools ---------------------------------------------------------------
-        const { buildAgentTools } = await import("@/lib/agent-tools.server");
-        const tools = buildAgentTools(
-          { sb: supa, userId, repoId: thread.repo_selection_id },
-          { allowWrites: mode !== "plan" },
-        );
+        let tools;
+        if (isKaggle) {
+          const { buildKaggleTools } = await import("@/lib/kaggle.server");
+          tools = buildKaggleTools(
+            { sb: supa, notebookId: thread.kaggle_notebook_id! },
+            { allowWrites: mode !== "plan" },
+          );
+        } else {
+          const { buildAgentTools } = await import("@/lib/agent-tools.server");
+          tools = buildAgentTools(
+            { sb: supa, userId, repoId: thread.repo_selection_id! },
+            { allowWrites: mode !== "plan" },
+          );
+        }
 
         const systemPrompt = [
-          "You are Coderbot, an autonomous coding agent working on the user's repository through an in-app working copy.",
-          "Your file tools edit a staged working copy. Nothing reaches GitHub until the user presses Commit, so you may edit freely.",
-          "Never claim you edited a file unless you actually called a write tool and it succeeded.",
-          "Before editing, read the files you are about to change. Prefer edit_file for small changes.",
+          isKaggle
+            ? "You are Coderbot, an autonomous coding agent working on a single Kaggle notebook through a staged working copy of its source."
+            : "You are Coderbot, an autonomous coding agent working on the user's repository through an in-app working copy.",
+          isKaggle
+            ? "Your tools edit a staged copy of the notebook source. Nothing reaches Kaggle until the user presses Commit, so you may edit freely. Always read_notebook before editing, and prefer edit_notebook for targeted changes."
+            : "Your file tools edit a staged working copy. Nothing reaches GitHub until the user presses Commit, so you may edit freely.",
+          "Never claim you changed code unless you actually called a write tool and it succeeded.",
+          isKaggle ? "" : "Before editing, read the files you are about to change. Prefer edit_file for small changes.",
           "When you finish, summarise what you changed, why, and anything the user needs to know or do.",
           MODE_PROMPTS[mode],
           thread.seed_summary ? `Context carried over from the previous chat:\n${thread.seed_summary}` : "",
@@ -229,7 +243,16 @@ export const Route = createFileRoute("/api/chat")({
             for (const call of step.toolCalls ?? []) {
               const name = call.toolName;
               const input = (call.input ?? {}) as { path?: string; query?: string };
-              if (name === "write_file" || name === "edit_file" || name === "delete_file") {
+              if (name === "write_notebook" || name === "edit_notebook") {
+                if (sawCheck) phase = PHASE.debugging;
+                else phase = PHASE.coding;
+                sawWrite = true;
+                await logEvent("action", name === "write_notebook" ? "Rewrote the notebook source" : "Edited the notebook source", phase);
+              } else if (name === "read_notebook") {
+                await logEvent("action", "Read the notebook source", phase);
+              } else if (name === "search_notebook") {
+                await logEvent("action", `Searched the notebook for "${input.query ?? ""}"`, phase);
+              } else if (name === "write_file" || name === "edit_file" || name === "delete_file") {
                 if (sawCheck) phase = PHASE.debugging;
                 else phase = PHASE.coding;
                 sawWrite = true;
