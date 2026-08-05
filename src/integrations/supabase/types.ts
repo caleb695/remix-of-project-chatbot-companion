@@ -100,11 +100,13 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          kaggle_notebook_id: string | null
           last_summary_at: string | null
           mode: string
           model: string | null
-          repo_selection_id: string
+          repo_selection_id: string | null
           seed_summary: string | null
+          target: string
           title: string
           updated_at: string
           user_id: string
@@ -112,11 +114,13 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          kaggle_notebook_id?: string | null
           last_summary_at?: string | null
           mode?: string
           model?: string | null
-          repo_selection_id: string
+          repo_selection_id?: string | null
           seed_summary?: string | null
+          target?: string
           title?: string
           updated_at?: string
           user_id: string
@@ -124,16 +128,25 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          kaggle_notebook_id?: string | null
           last_summary_at?: string | null
           mode?: string
           model?: string | null
-          repo_selection_id?: string
+          repo_selection_id?: string | null
           seed_summary?: string | null
+          target?: string
           title?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "chat_threads_kaggle_notebook_id_fkey"
+            columns: ["kaggle_notebook_id"]
+            isOneToOne: false
+            referencedRelation: "kaggle_notebooks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "chat_threads_repo_selection_id_fkey"
             columns: ["repo_selection_id"]
@@ -288,12 +301,74 @@ export type Database = {
         }
         Relationships: []
       }
+      kaggle_notebooks: {
+        Row: {
+          created_at: string
+          dataset_sources: Json
+          enable_gpu: boolean
+          enable_internet: boolean
+          id: string
+          is_private: boolean
+          kernel_type: string
+          language: string
+          last_synced_at: string | null
+          original_source: string | null
+          owner: string
+          slug: string
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+          working_source: string | null
+        }
+        Insert: {
+          created_at?: string
+          dataset_sources?: Json
+          enable_gpu?: boolean
+          enable_internet?: boolean
+          id?: string
+          is_private?: boolean
+          kernel_type?: string
+          language?: string
+          last_synced_at?: string | null
+          original_source?: string | null
+          owner: string
+          slug: string
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+          working_source?: string | null
+        }
+        Update: {
+          created_at?: string
+          dataset_sources?: Json
+          enable_gpu?: boolean
+          enable_internet?: boolean
+          id?: string
+          is_private?: boolean
+          kernel_type?: string
+          language?: string
+          last_synced_at?: string | null
+          original_source?: string | null
+          owner?: string
+          slug?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+          working_source?: string | null
+        }
+        Relationships: []
+      }
       openrouter_settings: {
         Row: {
           api_key: string | null
           embedding_model: string
           embedding_provider: string
           groq_api_key: string | null
+          kaggle_key: string | null
+          kaggle_username: string | null
           mistral_api_key: string | null
           model: string
           nvidia_api_key: string | null
@@ -305,6 +380,8 @@ export type Database = {
           embedding_model?: string
           embedding_provider?: string
           groq_api_key?: string | null
+          kaggle_key?: string | null
+          kaggle_username?: string | null
           mistral_api_key?: string | null
           model?: string
           nvidia_api_key?: string | null
@@ -316,6 +393,8 @@ export type Database = {
           embedding_model?: string
           embedding_provider?: string
           groq_api_key?: string | null
+          kaggle_key?: string | null
+          kaggle_username?: string | null
           mistral_api_key?: string | null
           model?: string
           nvidia_api_key?: string | null

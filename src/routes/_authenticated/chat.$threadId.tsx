@@ -6,11 +6,12 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Loader2, Plus, Trash2, MessageSquare, Search, ChevronDown, X, Github, Zap,
-  ExternalLink, GitBranch, Menu, Brain, Hammer, Bug, Sparkles, ArrowUpRight, FileDiff, Check,
+  ExternalLink, GitBranch, Menu, Brain, Hammer, Bug, Sparkles, ArrowUpRight, FileDiff, Check, NotebookPen,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getThreadMessages, listThreads, createThread, deleteThread, getThread, updateThread } from "@/lib/threads.functions";
 import { listRepoSelections, commitAndPush } from "@/lib/github.functions";
+import { getKaggleStaged, pushKaggleNotebook, listKaggleNotebooks } from "@/lib/kaggle.functions";
 import { listOpenrouterModels, getOpenrouterSettings } from "@/lib/openrouter.functions";
 import { enqueueCodingJob, listJobsForThread, getJob, cancelJob } from "@/lib/jobs.functions";
 import { listAgentEvents, getStagedChanges, setThreadMode, branchThread } from "@/lib/agent.functions";
@@ -73,8 +74,11 @@ type ThreadData = {
   title: string;
   model: string | null;
   mode?: string | null;
-  repo_selection_id: string;
+  target?: string | null;
+  repo_selection_id: string | null;
+  kaggle_notebook_id?: string | null;
   repo_selections: { owner: string; name: string; working_branch: string; workflow_installed_at?: string | null } | null;
+  kaggle_notebooks?: { owner: string; slug: string; title: string; status?: string | null } | null;
 };
 
 function ChatView({ threadId, initial, thread }: { threadId: string; initial: UIMessage[]; thread: ThreadData }) {
@@ -82,7 +86,9 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const updateFn = useServerFn(updateThread);
   const modeFn = useServerFn(setThreadMode);
   const model = thread.model ?? "";
-  const repoId = thread.repo_selection_id;
+  const isKaggle = thread.target === "kaggle" && Boolean(thread.kaggle_notebook_id);
+  const repoId = thread.repo_selection_id ?? "";
+  const notebookId = thread.kaggle_notebook_id ?? "";
   const [mode, setMode] = useState<Mode>(((thread.mode as Mode) ?? "build"));
   const [taskId, setTaskId] = useState<string | null>(null);
   const [activityOpen, setActivityOpen] = useState(false);
@@ -115,7 +121,8 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const busy = status === "submitted" || status === "streaming";
   // Build/Debug/Improve runs happen on GitHub Actions so they survive closing
   // the tab. Plan mode stays as a live in-page conversation.
-  const durable = mode !== "plan" && Boolean(thread.repo_selections?.workflow_installed_at);
+  // Kaggle notebooks have no GitHub Actions runner, so they always stream in-page.
+  const durable = !isKaggle && mode !== "plan" && Boolean(thread.repo_selections?.workflow_installed_at);
 
   useLayoutEffect(() => {
     if (!composerRef.current) return;
@@ -210,6 +217,10 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     mutationFn: (id: string) => updateFn({ data: { id: threadId, repo_selection_id: id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["thread", threadId] }),
   });
+  const setNotebook = useMutation({
+    mutationFn: (id: string) => updateFn({ data: { id: threadId, kaggle_notebook_id: id } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["thread", threadId] }),
+  });
 
   const changeMode = (m: Mode) => { setMode(m); modeFn({ data: { id: threadId, mode: m } }).catch(() => {}); };
 
@@ -231,7 +242,11 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
         <ThreadsSidebarTrigger activeId={threadId} />
         <div className="min-w-0 flex-1 text-center">
           <div className="truncate text-[13px] font-medium">{thread.title}</div>
-          <RepoPill thread={thread} onChange={(id) => setRepo.mutate(id)} />
+          <RepoPill
+            thread={thread}
+            onChange={(id) => setRepo.mutate(id)}
+            onChangeNotebook={(id) => setNotebook.mutate(id)}
+          />
         </div>
         <Button
           size="icon" variant="ghost" className="h-8 w-8 shrink-0"
@@ -251,9 +266,11 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
         <div className="mx-auto max-w-3xl px-3 py-3 space-y-4">
           {messages.length === 0 && (
             <div className="pt-10 text-center text-sm text-muted-foreground">
-              {thread.repo_selections
-                ? <>Working on <span className="font-mono">{thread.repo_selections.owner}/{thread.repo_selections.name}</span>.</>
-                : "Pick a repo to get started."}
+              {isKaggle && thread.kaggle_notebooks
+                ? <>Working on the Kaggle notebook <span className="font-mono">{thread.kaggle_notebooks.owner}/{thread.kaggle_notebooks.slug}</span>.</>
+                : thread.repo_selections
+                  ? <>Working on <span className="font-mono">{thread.repo_selections.owner}/{thread.repo_selections.name}</span>.</>
+                  : "Pick a repo or Kaggle notebook to get started."}
             </div>
           )}
           {messages.map((m) => <MessageBubble key={m.id} message={m} />)}
@@ -271,7 +288,9 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
           paddingBottom: kb > 0 ? 6 : "calc(3.75rem + env(safe-area-inset-bottom))",
         }}
       >
-        <CommitBar repoId={repoId} busy={working} branch={thread.repo_selections?.working_branch ?? "main"} />
+        {isKaggle
+          ? <KaggleCommitBar notebookId={notebookId} busy={working} />
+          : <CommitBar repoId={repoId} busy={working} branch={thread.repo_selections?.working_branch ?? "main"} />}
 
         {(taskId || working) && (
           <button
@@ -298,7 +317,9 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
             <ModelPicker current={model} onSelect={(m) => setModel.mutate(m)} />
             <span className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
               <Zap className="h-3 w-3 text-primary" />
-              {durable ? "Runs on GitHub Actions" : mode === "plan" ? "Live chat" : "Install the workflow first"}
+              {durable ? "Runs on GitHub Actions"
+                : isKaggle ? "Kaggle notebook"
+                : mode === "plan" ? "Live chat" : "Install the workflow first"}
             </span>
           </div>
           <div className="flex items-end gap-2">
@@ -520,6 +541,41 @@ function CommitBar({ repoId, busy, branch }: { repoId: string; busy: boolean; br
 
 /* --------------------------------- jobs ---------------------------------- */
 
+function KaggleCommitBar({ notebookId, busy }: { notebookId: string; busy: boolean }) {
+  const stagedFn = useServerFn(getKaggleStaged);
+  const pushFn = useServerFn(pushKaggleNotebook);
+  const qc = useQueryClient();
+  const staged = useQuery({
+    queryKey: ["kaggle_staged", notebookId],
+    queryFn: () => stagedFn({ data: { id: notebookId } }),
+    refetchInterval: busy ? 3000 : 15000,
+  });
+  const pushMut = useMutation({
+    mutationFn: () => pushFn({ data: { id: notebookId } }),
+    onSuccess: () => {
+      toast.success("Pushed a new notebook version to Kaggle");
+      qc.invalidateQueries({ queryKey: ["kaggle_staged", notebookId] });
+      qc.invalidateQueries({ queryKey: ["kaggle_notebooks"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  if (!staged.data?.dirty) return null;
+  return (
+    <div className="flex items-center gap-2 border-b border-border/60 bg-primary/5 px-3 py-1.5">
+      <FileDiff className="h-3.5 w-3.5 text-primary" />
+      <span className="truncate text-[11px]">
+        Staged notebook edits · <span className="font-mono">{staged.data.ref}</span>
+      </span>
+      <Button
+        size="sm" className="ml-auto h-7 px-2.5 text-[11px]"
+        disabled={pushMut.isPending} onClick={() => pushMut.mutate()}
+      >
+        {pushMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Commit to Kaggle"}
+      </Button>
+    </div>
+  );
+}
+
 function JobsPanel({ threadId, activeJobId, onClear, repo }: {
   threadId: string;
   activeJobId: string | null;
@@ -622,24 +678,35 @@ function MessageBubble({ message }: { message: UIMessage }) {
 
 /* ------------------------------- repo + model ----------------------------- */
 
-function RepoPill({ thread, onChange }: { thread: ThreadData; onChange: (id: string) => void }) {
+function RepoPill({ thread, onChange, onChangeNotebook }: {
+  thread: ThreadData;
+  onChange: (id: string) => void;
+  onChangeNotebook: (id: string) => void;
+}) {
   const reposFn = useServerFn(listRepoSelections);
+  const notebooksFn = useServerFn(listKaggleNotebooks);
   const [open, setOpen] = useState(false);
   const repos = useQuery({ queryKey: ["repo_selections"], queryFn: () => reposFn(), enabled: open });
-  const label = thread.repo_selections ? `${thread.repo_selections.owner}/${thread.repo_selections.name}` : "no repo";
+  const notebooks = useQuery({ queryKey: ["kaggle_notebooks"], queryFn: () => notebooksFn().catch(() => []), enabled: open });
+  const label = thread.kaggle_notebooks
+    ? `${thread.kaggle_notebooks.owner}/${thread.kaggle_notebooks.slug}`
+    : thread.repo_selections ? `${thread.repo_selections.owner}/${thread.repo_selections.name}` : "no target";
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button className="mx-auto mt-0.5 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:text-foreground">
-          <Github className="h-3 w-3" />
+          {thread.kaggle_notebooks ? <NotebookPen className="h-3 w-3" /> : <Github className="h-3 w-3" />}
           <span className="max-w-[180px] truncate">{label}</span>
           <ChevronDown className="h-3 w-3" />
         </button>
       </SheetTrigger>
       <SheetContent side="bottom" className="max-h-[70vh]">
-        <SheetHeader><SheetTitle>Repo for this chat</SheetTitle></SheetHeader>
+        <SheetHeader><SheetTitle>What this chat codes on</SheetTitle></SheetHeader>
         <div className="mt-4 space-y-1 overflow-y-auto">
           {repos.isLoading && <Loader2 className="mx-auto h-4 w-4 animate-spin" />}
+          {(repos.data ?? []).length > 0 && (
+            <p className="px-3 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">GitHub repos</p>
+          )}
           {(repos.data ?? []).map((r) => (
             <button
               key={r.id}
@@ -649,6 +716,21 @@ function RepoPill({ thread, onChange }: { thread: ThreadData; onChange: (id: str
               }`}
             >
               <span className="font-mono">{r.owner}/{r.name}</span>
+            </button>
+          ))}
+          {(notebooks.data ?? []).length > 0 && (
+            <p className="px-3 pb-1 pt-3 text-[10px] uppercase tracking-wide text-muted-foreground">Kaggle notebooks</p>
+          )}
+          {(notebooks.data ?? []).map((nb) => (
+            <button
+              key={nb.id}
+              onClick={() => { onChangeNotebook(nb.id); setOpen(false); }}
+              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent ${
+                nb.id === thread.kaggle_notebook_id ? "bg-accent" : ""
+              }`}
+            >
+              <NotebookPen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate font-mono">{nb.owner}/{nb.slug}</span>
             </button>
           ))}
         </div>
@@ -740,9 +822,11 @@ function ThreadsSidebarTrigger({ activeId }: { activeId: string }) {
 
   const threads = useQuery({ queryKey: ["threads"], queryFn: () => listFn(), enabled: open });
   const repos = useQuery({ queryKey: ["repo_selections"], queryFn: () => reposFn(), enabled: open });
+  const notebooksFn = useServerFn(listKaggleNotebooks);
+  const notebooks = useQuery({ queryKey: ["kaggle_notebooks"], queryFn: () => notebooksFn().catch(() => []), enabled: open });
 
   const createMut = useMutation({
-    mutationFn: (repoId: string) => createFn({ data: { repoId } }),
+    mutationFn: (target: { repoId?: string; kaggleNotebookId?: string }) => createFn({ data: target }),
     onSuccess: (t) => {
       qc.invalidateQueries({ queryKey: ["threads"] });
       setOpen(false);
@@ -764,8 +848,11 @@ function ThreadsSidebarTrigger({ activeId }: { activeId: string }) {
         <div className="border-b border-border/60 p-2">
           <Button
             size="sm" className="w-full"
-            disabled={!repos.data?.length || createMut.isPending}
-            onClick={() => repos.data?.[0] && createMut.mutate(repos.data[0].id)}
+            disabled={(!repos.data?.length && !notebooks.data?.length) || createMut.isPending}
+            onClick={() => {
+              if (repos.data?.[0]) createMut.mutate({ repoId: repos.data[0].id });
+              else if (notebooks.data?.[0]) createMut.mutate({ kaggleNotebookId: notebooks.data[0].id });
+            }}
           >
             <Plus className="mr-1 h-4 w-4" /> New chat
           </Button>

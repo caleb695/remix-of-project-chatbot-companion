@@ -138,7 +138,7 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
       .from("coding_jobs").insert({
         user_id: context.userId,
         thread_id: data.threadId,
-        repo_selection_id: thread.repo_selection_id,
+        repo_selection_id: thread.repo_selection_id!,
         status: "queued",
         prompt: data.prompt,
         model: thread.model,
@@ -158,6 +158,8 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
         Authorization: `Bearer ${conn.access_token}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+        "User-Agent": "coderbot-app",
       },
       body: JSON.stringify({
         event_type: "lovable-coding-job",
@@ -174,7 +176,7 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
       await context.supabase.from("coding_jobs")
         .update({ status: "failed", error: `dispatch: ${dispatch.status} ${text.slice(0, 400)}` })
         .eq("id", job.id);
-      throw new Error(`GitHub dispatch failed: ${dispatch.status}`);
+      throw new Error(`GitHub dispatch failed (${dispatch.status}): ${text.slice(0, 200)}`);
     }
 
     return { jobId: job.id, taskId };
@@ -276,6 +278,8 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
         Authorization: `Bearer ${conn.access_token}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+        "User-Agent": "coderbot-app",
       },
       body: JSON.stringify({
         event_type: "lovable-coding-job",
@@ -292,7 +296,7 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
       await context.supabase.from("coding_jobs")
         .update({ status: "failed", error: `dispatch: ${dispatch.status} ${text.slice(0, 400)}` })
         .eq("id", job.id);
-      throw new Error(`GitHub dispatch failed: ${dispatch.status}`);
+      throw new Error(`GitHub dispatch failed (${dispatch.status}): ${text.slice(0, 200)}`);
     }
     return { jobId: job.id };
   });
