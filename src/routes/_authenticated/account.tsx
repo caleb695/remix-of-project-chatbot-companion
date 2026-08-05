@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery, queryOptions } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Github, LogOut, Loader2, Search, Plus, Check, ExternalLink, Trash2, KeyRound, Zap } from "lucide-react";
+import { Github, LogOut, Loader2, Search, Plus, Check, ExternalLink, Trash2, KeyRound, Zap, NotebookPen, RefreshCw, UploadCloud } from "lucide-react";
 import {
   startGithubOAuth, getGithubConnection, disconnectGithub,
   listRepoSelections, listUserRepos, addRepoSelection, removeRepoSelection,
@@ -10,6 +10,10 @@ import {
 import { installCoderWorkflow } from "@/lib/jobs.functions";
 import { enqueueIndexJob, getLatestIndexJob } from "@/lib/jobs.functions";
 import { getOpenrouterSettings, saveOpenrouterSettings } from "@/lib/openrouter.functions";
+import {
+  getKaggleStatus, saveKaggleCreds, listKaggleKernels, listKaggleNotebooks,
+  addKaggleNotebook, removeKaggleNotebook, syncKaggleNotebook, pushKaggleNotebook,
+} from "@/lib/kaggle.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,8 +49,174 @@ function AccountPage() {
           <GithubSection />
         </Suspense>
         <OpenRouterSection />
+        <KaggleSection />
       </div>
     </div>
+  );
+}
+
+function KaggleSection() {
+  const qc = useQueryClient();
+  const statusFn = useServerFn(getKaggleStatus);
+  const saveFn = useServerFn(saveKaggleCreds);
+  const kernelsFn = useServerFn(listKaggleKernels);
+  const listFn = useServerFn(listKaggleNotebooks);
+  const addFn = useServerFn(addKaggleNotebook);
+  const removeFn = useServerFn(removeKaggleNotebook);
+  const syncFn = useServerFn(syncKaggleNotebook);
+  const pushFn = useServerFn(pushKaggleNotebook);
+
+  const [username, setUsername] = useState("");
+  const [key, setKey] = useState("");
+  const [picking, setPicking] = useState(false);
+
+  const status = useQuery({ queryKey: ["kaggle_status"], queryFn: () => statusFn() });
+  const notebooks = useQuery({
+    queryKey: ["kaggle_notebooks"],
+    queryFn: () => listFn(),
+    enabled: Boolean(status.data?.connected),
+  });
+  const kernels = useQuery({
+    queryKey: ["kaggle_kernels"],
+    queryFn: () => kernelsFn(),
+    enabled: picking,
+  });
+
+  const saveMut = useMutation({
+    mutationFn: () => saveFn({ data: { username, key } }),
+    onSuccess: () => {
+      setKey("");
+      qc.invalidateQueries({ queryKey: ["kaggle_status"] });
+      qc.invalidateQueries({ queryKey: ["kaggle_notebooks"] });
+      toast.success("Kaggle connected");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const addMut = useMutation({
+    mutationFn: (ref: string) => addFn({ data: { ref } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["kaggle_notebooks"] }); toast.success("Notebook added"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const removeMut = useMutation({
+    mutationFn: (id: string) => removeFn({ data: { id } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["kaggle_notebooks"] }),
+  });
+  const syncMut = useMutation({
+    mutationFn: (id: string) => syncFn({ data: { id } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["kaggle_notebooks"] }); toast.success("Notebook synced"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const pushMut = useMutation({
+    mutationFn: (id: string) => pushFn({ data: { id } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["kaggle_notebooks"] }); toast.success("Pushed a new version to Kaggle"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <section className="space-y-2">
+      <h2 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <NotebookPen className="h-3 w-3" /> Kaggle notebooks
+      </h2>
+      <Card className="space-y-4 p-4">
+        <div className="space-y-2">
+          <Label htmlFor="kg-user" className="text-xs">Kaggle username</Label>
+          <Input
+            id="kg-user" value={username || status.data?.username || ""}
+            onChange={(e) => setUsername(e.target.value)} placeholder="your-kaggle-username"
+          />
+          <Label htmlFor="kg-key" className="text-xs">Kaggle API key</Label>
+          <Input
+            id="kg-key" type="password" value={key} onChange={(e) => setKey(e.target.value)}
+            placeholder={status.data?.connected ? "saved" : "from kaggle.json"}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            <a className="underline" href="https://www.kaggle.com/settings" target="_blank" rel="noreferrer">
+              Create a token
+            </a>{" "}
+            on Kaggle → Settings → API, then copy the username and key from <code>kaggle.json</code>.
+            {status.data?.connected && " · connected"}
+          </p>
+          <Button
+            size="sm" className="w-full"
+            disabled={saveMut.isPending || !(username || status.data?.username) || key.length < 10}
+            onClick={() => saveMut.mutate()}
+          >
+            {saveMut.isPending ? "Checking…" : status.data?.connected ? "Update credentials" : "Connect Kaggle"}
+          </Button>
+        </div>
+
+        {status.data?.connected && (
+          <div className="space-y-2 border-t border-border pt-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Your notebooks</span>
+              <Button size="sm" variant="outline" onClick={() => setPicking((p) => !p)}>
+                <Plus className="mr-1 h-3.5 w-3.5" /> Add
+              </Button>
+            </div>
+
+            {picking && (
+              <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-border p-1">
+                {kernels.isLoading && <div className="grid place-items-center py-6"><Loader2 className="h-4 w-4 animate-spin" /></div>}
+                {kernels.error && <p className="p-2 text-xs text-destructive">{(kernels.error as Error).message}</p>}
+                {(kernels.data ?? []).map((k) => (
+                  <button
+                    key={k.ref} type="button" disabled={addMut.isPending}
+                    onClick={() => addMut.mutate(k.ref)}
+                    className="w-full rounded p-2 text-left hover:bg-accent disabled:opacity-60"
+                  >
+                    <div className="truncate text-sm">{k.title}</div>
+                    <div className="truncate font-mono text-[11px] text-muted-foreground">{k.ref}</div>
+                  </button>
+                ))}
+                {kernels.data?.length === 0 && <p className="p-2 text-xs text-muted-foreground">No notebooks found.</p>}
+              </div>
+            )}
+
+            {(notebooks.data ?? []).length === 0 && !picking && (
+              <p className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
+                Add a notebook to code on it from the Chat tab.
+              </p>
+            )}
+            {(notebooks.data ?? []).map((nb) => (
+              <div key={nb.id} className="space-y-2 rounded-md border border-border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm">{nb.title}</div>
+                    <div className="truncate font-mono text-[11px] text-muted-foreground">{nb.owner}/{nb.slug}</div>
+                  </div>
+                  <div className="flex shrink-0 items-center">
+                    <Button asChild variant="ghost" size="sm">
+                      <a href={`https://www.kaggle.com/code/${nb.owner}/${nb.slug}`} target="_blank" rel="noreferrer">
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => removeMut.mutate(nb.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm" variant="outline" className="flex-1"
+                    disabled={syncMut.isPending} onClick={() => syncMut.mutate(nb.id)}
+                  >
+                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Sync
+                  </Button>
+                  <Button
+                    size="sm" variant={nb.status === "modified" ? "default" : "outline"} className="flex-1"
+                    disabled={pushMut.isPending || nb.status !== "modified"}
+                    onClick={() => pushMut.mutate(nb.id)}
+                  >
+                    <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
+                    {nb.status === "modified" ? "Push changes" : "No changes"}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </section>
   );
 }
 
