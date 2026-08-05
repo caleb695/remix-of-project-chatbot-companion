@@ -138,7 +138,7 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
       .from("coding_jobs").insert({
         user_id: context.userId,
         thread_id: data.threadId,
-        repo_selection_id: thread.repo_selection_id,
+        repo_selection_id: thread.repo_selection_id!,
         status: "queued",
         prompt: data.prompt,
         model: thread.model,
