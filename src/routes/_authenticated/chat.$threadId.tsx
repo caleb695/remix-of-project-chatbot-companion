@@ -822,9 +822,11 @@ function ThreadsSidebarTrigger({ activeId }: { activeId: string }) {
 
   const threads = useQuery({ queryKey: ["threads"], queryFn: () => listFn(), enabled: open });
   const repos = useQuery({ queryKey: ["repo_selections"], queryFn: () => reposFn(), enabled: open });
+  const notebooksFn = useServerFn(listKaggleNotebooks);
+  const notebooks = useQuery({ queryKey: ["kaggle_notebooks"], queryFn: () => notebooksFn().catch(() => []), enabled: open });
 
   const createMut = useMutation({
-    mutationFn: (repoId: string) => createFn({ data: { repoId } }),
+    mutationFn: (target: { repoId?: string; kaggleNotebookId?: string }) => createFn({ data: target }),
     onSuccess: (t) => {
       qc.invalidateQueries({ queryKey: ["threads"] });
       setOpen(false);
@@ -846,8 +848,11 @@ function ThreadsSidebarTrigger({ activeId }: { activeId: string }) {
         <div className="border-b border-border/60 p-2">
           <Button
             size="sm" className="w-full"
-            disabled={!repos.data?.length || createMut.isPending}
-            onClick={() => repos.data?.[0] && createMut.mutate(repos.data[0].id)}
+            disabled={(!repos.data?.length && !notebooks.data?.length) || createMut.isPending}
+            onClick={() => {
+              if (repos.data?.[0]) createMut.mutate({ repoId: repos.data[0].id });
+              else if (notebooks.data?.[0]) createMut.mutate({ kaggleNotebookId: notebooks.data[0].id });
+            }}
           >
             <Plus className="mr-1 h-4 w-4" /> New chat
           </Button>
