@@ -73,8 +73,11 @@ type ThreadData = {
   title: string;
   model: string | null;
   mode?: string | null;
-  repo_selection_id: string;
+  target?: string | null;
+  repo_selection_id: string | null;
+  kaggle_notebook_id?: string | null;
   repo_selections: { owner: string; name: string; working_branch: string; workflow_installed_at?: string | null } | null;
+  kaggle_notebooks?: { owner: string; slug: string; title: string; status?: string | null } | null;
 };
 
 function ChatView({ threadId, initial, thread }: { threadId: string; initial: UIMessage[]; thread: ThreadData }) {
@@ -82,7 +85,9 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const updateFn = useServerFn(updateThread);
   const modeFn = useServerFn(setThreadMode);
   const model = thread.model ?? "";
-  const repoId = thread.repo_selection_id;
+  const isKaggle = thread.target === "kaggle" && Boolean(thread.kaggle_notebook_id);
+  const repoId = thread.repo_selection_id ?? "";
+  const notebookId = thread.kaggle_notebook_id ?? "";
   const [mode, setMode] = useState<Mode>(((thread.mode as Mode) ?? "build"));
   const [taskId, setTaskId] = useState<string | null>(null);
   const [activityOpen, setActivityOpen] = useState(false);
@@ -115,7 +120,8 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const busy = status === "submitted" || status === "streaming";
   // Build/Debug/Improve runs happen on GitHub Actions so they survive closing
   // the tab. Plan mode stays as a live in-page conversation.
-  const durable = mode !== "plan" && Boolean(thread.repo_selections?.workflow_installed_at);
+  // Kaggle notebooks have no GitHub Actions runner, so they always stream in-page.
+  const durable = !isKaggle && mode !== "plan" && Boolean(thread.repo_selections?.workflow_installed_at);
 
   useLayoutEffect(() => {
     if (!composerRef.current) return;
@@ -251,9 +257,11 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
         <div className="mx-auto max-w-3xl px-3 py-3 space-y-4">
           {messages.length === 0 && (
             <div className="pt-10 text-center text-sm text-muted-foreground">
-              {thread.repo_selections
-                ? <>Working on <span className="font-mono">{thread.repo_selections.owner}/{thread.repo_selections.name}</span>.</>
-                : "Pick a repo to get started."}
+              {isKaggle && thread.kaggle_notebooks
+                ? <>Working on the Kaggle notebook <span className="font-mono">{thread.kaggle_notebooks.owner}/{thread.kaggle_notebooks.slug}</span>.</>
+                : thread.repo_selections
+                  ? <>Working on <span className="font-mono">{thread.repo_selections.owner}/{thread.repo_selections.name}</span>.</>
+                  : "Pick a repo or Kaggle notebook to get started."}
             </div>
           )}
           {messages.map((m) => <MessageBubble key={m.id} message={m} />)}
@@ -271,7 +279,9 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
           paddingBottom: kb > 0 ? 6 : "calc(3.75rem + env(safe-area-inset-bottom))",
         }}
       >
-        <CommitBar repoId={repoId} busy={working} branch={thread.repo_selections?.working_branch ?? "main"} />
+        {isKaggle
+          ? <KaggleCommitBar notebookId={notebookId} busy={working} />
+          : <CommitBar repoId={repoId} busy={working} branch={thread.repo_selections?.working_branch ?? "main"} />}
 
         {(taskId || working) && (
           <button
@@ -298,7 +308,9 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
             <ModelPicker current={model} onSelect={(m) => setModel.mutate(m)} />
             <span className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
               <Zap className="h-3 w-3 text-primary" />
-              {durable ? "Runs on GitHub Actions" : mode === "plan" ? "Live chat" : "Install the workflow first"}
+              {durable ? "Runs on GitHub Actions"
+                : isKaggle ? "Kaggle notebook"
+                : mode === "plan" ? "Live chat" : "Install the workflow first"}
             </span>
           </div>
           <div className="flex items-end gap-2">
