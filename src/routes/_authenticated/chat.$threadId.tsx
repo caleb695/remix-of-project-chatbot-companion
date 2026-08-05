@@ -6,7 +6,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Loader2, Plus, Trash2, MessageSquare, Search, ChevronDown, X, Github, Zap,
-  ExternalLink, GitBranch, Menu, Brain, Hammer, Bug, Sparkles, ArrowUpRight, FileDiff, Check,
+  ExternalLink, GitBranch, Menu, Brain, Hammer, Bug, Sparkles, ArrowUpRight, FileDiff, Check, NotebookPen,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getThreadMessages, listThreads, createThread, deleteThread, getThread, updateThread } from "@/lib/threads.functions";
