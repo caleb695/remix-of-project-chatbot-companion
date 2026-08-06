@@ -22,9 +22,18 @@ const log = async (line) => { console.log(line); try { await api("/api/public/jo
 
 /* The activity feed the user sees in the app. */
 let PHASE = "planning";
-const event = async (kind, text, phase) => {
-  if (phase) PHASE = phase;
-  try { await api("/api/public/jobs/event", { kind, text: String(text).slice(0, 3500), phase: PHASE }); } catch {}
+/* `agent` is { id, label } — omitted means the main agent. */
+const event = async (kind, text, phase, agent) => {
+  if (phase && !agent) PHASE = phase;
+  try {
+    await api("/api/public/jobs/event", {
+      kind,
+      text: String(text).slice(0, 3500),
+      phase: phase || PHASE,
+      agent_id: agent ? agent.id : "main",
+      agent_label: agent ? agent.label : "Main agent",
+    });
+  } catch {}
 };
 
 const sh = (cmd, opts = {}) => execSync(cmd, { stdio: ["pipe", "pipe", "pipe"], encoding: "utf8", timeout: 1000 * 60 * 10, ...opts });
@@ -78,6 +87,21 @@ const tools = [
   { type: "function", function: { name: "finish", description: "Call only when the task is complete and check_code is clean. Provide a user-facing summary and a commit message.",
     parameters: { type: "object", properties: { summary: { type: "string" }, commit_message: { type: "string" } }, required: ["summary", "commit_message"] } } },
 ];
+
+const DELEGATE_TOOL = { type: "function", function: {
+  name: "delegate",
+  description: "Hand a self-contained part of the task to one of your sub-agents. It has the same file tools on this same checkout and runs to completion before returning its report. Never give two sub-agents the same files.",
+  parameters: { type: "object", properties: {
+    agent_id: { type: "string" },
+    task: { type: "string", description: "Complete, self-contained instructions: what to change, which files, and how to verify." },
+  }, required: ["agent_id", "task"] },
+} };
+
+/* Tools available to the model this step. `finish` and `delegate` are main-agent only. */
+function toolsFor(kind, subAgents) {
+  if (kind === "sub") return tools.filter((t) => t.function.name !== "finish");
+  return subAgents && subAgents.length ? [...tools, DELEGATE_TOOL] : tools;
+}
 
 function changedFiles() {
   try {
@@ -184,24 +208,40 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* Per-minute rate limits: wait 10s and retry, forever. Any other limit
  * (quota / credits / context) stops the run with the provider's message. */
-async function callModel(spec, messages) {
-  const route = chatRoute(spec, spec.model);
+async function callModel(spec, messages, opts = {}) {
+  const route = chatRoute(spec, opts.model || spec.model);
+  const activeTools = opts.tools || toolsFor("main", spec.sub_agents);
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(route.base + "/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + route.key },
-      body: JSON.stringify({ model: route.model, messages, tools, tool_choice: "auto" }),
+      body: JSON.stringify({ model: route.model, messages, tools: activeTools, tool_choice: "auto" }),
     });
     if (res.ok) return res.json();
     const text = (await res.text()).slice(0, 800);
     const isRpm = res.status === 429 && (/per.?minute|rpm|requests per|rate.?limit/i.test(text) || !/quota|credit|balance|billing/i.test(text));
     if (isRpm && attempt < 300) {
-      await event("status", "Rate limited — waiting 10 seconds, then retrying.");
+      await event("status", "Rate limited — waiting 10 seconds, then retrying.", undefined, opts.agent);
       await sleep(10000);
       continue;
     }
     throw new Error("Provider error " + res.status + ": " + text);
   }
+}
+
+/* Providers such as Groq reject assistant messages that carry extra fields
+ * (e.g. `reasoning`, `executed_tools`) back on the next request, so only echo
+ * the fields the chat-completions API defines. */
+function sanitizeAssistant(msg) {
+  const out = { role: "assistant", content: typeof msg.content === "string" ? msg.content : "" };
+  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length) {
+    out.tool_calls = msg.tool_calls.map((c) => ({
+      id: c.id,
+      type: "function",
+      function: { name: c.function && c.function.name, arguments: (c.function && c.function.arguments) || "{}" },
+    }));
+  }
+  return out;
 }
 
 /* Keep the transcript small enough to carry across a checkpoint. */
@@ -223,6 +263,7 @@ function verb(name, args) {
   if (name === "run_shell") return "Ran " + String(args.cmd || "").slice(0, 90);
   if (name === "check_code") return "Checked the code I changed for problems";
   if (name === "update_plan") return "Updated the plan: " + (args.todos || []).map((t) => t.title).join(" · ").slice(0, 200);
+  if (name === "delegate") return "Delegated to " + (args.agent_id || "a sub-agent");
   return name;
 }
 
@@ -235,6 +276,86 @@ function phaseFor(name, sawCheck) {
 
 /* ----------------------------------- main --------------------------------- */
 
+/* Pull the user's uploaded files into the checkout so code can use them. */
+async function fetchAttachments(spec) {
+  const list = spec.attachments || [];
+  if (!list.length) return [];
+  const readable = [];
+  fs.mkdirSync("uploads", { recursive: true });
+  for (const a of list) {
+    const safe = String(a.name).replace(/[^\w.\-]+/g, "_");
+    try {
+      const res = await fetch(a.url);
+      if (!res.ok) throw new Error("download " + res.status);
+      const buf = Buffer.from(await res.arrayBuffer());
+      fs.writeFileSync(path.join("uploads", safe), buf);
+      await event("action", "Saved upload uploads/" + safe, PHASE);
+      if (!a.code_only) readable.push({ name: safe, mime: a.mime_type || "", buf });
+    } catch (e) {
+      await log("attachment failed " + safe + ": " + ((e && e.message) || e));
+    }
+  }
+  return readable;
+}
+
+/* Text/image content for the uploads the AI is allowed to read. */
+function attachmentMessages(readable) {
+  const out = [];
+  const textParts = [];
+  const imageParts = [];
+  for (const a of readable) {
+    if (/^image\//.test(a.mime)) {
+      imageParts.push({ type: "image_url", image_url: { url: "data:" + a.mime + ";base64," + a.buf.toString("base64") } });
+    } else {
+      textParts.push("--- uploads/" + a.name + " ---\n" + a.buf.toString("utf8").slice(0, 40000));
+    }
+  }
+  if (textParts.length) {
+    out.push({ role: "user", content: "Files the user uploaded (also saved under uploads/):\n\n" + textParts.join("\n\n") });
+  }
+  if (imageParts.length) {
+    out.push({ role: "user", content: [{ type: "text", text: "Images the user uploaded (also saved under uploads/)." }, ...imageParts] });
+  }
+  return out;
+}
+
+/* A sub-agent: same tools, same checkout, its own model and activity feed. */
+async function runSubAgent(spec, agent, task) {
+  const subTools = toolsFor("sub", spec.sub_agents);
+  const messages = [
+    { role: "system", content:
+      "You are " + agent.label + ", a sub-agent of Coderbot working inside GitHub Actions on the repository checkout. " +
+      "Do only the part of the task you were given — do not touch unrelated files, do not commit. " +
+      (agent.instructions ? "Your standing scope: " + agent.instructions + ". " : "") +
+      "Use your tools to read, search, write and edit files, then run check_code and fix what it reports. " +
+      "When your part is done, reply with a plain-text report of exactly what you changed (no tool call)." },
+    { role: "user", content: task },
+  ];
+  await event("status", "Started on: " + String(task).slice(0, 160), "coding", agent);
+  for (let step = 0; step < 60; step++) {
+    const body = await callModel(spec, messages, { model: agent.model, tools: subTools, agent });
+    const msg = body.choices && body.choices[0] && body.choices[0].message;
+    if (!msg) return "Sub-agent " + agent.id + " returned no message.";
+    messages.push(sanitizeAssistant(msg));
+    if (msg.content && String(msg.content).trim()) await event("thought", String(msg.content).trim().slice(0, 800), undefined, agent);
+    const calls = msg.tool_calls || [];
+    if (!calls.length) {
+      await event("status", "Finished its part.", "done", agent);
+      return String(msg.content || "Done.").slice(0, 6000);
+    }
+    for (const c of calls) {
+      let args = {};
+      try { args = JSON.parse((c.function && c.function.arguments) || "{}"); } catch {}
+      const name = c.function.name;
+      await event("action", verb(name, args), undefined, agent);
+      const out = name === "delegate" ? "ERR: sub-agents cannot delegate" : execTool(name, args);
+      messages.push({ role: "tool", tool_call_id: c.id, content: String(out).slice(0, 40000) });
+    }
+  }
+  await event("status", "Hit its step limit.", "done", agent);
+  return "Sub-agent " + agent.id + " hit its step limit; check its work.";
+}
+
 async function main() {
   await log("Claiming job " + JOB_ID);
   const spec = await api("/api/public/jobs/claim");
@@ -243,9 +364,11 @@ async function main() {
   if (spec.job_type === "index") { await runIndex(spec); return; }
 
   const resumed = spec.checkpoint && Array.isArray(spec.checkpoint.messages) && spec.checkpoint.messages.length > 0;
+  const readable = resumed ? [] : await fetchAttachments(spec);
   const messages = resumed
     ? spec.checkpoint.messages
-    : [{ role: "system", content: spec.system }, ...spec.messages];
+    : [{ role: "system", content: spec.system }, ...attachmentMessages(readable), ...spec.messages];
+  const subAgents = spec.sub_agents || [];
   if (resumed) {
     TODOS = spec.checkpoint.todos || [];
     messages.push({ role: "user", content: "The previous run hit the GitHub Actions time limit and was checkpointed. Your uncommitted work was pushed to the branch and is present in this checkout. Continue where you left off until the task is complete." });
@@ -267,7 +390,7 @@ async function main() {
     const body = await callModel(spec, messages);
     const msg = body.choices && body.choices[0] && body.choices[0].message;
     if (!msg) throw new Error("The model returned no message");
-    messages.push(msg);
+    messages.push(sanitizeAssistant(msg));
 
     if (msg.content && String(msg.content).trim()) {
       await event("thought", String(msg.content).trim().slice(0, 800));
@@ -299,6 +422,21 @@ async function main() {
       }
       if (name === "write_file" || name === "edit_file" || name === "delete_file") sawWrite = true;
       if (name === "check_code") sawCheck = true;
+      if (name === "delegate") {
+        const agent = subAgents.find((a) => a.id === args.agent_id) || subAgents[0];
+        if (!agent) {
+          messages.push({ role: "tool", tool_call_id: c.id, content: "ERR: no sub-agents are configured" });
+          continue;
+        }
+        await event("action", "Delegated to " + agent.label + ": " + String(args.task || "").slice(0, 120), "coding");
+        let report;
+        try { report = await runSubAgent(spec, agent, String(args.task || "")); }
+        catch (e) { report = "Sub-agent failed: " + ((e && e.message) || e); await event("error", report, PHASE, agent); }
+        sawWrite = true;
+        sawCheck = false; // sub-agent work must be verified by the main agent
+        messages.push({ role: "tool", tool_call_id: c.id, content: (agent.label + " reported:\n" + report).slice(0, 20000) });
+        continue;
+      }
       const nextPhase = phaseFor(name, sawCheck);
       await event("action", verb(name, args), nextPhase);
       const out = execTool(name, args);

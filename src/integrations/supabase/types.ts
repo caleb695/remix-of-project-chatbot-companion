@@ -61,6 +61,50 @@ export type Database = {
           },
         ]
       }
+      chat_attachments: {
+        Row: {
+          code_only: boolean
+          created_at: string
+          id: string
+          mime_type: string | null
+          name: string
+          size_bytes: number | null
+          storage_path: string
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          code_only?: boolean
+          created_at?: string
+          id?: string
+          mime_type?: string | null
+          name: string
+          size_bytes?: number | null
+          storage_path: string
+          thread_id: string
+          user_id: string
+        }
+        Update: {
+          code_only?: boolean
+          created_at?: string
+          id?: string
+          mime_type?: string | null
+          name?: string
+          size_bytes?: number | null
+          storage_path?: string
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_attachments_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           created_at: string
@@ -106,6 +150,7 @@ export type Database = {
           model: string | null
           repo_selection_id: string | null
           seed_summary: string | null
+          sub_agents: Json
           target: string
           title: string
           updated_at: string
@@ -120,6 +165,7 @@ export type Database = {
           model?: string | null
           repo_selection_id?: string | null
           seed_summary?: string | null
+          sub_agents?: Json
           target?: string
           title?: string
           updated_at?: string
@@ -134,6 +180,7 @@ export type Database = {
           model?: string | null
           repo_selection_id?: string | null
           seed_summary?: string | null
+          sub_agents?: Json
           target?: string
           title?: string
           updated_at?: string

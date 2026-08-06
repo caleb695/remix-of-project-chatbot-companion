@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Loader2, Plus, Trash2, MessageSquare, Search, ChevronDown, X, Github, Zap,
   ExternalLink, GitBranch, Menu, Brain, Hammer, Bug, Sparkles, ArrowUpRight, FileDiff, Check, NotebookPen,
+  Users, Paperclip, Eye, EyeOff,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getThreadMessages, listThreads, createThread, deleteThread, getThread, updateThread } from "@/lib/threads.functions";
@@ -15,6 +16,8 @@ import { getKaggleStaged, pushKaggleNotebook, listKaggleNotebooks } from "@/lib/
 import { listOpenrouterModels, getOpenrouterSettings } from "@/lib/openrouter.functions";
 import { enqueueCodingJob, listJobsForThread, getJob, cancelJob } from "@/lib/jobs.functions";
 import { listAgentEvents, getStagedChanges, setThreadMode, branchThread } from "@/lib/agent.functions";
+import { getSubAgents, setSubAgents } from "@/lib/subagents.functions";
+import { listAttachments, registerAttachment, setAttachmentCodeOnly, deleteAttachment } from "@/lib/attachments.functions";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -315,6 +318,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
           <div className="mb-1.5 flex items-center gap-1.5 overflow-x-auto">
             <ModePicker mode={mode} onChange={changeMode} />
             <ModelPicker current={model} onSelect={(m) => setModel.mutate(m)} />
+            <SubAgentsPicker threadId={threadId} />
             <span className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
               <Zap className="h-3 w-3 text-primary" />
               {durable ? "Runs on GitHub Actions"
@@ -323,6 +327,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
             </span>
           </div>
           <div className="flex items-end gap-2">
+            <AttachButton threadId={threadId} />
             <Textarea
               ref={inputRef}
               rows={1}
@@ -405,6 +410,239 @@ function ModePicker({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
 }
 
 /* -------------------------------- activity -------------------------------- */
+
+/* ------------------------------- sub-agents ------------------------------- */
+
+type SubAgent = { id: string; label: string; model: string; instructions?: string };
+
+function SubAgentsPicker({ threadId }: { threadId: string }) {
+  const listFn = useServerFn(getSubAgents);
+  const saveFn = useServerFn(setSubAgents);
+  const modelsFn = useServerFn(listOpenrouterModels);
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+
+  const agents = useQuery({
+    queryKey: ["sub-agents", threadId],
+    queryFn: () => listFn({ data: { threadId } }),
+  });
+  const models = useQuery({
+    queryKey: ["or-models"],
+    queryFn: () => modelsFn({}),
+    enabled: open,
+    staleTime: 10 * 60 * 1000,
+  });
+  const save = useMutation({
+    mutationFn: (subAgents: SubAgent[]) => saveFn({ data: { threadId, subAgents } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sub-agents", threadId] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const list = (agents.data ?? []) as SubAgent[];
+  const update = (next: SubAgent[]) => save.mutate(next);
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <button type="button" className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-border bg-card px-2.5 text-[11px] font-medium">
+          <Users className="h-3.5 w-3.5 text-primary" />
+          {list.length ? `${list.length} sub-agent${list.length === 1 ? "" : "s"}` : "Sub-agents"}
+        </button>
+      </SheetTrigger>
+      <SheetContent side="bottom" className="flex h-[85vh] flex-col p-0">
+        <SheetHeader className="border-b border-border/60 p-4">
+          <SheetTitle>Sub-agents</SheetTitle>
+          <p className="text-xs text-muted-foreground">
+            The main agent splits the task and delegates parts to these agents so they work in parallel on the same checkout.
+          </p>
+        </SheetHeader>
+        <div className="flex-1 space-y-3 overflow-y-auto p-4">
+          {list.length === 0 && <p className="text-sm text-muted-foreground">No sub-agents yet.</p>}
+          {list.map((a, i) => (
+            <div key={a.id} className="space-y-2 rounded-lg border border-border/60 p-3">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={a.label}
+                  onChange={(e) => update(list.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                  className="h-8 text-sm"
+                  placeholder="Name (e.g. Frontend)"
+                />
+                <Button
+                  size="icon" variant="ghost" className="h-8 w-8 shrink-0"
+                  onClick={() => update(list.filter((_, j) => j !== i))}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              </div>
+              <select
+                value={a.model}
+                onChange={(e) => update(list.map((x, j) => (j === i ? { ...x, model: e.target.value } : x)))}
+                className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+              >
+                <option value={a.model}>{a.model}</option>
+                {(models.data ?? []).filter((m) => m.id !== a.model).map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              <Textarea
+                rows={2}
+                value={a.instructions ?? ""}
+                onChange={(e) => update(list.map((x, j) => (j === i ? { ...x, instructions: e.target.value } : x)))}
+                placeholder="What this agent owns (e.g. UI components under src/components)"
+                className="resize-none text-xs"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-border/60 p-3">
+          <Button
+            className="w-full"
+            disabled={save.isPending || list.length >= 20}
+            onClick={() =>
+              update([
+                ...list,
+                {
+                  id: `agent-${Date.now().toString(36)}`,
+                  label: `Agent ${list.length + 1}`,
+                  model: (models.data ?? [])[0]?.id ?? "",
+                  instructions: "",
+                },
+              ])
+            }
+          >
+            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Plus className="mr-1 h-4 w-4" /> Add sub-agent</>}
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/* ------------------------------- attachments ------------------------------ */
+
+function AttachButton({ threadId }: { threadId: string }) {
+  const listFn = useServerFn(listAttachments);
+  const registerFn = useServerFn(registerAttachment);
+  const toggleFn = useServerFn(setAttachmentCodeOnly);
+  const removeFn = useServerFn(deleteAttachment);
+  const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const files = useQuery({
+    queryKey: ["attachments", threadId],
+    queryFn: () => listFn({ data: { threadId } }),
+  });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["attachments", threadId] });
+
+  const toggle = useMutation({
+    mutationFn: (v: { id: string; codeOnly: boolean }) => toggleFn({ data: v }),
+    onSuccess: invalidate,
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => removeFn({ data: { id } }),
+    onSuccess: invalidate,
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const upload = async (picked: FileList) => {
+    setUploading(true);
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth.user?.id;
+      if (!uid) throw new Error("Not signed in");
+      for (const file of Array.from(picked)) {
+        const safe = file.name.replace(/[^\w.\-]+/g, "_");
+        const storagePath = `${uid}/${threadId}/${Date.now()}-${safe}`;
+        const { error } = await supabase.storage.from("attachments").upload(storagePath, file);
+        if (error) throw error;
+        await registerFn({
+          data: { threadId, name: safe, mimeType: file.type || undefined, sizeBytes: file.size, storagePath },
+        });
+      }
+      invalidate();
+      toast.success("Uploaded");
+      setOpen(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const count = files.data?.length ?? 0;
+
+  return (
+    <>
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => { if (e.target.files?.length) void upload(e.target.files); }}
+      />
+      <div className="relative shrink-0">
+        <Button
+          type="button" size="icon" variant="secondary" className="h-11 w-11"
+          onClick={() => (count > 0 ? setOpen(true) : fileRef.current?.click())}
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+        </Button>
+        {count > 0 && (
+          <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+            {count}
+          </span>
+        )}
+      </div>
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="bottom" className="flex max-h-[80vh] flex-col p-0">
+          <SheetHeader className="border-b border-border/60 p-4">
+            <SheetTitle>Uploaded files</SheetTitle>
+            <p className="text-xs text-muted-foreground">
+              Every file is placed in <code>uploads/</code> so the agent's code can use it. Turn off “AI can read” to keep the
+              contents private — the agent only knows the file exists.
+            </p>
+          </SheetHeader>
+          <div className="flex-1 space-y-2 overflow-y-auto p-4">
+            {count === 0 && <p className="text-sm text-muted-foreground">Nothing uploaded yet.</p>}
+            {(files.data ?? []).map((f) => (
+              <div key={f.id} className="flex items-center gap-2 rounded-lg border border-border/60 p-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm">{f.name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {f.mime_type ?? "file"}{f.size_bytes ? ` · ${Math.max(1, Math.round(f.size_bytes / 1024))} KB` : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggle.mutate({ id: f.id, codeOnly: !f.code_only })}
+                  className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] ${
+                    f.code_only ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  {f.code_only ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                  {f.code_only ? "Code only" : "AI can read"}
+                </button>
+                <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => remove.mutate(f.id)}>
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-border/60 p-3">
+            <Button variant="secondary" className="w-full" disabled={uploading} onClick={() => fileRef.current?.click()}>
+              <Plus className="mr-1 h-4 w-4" /> Add files
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
 
 type AgentEvent = {
   id: string; agent_id: string; agent_label: string; phase: string;
