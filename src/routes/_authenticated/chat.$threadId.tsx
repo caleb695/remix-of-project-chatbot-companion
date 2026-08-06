@@ -98,22 +98,14 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
 
   const kb = useKeyboardInset();
 
-  const transport = useMemo(() => new DefaultChatTransport({
-    api: "/api/chat",
-    fetch: async (input, init) => {
-      const { data } = await supabase.auth.getSession();
-      const headers = new Headers(init?.headers);
-      if (data.session) headers.set("Authorization", `Bearer ${data.session.access_token}`);
-      return fetch(input, { ...init, headers });
-    },
-    body: { threadId, repoId },
-  }), [threadId, repoId]);
+  const chat = useMemo(() => getThreadChat(threadId, repoId, initial), [threadId, repoId, initial]);
 
-  const { messages, sendMessage, setMessages, status, error, stop } = useChat({ id: threadId, messages: initial, transport });
+  const { messages, sendMessage, setMessages, status, error, stop } = useChat({ chat });
   // Server-side runs append their turns in the database; mirror them in here.
   useEffect(() => {
     if (initial.length > messages.length) setMessages(initial);
   }, [initial, messages.length, setMessages]);
+
 
   const [input, setInput] = useState("");
   const scrollerRef = useRef<HTMLDivElement>(null);
