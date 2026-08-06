@@ -18,7 +18,9 @@ import { enqueueCodingJob, listJobsForThread, getJob, cancelJob } from "@/lib/jo
 import { listAgentEvents, getStagedChanges, setThreadMode, branchThread } from "@/lib/agent.functions";
 import { getSubAgents, setSubAgents } from "@/lib/subagents.functions";
 import { listAttachments, registerAttachment, setAttachmentCodeOnly, deleteAttachment } from "@/lib/attachments.functions";
+import { getThreadChat, getRunState, setRunState } from "@/lib/chat-store";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
+
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
