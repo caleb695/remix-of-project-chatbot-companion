@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Loader2, Plus, Trash2, MessageSquare, Search, ChevronDown, X, Github, Zap,
   ExternalLink, GitBranch, Menu, Brain, Hammer, Bug, Sparkles, ArrowUpRight, FileDiff, Check, NotebookPen,
+  Users, Paperclip, Eye, EyeOff,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getThreadMessages, listThreads, createThread, deleteThread, getThread, updateThread } from "@/lib/threads.functions";
@@ -15,6 +16,8 @@ import { getKaggleStaged, pushKaggleNotebook, listKaggleNotebooks } from "@/lib/
 import { listOpenrouterModels, getOpenrouterSettings } from "@/lib/openrouter.functions";
 import { enqueueCodingJob, listJobsForThread, getJob, cancelJob } from "@/lib/jobs.functions";
 import { listAgentEvents, getStagedChanges, setThreadMode, branchThread } from "@/lib/agent.functions";
+import { getSubAgents, setSubAgents } from "@/lib/subagents.functions";
+import { listAttachments, registerAttachment, setAttachmentCodeOnly, deleteAttachment } from "@/lib/attachments.functions";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -315,6 +318,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
           <div className="mb-1.5 flex items-center gap-1.5 overflow-x-auto">
             <ModePicker mode={mode} onChange={changeMode} />
             <ModelPicker current={model} onSelect={(m) => setModel.mutate(m)} />
+            <SubAgentsPicker threadId={threadId} />
             <span className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
               <Zap className="h-3 w-3 text-primary" />
               {durable ? "Runs on GitHub Actions"
@@ -323,6 +327,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
             </span>
           </div>
           <div className="flex items-end gap-2">
+            <AttachButton threadId={threadId} />
             <Textarea
               ref={inputRef}
               rows={1}
