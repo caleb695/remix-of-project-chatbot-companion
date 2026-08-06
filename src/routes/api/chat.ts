@@ -212,6 +212,27 @@ export const Route = createFileRoute("/api/chat")({
           );
         }
 
+        // Uploaded files: readable ones get inlined as text, the rest are just named.
+        const { data: attRows } = await supa
+          .from("chat_attachments")
+          .select("name, mime_type, storage_path, code_only")
+          .eq("thread_id", threadId);
+        let attachmentContext = "";
+        if (attRows && attRows.length > 0) {
+          const parts: string[] = [
+            "The user uploaded these files; they are available to the coding runner under uploads/: " +
+              attRows.map((a) => `uploads/${a.name}${a.code_only ? " (asset only — contents hidden from you)" : ""}`).join(", ") + ".",
+          ];
+          for (const a of attRows) {
+            if (a.code_only || /^image\//.test(a.mime_type ?? "")) continue;
+            const { data: blob } = await supa.storage.from("attachments").download(a.storage_path);
+            if (!blob) continue;
+            const text = (await blob.text()).slice(0, 20000);
+            parts.push(`--- uploads/${a.name} ---\n${text}`);
+          }
+          attachmentContext = parts.join("\n\n");
+        }
+
         const systemPrompt = [
           isKaggle
             ? "You are Coderbot, an autonomous coding agent working on a single Kaggle notebook through a staged working copy of its source."
@@ -224,6 +245,7 @@ export const Route = createFileRoute("/api/chat")({
           "When you finish, summarise what you changed, why, and anything the user needs to know or do.",
           MODE_PROMPTS[mode],
           thread.seed_summary ? `Context carried over from the previous chat:\n${thread.seed_summary}` : "",
+          attachmentContext,
           ragContext,
         ]
           .filter(Boolean)
