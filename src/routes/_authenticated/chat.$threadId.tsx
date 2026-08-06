@@ -95,7 +95,12 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const repoId = thread.repo_selection_id ?? "";
   const notebookId = thread.kaggle_notebook_id ?? "";
   const [mode, setMode] = useState<Mode>(((thread.mode as Mode) ?? "build"));
-  const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskId, setTaskIdState] = useState<string | null>(() => getRunState(threadId).taskId);
+  const setTaskId = useCallback((id: string | null) => {
+    setTaskIdState(id);
+    setRunState(threadId, { taskId: id });
+  }, [threadId]);
+
   const [activityOpen, setActivityOpen] = useState(false);
 
   const kb = useKeyboardInset();
