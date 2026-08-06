@@ -282,7 +282,7 @@ async function main() {
     const body = await callModel(spec, messages);
     const msg = body.choices && body.choices[0] && body.choices[0].message;
     if (!msg) throw new Error("The model returned no message");
-    messages.push(msg);
+    messages.push(sanitizeAssistant(msg));
 
     if (msg.content && String(msg.content).trim()) {
       await event("thought", String(msg.content).trim().slice(0, 800));

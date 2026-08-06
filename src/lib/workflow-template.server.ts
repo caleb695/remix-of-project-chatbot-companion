@@ -3,7 +3,7 @@
 import RUNNER_SOURCE from "./runner/coder-runner.mjs.txt?raw";
 
 /** Bump when the workflow or runner changes so installs re-write the files. */
-export const RUNNER_VERSION = 3;
+export const RUNNER_VERSION = 4;
 
 export const WORKFLOW_YML = `name: Coderbot
 # Installed by Coderbot — runner version ${RUNNER_VERSION}
