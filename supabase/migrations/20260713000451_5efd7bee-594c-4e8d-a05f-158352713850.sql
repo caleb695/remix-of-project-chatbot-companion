@@ -1,1 +1,0 @@
-ALTER TABLE public.coding_jobs ALTER COLUMN thread_id DROP NOT NULL;
