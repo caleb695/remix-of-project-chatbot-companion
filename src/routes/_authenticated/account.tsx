@@ -228,8 +228,10 @@ function GithubSection() {
   const disconnect = useServerFn(disconnectGithub);
   const removeSel = useServerFn(removeRepoSelection);
 
-  const conn = useSuspenseQuery(queryOptions({ queryKey: ["gh_conn"], queryFn: () => getConn() }));
-  const sels = useSuspenseQuery(queryOptions({ queryKey: ["repo_selections"], queryFn: () => listSels() }));
+  // Plain queries (not suspense): a transient failure on tab switch must show
+  // an inline retry instead of throwing and blanking the whole Account tab.
+  const conn = useQuery({ queryKey: ["gh_conn"], queryFn: () => getConn(), retry: 1 });
+  const sels = useQuery({ queryKey: ["repo_selections"], queryFn: () => listSels(), retry: 1 });
 
   const connectMut = useMutation({
     mutationFn: async () => (await startOAuth()).url,
@@ -255,6 +257,25 @@ function GithubSection() {
     onError: (e: Error) => toast.error(e.message),
   });
   const hasWorkflowScope = new Set((conn.data?.scope ?? "").split(/[ ,]+/).filter(Boolean)).has("workflow");
+
+  if (conn.isLoading || sels.isLoading) {
+    return (
+      <div className="grid place-items-center py-8">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (conn.error || sels.error) {
+    return (
+      <Card className="p-4 text-center text-sm">
+        <p className="text-destructive">{((conn.error ?? sels.error) as Error).message}</p>
+        <Button className="mt-3 w-full" size="sm" variant="outline" onClick={() => { void conn.refetch(); void sels.refetch(); }}>
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+        </Button>
+      </Card>
+    );
+  }
 
   if (!conn.data) {
     return (
@@ -296,13 +317,13 @@ function GithubSection() {
         <AddRepoButton />
       </div>
 
-      {sels.data.length === 0 && (
+      {(sels.data ?? []).length === 0 && (
         <Card className="border-dashed p-4 text-center text-xs text-muted-foreground">
           Add a repo to chat with the AI about it.
         </Card>
       )}
       <div className="space-y-2">
-        {sels.data.map((r) => (
+        {(sels.data ?? []).map((r) => (
           <Card key={r.id} className="p-3 space-y-2">
             <div className="flex items-center justify-between">
               <div className="min-w-0">
@@ -416,11 +437,9 @@ function AddRepoButton() {
     enabled: open,
   });
 
-  const sels = useQuery({
-    queryKey: ["repo_selections"],
-    // rely on cache; only need shape
-  });
-  const selectedIds = new Set((sels.data as Array<{ github_repo_id: number }> | undefined ?? []).map((r) => r.github_repo_id));
+  // Read straight from cache — a queryFn-less useQuery throws in React Query v5.
+  const cachedSels = qc.getQueryData<Array<{ github_repo_id: number }>>(["repo_selections"]);
+  const selectedIds = new Set((cachedSels ?? []).map((r) => r.github_repo_id));
 
   const addMut = useMutation({
     mutationFn: (r: { github_repo_id: number; owner: string; name: string; default_branch: string }) =>
