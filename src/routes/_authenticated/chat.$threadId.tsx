@@ -150,7 +150,12 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   // live phase for the process indicator
   const eventsFn = useServerFn(listAgentEvents);
   const enqueueFn = useServerFn(enqueueCodingJob);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [activeJobId, setActiveJobIdState] = useState<string | null>(() => getRunState(threadId).jobId);
+  const setActiveJobId = useCallback((id: string | null) => {
+    setActiveJobIdState(id);
+    setRunState(threadId, { jobId: id });
+  }, [threadId]);
+
   const runMut = useMutation({
     mutationFn: (prompt: string) => enqueueFn({ data: { threadId, prompt, mode, taskId: crypto.randomUUID() } }),
     onSuccess: (r) => {
