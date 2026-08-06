@@ -303,7 +303,11 @@ export const Route = createFileRoute("/api/chat")({
 
         return result.toUIMessageStreamResponse({
           originalMessages: messages,
+          // Keep the run going (and persist it) even if the browser disconnects,
+          // e.g. the user switches to another tab mid-run.
+          consumeSseStream: consumeStream,
           onFinish: async ({ messages: finalMessages }) => {
+
             const assistant = finalMessages[finalMessages.length - 1];
             if (assistant?.role === "assistant") {
               await supa.from("chat_messages").insert({
