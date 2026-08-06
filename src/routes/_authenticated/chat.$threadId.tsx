@@ -1,7 +1,7 @@
 import { createFileRoute, useParams, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { type UIMessage } from "ai";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -18,7 +18,9 @@ import { enqueueCodingJob, listJobsForThread, getJob, cancelJob } from "@/lib/jo
 import { listAgentEvents, getStagedChanges, setThreadMode, branchThread } from "@/lib/agent.functions";
 import { getSubAgents, setSubAgents } from "@/lib/subagents.functions";
 import { listAttachments, registerAttachment, setAttachmentCodeOnly, deleteAttachment } from "@/lib/attachments.functions";
+import { getThreadChat, getRunState, setRunState } from "@/lib/chat-store";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
+
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,27 +95,24 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const repoId = thread.repo_selection_id ?? "";
   const notebookId = thread.kaggle_notebook_id ?? "";
   const [mode, setMode] = useState<Mode>(((thread.mode as Mode) ?? "build"));
-  const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskId, setTaskIdState] = useState<string | null>(() => getRunState(threadId).taskId);
+  const setTaskId = useCallback((id: string | null) => {
+    setTaskIdState(id);
+    setRunState(threadId, { taskId: id });
+  }, [threadId]);
+
   const [activityOpen, setActivityOpen] = useState(false);
 
   const kb = useKeyboardInset();
 
-  const transport = useMemo(() => new DefaultChatTransport({
-    api: "/api/chat",
-    fetch: async (input, init) => {
-      const { data } = await supabase.auth.getSession();
-      const headers = new Headers(init?.headers);
-      if (data.session) headers.set("Authorization", `Bearer ${data.session.access_token}`);
-      return fetch(input, { ...init, headers });
-    },
-    body: { threadId, repoId },
-  }), [threadId, repoId]);
+  const chat = useMemo(() => getThreadChat(threadId, repoId, initial), [threadId, repoId, initial]);
 
-  const { messages, sendMessage, setMessages, status, error, stop } = useChat({ id: threadId, messages: initial, transport });
+  const { messages, sendMessage, setMessages, status, error, stop } = useChat({ chat });
   // Server-side runs append their turns in the database; mirror them in here.
   useEffect(() => {
     if (initial.length > messages.length) setMessages(initial);
   }, [initial, messages.length, setMessages]);
+
 
   const [input, setInput] = useState("");
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -151,7 +150,12 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   // live phase for the process indicator
   const eventsFn = useServerFn(listAgentEvents);
   const enqueueFn = useServerFn(enqueueCodingJob);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [activeJobId, setActiveJobIdState] = useState<string | null>(() => getRunState(threadId).jobId);
+  const setActiveJobId = useCallback((id: string | null) => {
+    setActiveJobIdState(id);
+    setRunState(threadId, { jobId: id });
+  }, [threadId]);
+
   const runMut = useMutation({
     mutationFn: (prompt: string) => enqueueFn({ data: { threadId, prompt, mode, taskId: crypto.randomUUID() } }),
     onSuccess: (r) => {
