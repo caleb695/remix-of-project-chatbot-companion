@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, consumeStream, type UIMessage } from "ai";
 
 type Mode = "plan" | "build" | "debug" | "improve";
 
