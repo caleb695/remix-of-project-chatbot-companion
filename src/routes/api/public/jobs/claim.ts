@@ -9,7 +9,7 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
 
     // Load thread messages, openrouter key, gh token
     const isIndex = job.job_type === "index";
-    const [{ data: msgs }, { data: or }, { data: gh }, { data: sel }] = await Promise.all([
+    const [{ data: msgs }, { data: or }, { data: gh }, { data: sel }, { data: thr }, { data: atts }] = await Promise.all([
       isIndex
         ? Promise.resolve({ data: [] as { role: string; parts: unknown }[] })
         : sb.from("chat_messages").select("role, parts").eq("thread_id", job.thread_id!).order("created_at"),
@@ -18,6 +18,12 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
         .eq("user_id", job.user_id).maybeSingle(),
       sb.from("github_connections").select("access_token").eq("user_id", job.user_id).maybeSingle(),
       sb.from("repo_selections").select("owner, name, working_branch").eq("id", job.repo_selection_id).single(),
+      isIndex || !job.thread_id
+        ? Promise.resolve({ data: null as { sub_agents: unknown } | null })
+        : sb.from("chat_threads").select("sub_agents").eq("id", job.thread_id).maybeSingle(),
+      isIndex || !job.thread_id
+        ? Promise.resolve({ data: [] as Array<{ name: string; mime_type: string | null; storage_path: string; code_only: boolean }> })
+        : sb.from("chat_attachments").select("name, mime_type, storage_path, code_only").eq("thread_id", job.thread_id),
     ]);
     if (!gh?.access_token) return new Response("no github token", { status: 400 });
 
@@ -57,6 +63,22 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       improve: "MODE: IMPROVE. Improve the codebase: sensible new features, simpler and faster code, less duplication, hardened weak spots. Make a coherent set of changes, run check_code until clean, then call finish.",
     };
 
+    // Sub-agents configured for this chat.
+    type SubAgent = { id: string; label: string; model: string; instructions?: string };
+    const rawSubs = Array.isArray(thr?.sub_agents) ? (thr!.sub_agents as SubAgent[]) : [];
+    const sub_agents = rawSubs
+      .filter((a) => a && a.id && a.model)
+      .map((a) => ({ id: a.id, label: a.label || a.id, model: a.model, instructions: a.instructions ?? "" }));
+
+    // Signed URLs so the runner can pull uploaded files into the checkout.
+    const attachments: Array<{ name: string; mime_type: string | null; code_only: boolean; url: string }> = [];
+    for (const a of atts ?? []) {
+      const { data: signed } = await sb.storage.from("attachments").createSignedUrl(a.storage_path, 60 * 60 * 6);
+      if (signed?.signedUrl) {
+        attachments.push({ name: a.name, mime_type: a.mime_type, code_only: a.code_only, url: signed.signedUrl });
+      }
+    }
+
     const system = [
       "You are Coderbot, an autonomous coding agent running inside GitHub Actions in the repo " + sel!.owner + "/" + sel!.name + ".",
       "Working branch: " + sel!.working_branch + ".",
@@ -65,8 +87,17 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       "Call update_plan early with the steps you intend to take, and keep it current as you go.",
       "When the task is complete and check_code is clean, call `finish` with a short user-facing summary and a conventional-style commit message.",
       "Do NOT run installers or other long-running commands unless required. Do NOT commit — the runner commits and pushes for you.",
+      sub_agents.length
+        ? "You have sub-agents you can delegate to with the `delegate` tool: " +
+          sub_agents.map((a) => `${a.id} (${a.label})${a.instructions ? " — scope: " + a.instructions : ""}`).join("; ") +
+          ". Split the work: give each sub-agent a self-contained part with clear file boundaries, do your own part too, and report what each sub-agent did in your final summary. Sub-agents share this checkout, so never delegate two agents onto the same file at once."
+        : "",
+      attachments.length
+        ? "The user uploaded files; the runner placed them in the `uploads/` folder of the checkout: " +
+          attachments.map((a) => `uploads/${a.name}${a.code_only ? " (asset only — use it from code, its contents are not shown to you)" : ""}`).join(", ") + "."
+        : "",
       MODE_PROMPTS[mode],
-    ].join(" ");
+    ].filter(Boolean).join(" ");
 
     return Response.json({
       job_type: job.job_type,
@@ -86,6 +117,8 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       messages,
       repo: { owner: sel!.owner, name: sel!.name },
       working_branch: sel!.working_branch,
+      sub_agents,
+      attachments,
     });
   } } },
 });
