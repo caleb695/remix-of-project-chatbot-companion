@@ -263,6 +263,7 @@ function verb(name, args) {
   if (name === "run_shell") return "Ran " + String(args.cmd || "").slice(0, 90);
   if (name === "check_code") return "Checked the code I changed for problems";
   if (name === "update_plan") return "Updated the plan: " + (args.todos || []).map((t) => t.title).join(" · ").slice(0, 200);
+  if (name === "delegate") return "Delegated to " + (args.agent_id || "a sub-agent");
   return name;
 }
 
