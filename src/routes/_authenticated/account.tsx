@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient, useSuspenseQuery, queryOptions } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Github, LogOut, Loader2, Search, Plus, Check, ExternalLink, Trash2, KeyRound, Zap, NotebookPen, RefreshCw, UploadCloud } from "lucide-react";
@@ -25,6 +25,12 @@ import { useNavigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_authenticated/account")({
   component: AccountPage,
+  errorComponent: ({ error, reset }) => (
+    <div className="mx-auto max-w-md p-6 text-center text-sm">
+      <p className="text-destructive">{error.message}</p>
+      <Button className="mt-3" size="sm" variant="outline" onClick={reset}>Try again</Button>
+    </div>
+  ),
 });
 
 function AccountPage() {
