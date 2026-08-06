@@ -22,9 +22,18 @@ const log = async (line) => { console.log(line); try { await api("/api/public/jo
 
 /* The activity feed the user sees in the app. */
 let PHASE = "planning";
-const event = async (kind, text, phase) => {
-  if (phase) PHASE = phase;
-  try { await api("/api/public/jobs/event", { kind, text: String(text).slice(0, 3500), phase: PHASE }); } catch {}
+/* `agent` is { id, label } — omitted means the main agent. */
+const event = async (kind, text, phase, agent) => {
+  if (phase && !agent) PHASE = phase;
+  try {
+    await api("/api/public/jobs/event", {
+      kind,
+      text: String(text).slice(0, 3500),
+      phase: phase || PHASE,
+      agent_id: agent ? agent.id : "main",
+      agent_label: agent ? agent.label : "Main agent",
+    });
+  } catch {}
 };
 
 const sh = (cmd, opts = {}) => execSync(cmd, { stdio: ["pipe", "pipe", "pipe"], encoding: "utf8", timeout: 1000 * 60 * 10, ...opts });
@@ -199,19 +208,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* Per-minute rate limits: wait 10s and retry, forever. Any other limit
  * (quota / credits / context) stops the run with the provider's message. */
-async function callModel(spec, messages) {
-  const route = chatRoute(spec, spec.model);
+async function callModel(spec, messages, opts = {}) {
+  const route = chatRoute(spec, opts.model || spec.model);
+  const activeTools = opts.tools || toolsFor("main", spec.sub_agents);
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(route.base + "/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + route.key },
-      body: JSON.stringify({ model: route.model, messages, tools, tool_choice: "auto" }),
+      body: JSON.stringify({ model: route.model, messages, tools: activeTools, tool_choice: "auto" }),
     });
     if (res.ok) return res.json();
     const text = (await res.text()).slice(0, 800);
     const isRpm = res.status === 429 && (/per.?minute|rpm|requests per|rate.?limit/i.test(text) || !/quota|credit|balance|billing/i.test(text));
     if (isRpm && attempt < 300) {
-      await event("status", "Rate limited — waiting 10 seconds, then retrying.");
+      await event("status", "Rate limited — waiting 10 seconds, then retrying.", undefined, opts.agent);
       await sleep(10000);
       continue;
     }
