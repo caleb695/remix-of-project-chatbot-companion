@@ -79,6 +79,21 @@ const tools = [
     parameters: { type: "object", properties: { summary: { type: "string" }, commit_message: { type: "string" } }, required: ["summary", "commit_message"] } } },
 ];
 
+const DELEGATE_TOOL = { type: "function", function: {
+  name: "delegate",
+  description: "Hand a self-contained part of the task to one of your sub-agents. It has the same file tools on this same checkout and runs to completion before returning its report. Never give two sub-agents the same files.",
+  parameters: { type: "object", properties: {
+    agent_id: { type: "string" },
+    task: { type: "string", description: "Complete, self-contained instructions: what to change, which files, and how to verify." },
+  }, required: ["agent_id", "task"] },
+} };
+
+/* Tools available to the model this step. `finish` and `delegate` are main-agent only. */
+function toolsFor(kind, subAgents) {
+  if (kind === "sub") return tools.filter((t) => t.function.name !== "finish");
+  return subAgents && subAgents.length ? [...tools, DELEGATE_TOOL] : tools;
+}
+
 function changedFiles() {
   try {
     return sh("git status --porcelain").split("\n").map((l) => l.slice(3).trim()).filter(Boolean);
