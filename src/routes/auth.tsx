@@ -22,7 +22,7 @@ function AuthPage() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/repos" });
+      if (data.session) navigate({ to: "/chat" });
     });
   }, [navigate]);
 
@@ -41,7 +41,7 @@ function AuthPage() {
         if (error) throw error;
         toast.success("Account created. Signing you in…");
       }
-      navigate({ to: "/repos" });
+      navigate({ to: "/chat" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -58,7 +58,7 @@ function AuthPage() {
       return;
     }
     if (res.redirected) return;
-    navigate({ to: "/repos" });
+    navigate({ to: "/chat" });
   }
 
   return (
