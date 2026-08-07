@@ -448,7 +448,12 @@ async function main() {
       if (name === "write_file" || name === "edit_file" || name === "delete_file") sawWrite = true;
       if (name === "check_code") sawCheck = true;
       if (name === "delegate") {
+        if (delegateResults.has(c.id)) {
+          messages.push({ role: "tool", tool_call_id: c.id, content: delegateResults.get(c.id) });
+          continue;
+        }
         const agent = subAgents.find((a) => a.id === args.agent_id) || subAgents[0];
+
         if (!agent) {
           messages.push({ role: "tool", tool_call_id: c.id, content: "ERR: no sub-agents are configured" });
           continue;
