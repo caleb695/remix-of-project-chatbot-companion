@@ -206,8 +206,9 @@ function chatRoute(spec, model) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* Per-minute rate limits: wait 10s and retry, forever. Any other limit
- * (quota / credits / context) stops the run with the provider's message. */
+/* Per-minute rate limits: wait 10s and retry (up to ~50 minutes of waiting).
+ * Any other limit (quota / credits / context) stops the run with the
+ * provider's message. */
 async function callModel(spec, messages, opts = {}) {
   const route = chatRoute(spec, opts.model || spec.model);
   const activeTools = opts.tools || toolsFor("main", spec.sub_agents);
@@ -220,14 +221,18 @@ async function callModel(spec, messages, opts = {}) {
     if (res.ok) return res.json();
     const text = (await res.text()).slice(0, 800);
     const isRpm = res.status === 429 && (/per.?minute|rpm|requests per|rate.?limit/i.test(text) || !/quota|credit|balance|billing/i.test(text));
-    if (isRpm && attempt < 300) {
-      await event("status", "Rate limited — waiting 10 seconds, then retrying.", undefined, opts.agent);
-      await sleep(10000);
-      continue;
+    if (isRpm) {
+      if (attempt < 300) {
+        await event("status", "Rate limited — waiting 10 seconds, then retrying.", undefined, opts.agent);
+        await sleep(10000);
+        continue;
+      }
+      throw new Error("Still rate limited after 50 minutes of retrying. Stopping — try again later or use a model with a higher rate limit.");
     }
     throw new Error("Provider error " + res.status + ": " + text);
   }
 }
+
 
 /* Providers such as Groq reject assistant messages that carry extra fields
  * (e.g. `reasoning`, `executed_tools`) back on the next request, so only echo
