@@ -9,6 +9,16 @@ import { listKaggleNotebooks } from "@/lib/kaggle.functions";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_authenticated/chat/")({
+  head: () => ({
+    meta: [
+      { title: "Chats — Coderbot" },
+      { name: "description", content: "Your coding chats. Start a new one or pick up where you left off." },
+      { property: "og:title", content: "Chats — Coderbot" },
+      { property: "og:description", content: "Your coding chats. Start a new one or pick up where you left off." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
   component: ChatIndex,
 });
 

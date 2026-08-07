@@ -191,8 +191,18 @@ export const getJob = createServerFn({ method: "GET" })
       .select("id, status, prompt, logs, error, commit_sha, finished_at, created_at, updated_at")
       .eq("id", data.id).maybeSingle();
     if (error) throw error;
+    // A dispatch can be accepted by GitHub but never start the workflow (missing
+    // or misconfigured workflow file). Don't leave the UI spinning forever.
+    if (job && job.status === "queued" && Date.now() - new Date(job.created_at).getTime() > 6 * 60 * 1000) {
+      const message = "The GitHub Actions runner never started this job. Re-install the workflow from Account, then try again.";
+      await context.supabase.from("coding_jobs")
+        .update({ status: "failed", error: message, finished_at: new Date().toISOString() })
+        .eq("id", job.id);
+      return { ...job, status: "failed", error: message };
+    }
     return job;
   });
+
 
 export const listJobsForThread = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

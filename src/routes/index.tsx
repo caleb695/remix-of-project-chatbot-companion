@@ -5,6 +5,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Coderbot — an AI pair programmer for your GitHub repos" },
+      { name: "description", content: "Connect a GitHub repo, pick a model, and chat. Coderbot reads and edits a working copy — nothing is pushed until you commit." },
+      { property: "og:title", content: "Coderbot — an AI pair programmer for your GitHub repos" },
+      { property: "og:description", content: "Connect a GitHub repo, pick a model, and chat. Coderbot reads and edits a working copy — nothing is pushed until you commit." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: Landing,
 });
 
@@ -71,13 +81,13 @@ function Landing() {
         <div className="mt-24 grid gap-6 sm:grid-cols-3">
           {[
             { icon: Github, title: "Bring your repo", body: "Connect GitHub in one click and pick from your projects." },
-            { icon: MessageSquareCode, title: "Chat &amp; edit", body: "The AI can read, write, and delete files across your project." },
+            { icon: MessageSquareCode, title: "Chat & edit", body: "The AI can read, write, and delete files across your project." },
             { icon: GitCommit, title: "You own the commit", body: "Review pending changes and push when — and only when — you say so." },
           ].map(({ icon: Icon, title, body }) => (
             <div key={title} className="rounded-xl border border-border bg-card p-5">
               <Icon className="h-5 w-5 text-primary" />
-              <h3 className="mt-3 font-medium" dangerouslySetInnerHTML={{ __html: title }} />
-              <p className="mt-1 text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: body }} />
+              <h3 className="mt-3 font-medium">{title}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{body}</p>
             </div>
           ))}
         </div>

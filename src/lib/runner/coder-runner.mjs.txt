@@ -206,8 +206,9 @@ function chatRoute(spec, model) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* Per-minute rate limits: wait 10s and retry, forever. Any other limit
- * (quota / credits / context) stops the run with the provider's message. */
+/* Per-minute rate limits: wait 10s and retry (up to ~50 minutes of waiting).
+ * Any other limit (quota / credits / context) stops the run with the
+ * provider's message. */
 async function callModel(spec, messages, opts = {}) {
   const route = chatRoute(spec, opts.model || spec.model);
   const activeTools = opts.tools || toolsFor("main", spec.sub_agents);
@@ -220,14 +221,18 @@ async function callModel(spec, messages, opts = {}) {
     if (res.ok) return res.json();
     const text = (await res.text()).slice(0, 800);
     const isRpm = res.status === 429 && (/per.?minute|rpm|requests per|rate.?limit/i.test(text) || !/quota|credit|balance|billing/i.test(text));
-    if (isRpm && attempt < 300) {
-      await event("status", "Rate limited — waiting 10 seconds, then retrying.", undefined, opts.agent);
-      await sleep(10000);
-      continue;
+    if (isRpm) {
+      if (attempt < 300) {
+        await event("status", "Rate limited — waiting 10 seconds, then retrying.", undefined, opts.agent);
+        await sleep(10000);
+        continue;
+      }
+      throw new Error("Still rate limited after 50 minutes of retrying. Stopping — try again later or use a model with a higher rate limit.");
     }
     throw new Error("Provider error " + res.status + ": " + text);
   }
 }
+
 
 /* Providers such as Groq reject assistant messages that carry extra fields
  * (e.g. `reasoning`, `executed_tools`) back on the next request, so only echo
@@ -402,7 +407,32 @@ async function main() {
       break;
     }
 
+    // Sub-agents delegated in the same turn run concurrently, so several
+    // models work on their parts at once instead of queueing behind each other.
+    const delegateResults = new Map();
+    const parallel = calls.filter((c) => c.function && c.function.name === "delegate");
+    if (parallel.length > 1) {
+      await Promise.all(parallel.map(async (c) => {
+        let args = {};
+        try { args = JSON.parse((c.function && c.function.arguments) || "{}"); } catch {}
+        const agent = subAgents.find((a) => a.id === args.agent_id) || subAgents[0];
+        if (!agent) { delegateResults.set(c.id, "ERR: no sub-agents are configured"); return; }
+        await event("action", "Delegated to " + agent.label + ": " + String(args.task || "").slice(0, 120), "coding");
+        try {
+          const report = await runSubAgent(spec, agent, String(args.task || ""));
+          delegateResults.set(c.id, (agent.label + " reported:\n" + report).slice(0, 20000));
+        } catch (e) {
+          const report = "Sub-agent failed: " + ((e && e.message) || e);
+          await event("error", report, PHASE, agent);
+          delegateResults.set(c.id, (agent.label + " reported:\n" + report).slice(0, 20000));
+        }
+      }));
+      sawWrite = true;
+      sawCheck = false; // sub-agent work must be verified by the main agent
+    }
+
     for (const c of calls) {
+
       let args = {};
       try { args = JSON.parse((c.function && c.function.arguments) || "{}"); } catch {}
       const name = c.function.name;
@@ -423,7 +453,12 @@ async function main() {
       if (name === "write_file" || name === "edit_file" || name === "delete_file") sawWrite = true;
       if (name === "check_code") sawCheck = true;
       if (name === "delegate") {
+        if (delegateResults.has(c.id)) {
+          messages.push({ role: "tool", tool_call_id: c.id, content: delegateResults.get(c.id) });
+          continue;
+        }
         const agent = subAgents.find((a) => a.id === args.agent_id) || subAgents[0];
+
         if (!agent) {
           messages.push({ role: "tool", tool_call_id: c.id, content: "ERR: no sub-agents are configured" });
           continue;
