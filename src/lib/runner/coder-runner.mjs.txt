@@ -402,7 +402,32 @@ async function main() {
       break;
     }
 
+    // Sub-agents delegated in the same turn run concurrently, so several
+    // models work on their parts at once instead of queueing behind each other.
+    const delegateResults = new Map();
+    const parallel = calls.filter((c) => c.function && c.function.name === "delegate");
+    if (parallel.length > 1) {
+      await Promise.all(parallel.map(async (c) => {
+        let args = {};
+        try { args = JSON.parse((c.function && c.function.arguments) || "{}"); } catch {}
+        const agent = subAgents.find((a) => a.id === args.agent_id) || subAgents[0];
+        if (!agent) { delegateResults.set(c.id, "ERR: no sub-agents are configured"); return; }
+        await event("action", "Delegated to " + agent.label + ": " + String(args.task || "").slice(0, 120), "coding");
+        try {
+          const report = await runSubAgent(spec, agent, String(args.task || ""));
+          delegateResults.set(c.id, (agent.label + " reported:\n" + report).slice(0, 20000));
+        } catch (e) {
+          const report = "Sub-agent failed: " + ((e && e.message) || e);
+          await event("error", report, PHASE, agent);
+          delegateResults.set(c.id, (agent.label + " reported:\n" + report).slice(0, 20000));
+        }
+      }));
+      sawWrite = true;
+      sawCheck = false; // sub-agent work must be verified by the main agent
+    }
+
     for (const c of calls) {
+
       let args = {};
       try { args = JSON.parse((c.function && c.function.arguments) || "{}"); } catch {}
       const name = c.function.name;
