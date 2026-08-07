@@ -19,8 +19,8 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       sb.from("github_connections").select("access_token").eq("user_id", job.user_id).maybeSingle(),
       sb.from("repo_selections").select("owner, name, working_branch").eq("id", job.repo_selection_id).single(),
       isIndex || !job.thread_id
-        ? Promise.resolve({ data: null as { sub_agents: unknown } | null })
-        : sb.from("chat_threads").select("sub_agents").eq("id", job.thread_id).maybeSingle(),
+        ? Promise.resolve({ data: null as { sub_agents: unknown; seed_summary: string | null } | null })
+        : sb.from("chat_threads").select("sub_agents, seed_summary").eq("id", job.thread_id).maybeSingle(),
       isIndex || !job.thread_id
         ? Promise.resolve({ data: [] as Array<{ name: string; mime_type: string | null; storage_path: string; code_only: boolean }> })
         : sb.from("chat_attachments").select("name, mime_type, storage_path, code_only").eq("thread_id", job.thread_id),
@@ -95,6 +95,9 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       attachments.length
         ? "The user uploaded files; the runner placed them in the `uploads/` folder of the checkout: " +
           attachments.map((a) => `uploads/${a.name}${a.code_only ? " (asset only — use it from code, its contents are not shown to you)" : ""}`).join(", ") + "."
+        : "",
+      thr?.seed_summary
+        ? "Context carried over from the user's previous chat (summary): " + thr.seed_summary
         : "",
       MODE_PROMPTS[mode],
     ].filter(Boolean).join(" ");
