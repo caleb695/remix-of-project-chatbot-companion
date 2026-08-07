@@ -28,6 +28,16 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/chat/$threadId")({
+  head: () => ({
+    meta: [
+      { title: "Chat — Coderbot" },
+      { name: "description", content: "Work with the Coderbot agent on your repo or Kaggle notebook." },
+      { property: "og:title", content: "Chat — Coderbot" },
+      { property: "og:description", content: "Work with the Coderbot agent on your repo or Kaggle notebook." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
   component: ChatThreadPage,
 });
 

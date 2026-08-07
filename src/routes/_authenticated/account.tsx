@@ -24,6 +24,16 @@ import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_authenticated/account")({
+  head: () => ({
+    meta: [
+      { title: "Account — Coderbot" },
+      { name: "description", content: "Manage your GitHub connection, Kaggle notebooks, provider API keys and models." },
+      { property: "og:title", content: "Account — Coderbot" },
+      { property: "og:description", content: "Manage your GitHub connection, Kaggle notebooks, provider API keys and models." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
   component: AccountPage,
   errorComponent: ({ error, reset }) => (
     <div className="mx-auto max-w-md p-6 text-center text-sm">
