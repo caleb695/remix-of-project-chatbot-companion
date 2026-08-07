@@ -10,6 +10,16 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
+  head: () => ({
+    meta: [
+      { title: "Sign in — Coderbot" },
+      { name: "description", content: "Sign in to Coderbot to connect your GitHub repos and start coding with an AI agent." },
+      { property: "og:title", content: "Sign in — Coderbot" },
+      { property: "og:description", content: "Sign in to Coderbot to connect your GitHub repos and start coding with an AI agent." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
   component: AuthPage,
 });
 
