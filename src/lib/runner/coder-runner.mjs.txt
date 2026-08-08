@@ -318,30 +318,102 @@ function chatRoute(spec, model) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* Per-minute rate limits: wait 10s and retry (up to ~50 minutes of waiting).
+ * Transient network/5xx failures back off and retry a few times.
  * Any other limit (quota / credits / context) stops the run with the
  * provider's message. */
 async function callModel(spec, messages, opts = {}) {
   const route = chatRoute(spec, opts.model || spec.model);
   const activeTools = opts.tools || toolsFor("main", spec.sub_agents);
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(route.base + "/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + route.key },
-      body: JSON.stringify({ model: route.model, messages, tools: activeTools, tool_choice: "auto" }),
-    });
-    if (res.ok) return res.json();
+  let rpmWaits = 0;
+  let transient = 0;
+  for (;;) {
+    let res;
+    try {
+      res = await fetch(route.base + "/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + route.key },
+        body: JSON.stringify({ model: route.model, messages, tools: activeTools, tool_choice: "auto" }),
+      });
+    } catch (e) {
+      if (++transient > 6) throw new Error("Network error talking to the model provider: " + ((e && e.message) || e));
+      await sleep(Math.min(30000, 2000 * transient));
+      continue;
+    }
+    if (res.ok) {
+      const body = await res.json().catch(() => null);
+      if (body && body.choices && body.choices.length) return body;
+      if (body && body.error) throw new Error("Provider error: " + JSON.stringify(body.error).slice(0, 600));
+      if (++transient > 6) throw new Error("The model returned an empty response repeatedly.");
+      await sleep(2000 * transient);
+      continue;
+    }
     const text = (await res.text()).slice(0, 800);
     const isRpm = res.status === 429 && (/per.?minute|rpm|requests per|rate.?limit/i.test(text) || !/quota|credit|balance|billing/i.test(text));
     if (isRpm) {
-      if (attempt < 300) {
-        await event("status", "Rate limited — waiting 10 seconds, then retrying.", undefined, opts.agent);
+      if (++rpmWaits <= 300) {
+        if (rpmWaits === 1 || rpmWaits % 6 === 0) {
+          await event("status", "Rate limited — waiting and retrying (" + rpmWaits * 10 + "s so far).", undefined, opts.agent);
+        }
         await sleep(10000);
         continue;
       }
       throw new Error("Still rate limited after 50 minutes of retrying. Stopping — try again later or use a model with a higher rate limit.");
     }
+    if (res.status >= 500 || res.status === 408) {
+      if (++transient > 6) throw new Error("Provider error " + res.status + ": " + text);
+      await sleep(Math.min(30000, 2000 * transient));
+      continue;
+    }
     throw new Error("Provider error " + res.status + ": " + text);
   }
+}
+
+/* --------------------------- context management --------------------------- */
+
+const approxTokens = (messages) => Math.round(JSON.stringify(messages).length / 4);
+const COMPACT_AT_TOKENS = 90000;
+
+/* Claude-Code-style compaction: when the transcript gets long, fold the older
+ * middle of the conversation into a summary so the run can keep going without
+ * blowing the model's context window. */
+async function compactIfNeeded(spec, messages, agent) {
+  if (approxTokens(messages) < COMPACT_AT_TOKENS) return messages;
+  // Keep the system prompt, the first user turn, and the most recent exchanges.
+  const head = messages.slice(0, 2);
+  const keepTail = 12;
+  const middle = messages.slice(2, Math.max(2, messages.length - keepTail));
+  let tail = messages.slice(Math.max(2, messages.length - keepTail));
+  // A tool message must follow its assistant tool_calls message; drop orphans.
+  while (tail.length && tail[0].role === "tool") tail = tail.slice(1);
+  if (middle.length < 4) return messages;
+
+  await event("status", "Context is getting long — summarising earlier work to keep going.", undefined, agent);
+  const transcript = middle.map((m) => {
+    const calls = (m.tool_calls || []).map((c) => c.function.name + "(" + String(c.function.arguments || "").slice(0, 200) + ")").join(", ");
+    return m.role + ": " + String(typeof m.content === "string" ? m.content : "").slice(0, 1200) + (calls ? " [tools: " + calls + "]" : "");
+  }).join("\n").slice(0, 120000);
+
+  let summary = "";
+  try {
+    const body = await callModel(spec, [
+      { role: "system", content: "You compress an autonomous coding agent's transcript. Output a dense hand-off note: the goal, what was discovered about the codebase (files, symbols, decisions), every file already changed and how, what verification was run and its result, and what remains. No preamble." },
+      { role: "user", content: transcript },
+    ], { model: opts_model(spec, agent), tools: [], agent });
+    summary = (body.choices[0].message.content || "").trim();
+  } catch (e) {
+    await log("compaction failed: " + ((e && e.message) || e));
+    return messages;
+  }
+  if (!summary) return messages;
+  return [
+    ...head,
+    { role: "user", content: "[Earlier work in this run, compacted]\n" + summary + "\n\nContinue from here." },
+    ...tail,
+  ];
+}
+
+function opts_model(spec, agent) {
+  return agent && agent.model ? agent.model : spec.model;
 }
 
 
