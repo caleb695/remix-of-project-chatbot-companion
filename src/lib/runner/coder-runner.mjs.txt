@@ -332,7 +332,9 @@ async function callModel(spec, messages, opts = {}) {
       res = await fetch(route.base + "/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + route.key },
-        body: JSON.stringify({ model: route.model, messages, tools: activeTools, tool_choice: "auto" }),
+        body: JSON.stringify(activeTools && activeTools.length
+          ? { model: route.model, messages, tools: activeTools, tool_choice: "auto" }
+          : { model: route.model, messages }),
       });
     } catch (e) {
       if (++transient > 6) throw new Error("Network error talking to the model provider: " + ((e && e.message) || e));
