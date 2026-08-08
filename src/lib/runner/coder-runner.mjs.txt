@@ -119,6 +119,34 @@ function toolsFor(kind, subAgents) {
   return subAgents && subAgents.length ? [...tools, DELEGATE_TOOL] : tools;
 }
 
+/* A cheap orientation pass so the model doesn't burn steps discovering the
+ * basics: project type, scripts, top-level layout and any agent instructions. */
+function repoBriefing() {
+  const parts = [];
+  try {
+    const top = fs.readdirSync(".", { withFileTypes: true })
+      .filter((d) => !d.name.startsWith(".git") && d.name !== "node_modules")
+      .map((d) => d.name + (d.isDirectory() ? "/" : ""))
+      .slice(0, 80);
+    parts.push("Top level: " + top.join(" "));
+  } catch {}
+  try {
+    const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+    parts.push("package.json name: " + (pkg.name || "?"));
+    if (pkg.scripts) parts.push("Scripts: " + Object.keys(pkg.scripts).join(", "));
+    const deps = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) });
+    if (deps.length) parts.push("Dependencies: " + deps.slice(0, 60).join(", "));
+    parts.push("node_modules is " + (fs.existsSync("node_modules") ? "present" : "NOT installed — run `npm install` (or the matching package manager) with run_shell before any build/test command"));
+  } catch {}
+  for (const f of ["AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"]) {
+    try {
+      if (fs.existsSync(f)) parts.push("--- " + f + " (follow these repo instructions) ---\n" + fs.readFileSync(f, "utf8").slice(0, 6000));
+    } catch {}
+  }
+  return "Repository briefing (gathered automatically, no tool call needed):\n" + parts.join("\n");
+}
+
+
 function changedFiles() {
   try {
     return sh("git status --porcelain").split("\n").map((l) => l.slice(3).trim()).filter(Boolean);
