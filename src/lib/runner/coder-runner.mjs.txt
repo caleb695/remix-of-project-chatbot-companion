@@ -604,7 +604,7 @@ async function main() {
 
   const resumed = spec.checkpoint && Array.isArray(spec.checkpoint.messages) && spec.checkpoint.messages.length > 0;
   const readable = resumed ? [] : await fetchAttachments(spec);
-  const messages = resumed
+  let messages = resumed
     ? spec.checkpoint.messages
     : [{ role: "system", content: spec.system }, ...attachmentMessages(readable), ...spec.messages];
   const subAgents = spec.sub_agents || [];
@@ -613,6 +613,7 @@ async function main() {
     messages.push({ role: "user", content: "The previous run hit the GitHub Actions time limit and was checkpointed. Your uncommitted work was pushed to the branch and is present in this checkout. Continue where you left off until the task is complete." });
     await event("status", "Resumed after checkpoint — continuing the task.", "coding");
   } else {
+    messages.splice(1, 0, { role: "user", content: repoBriefing() });
     await event("status", "Runner started on GitHub Actions in " + (spec.mode || "build") + " mode.", "planning");
     await event("thought", "Working out what this task needs and which files matter.", "planning");
   }
@@ -620,12 +621,14 @@ async function main() {
   let done = null;
   let sawCheck = false;
   let sawWrite = false;
+  let noProgress = 0;
 
   for (let step = 0; step < MAX_STEPS; step++) {
     if (Date.now() - START > TIME_LIMIT_MS) {
       await checkpointAndContinue(messages);
       return;
     }
+    messages = await compactIfNeeded(spec, messages);
     const body = await callModel(spec, messages);
     const msg = body.choices && body.choices[0] && body.choices[0].message;
     if (!msg) throw new Error("The model returned no message");
@@ -637,87 +640,93 @@ async function main() {
 
     const calls = msg.tool_calls || [];
     if (calls.length === 0) {
+      // The model stopped calling tools. If it never verified its edits, nudge
+      // it once instead of silently finishing on unchecked work.
+      if (sawWrite && !sawCheck && noProgress === 0) {
+        noProgress++;
+        messages.push({ role: "user", content: "You changed files but never ran check_code. Run it now, fix anything it reports, then call finish." });
+        continue;
+      }
       done = { summary: msg.content || "Done.", commit_message: "Coderbot update" };
       break;
     }
 
+    const parse = (c) => { try { return JSON.parse((c.function && c.function.arguments) || "{}"); } catch { return {}; } };
+
     // Sub-agents delegated in the same turn run concurrently, so several
     // models work on their parts at once instead of queueing behind each other.
+    const delegateCalls = calls.filter((c) => c.function && c.function.name === "delegate");
     const delegateResults = new Map();
-    const parallel = calls.filter((c) => c.function && c.function.name === "delegate");
-    if (parallel.length > 1) {
-      await Promise.all(parallel.map(async (c) => {
-        let args = {};
-        try { args = JSON.parse((c.function && c.function.arguments) || "{}"); } catch {}
+    if (delegateCalls.length) {
+      await Promise.all(delegateCalls.map(async (c) => {
+        const args = parse(c);
         const agent = subAgents.find((a) => a.id === args.agent_id) || subAgents[0];
         if (!agent) { delegateResults.set(c.id, "ERR: no sub-agents are configured"); return; }
+        const clashes = claimFiles(agent.id, args.files);
+        if (clashes.length) {
+          delegateResults.set(c.id, "ERR: these files are already assigned to another sub-agent: " + clashes.join(", ") + ". Re-split the work so each agent owns different files.");
+          return;
+        }
         await event("action", "Delegated to " + agent.label + ": " + String(args.task || "").slice(0, 120), "coding");
         try {
-          const report = await runSubAgent(spec, agent, String(args.task || ""));
+          const report = await runSubAgent(spec, agent, String(args.task || ""), args.files);
           delegateResults.set(c.id, (agent.label + " reported:\n" + report).slice(0, 20000));
         } catch (e) {
           const report = "Sub-agent failed: " + ((e && e.message) || e);
           await event("error", report, PHASE, agent);
           delegateResults.set(c.id, (agent.label + " reported:\n" + report).slice(0, 20000));
+        } finally {
+          releaseFiles(agent.id);
         }
       }));
       sawWrite = true;
       sawCheck = false; // sub-agent work must be verified by the main agent
     }
 
+    // finish is handled inline; everything else goes through the shared executor.
+    const finishCall = calls.find((c) => c.function.name === "finish");
+    const others = calls.filter((c) => c.function.name !== "finish" && c.function.name !== "delegate");
+
+    const results = others.length
+      ? await runToolCalls(others, undefined, (name, args) => {
+          if (WRITE_TOOLS.has(name)) sawWrite = true;
+          if (name === "check_code") sawCheck = true;
+          PHASE = phaseFor(name, sawCheck);
+        })
+      : new Map();
+
     for (const c of calls) {
-
-      let args = {};
-      try { args = JSON.parse((c.function && c.function.arguments) || "{}"); } catch {}
       const name = c.function.name;
-      if (name === "finish") {
-        // Refuse to finish with unverified edits: force one verification pass.
-        if (sawWrite && !sawCheck) {
-          sawCheck = true;
-          await event("action", "Checked the code I changed for problems", "checking");
-          const result = runCheckCode();
-          messages.push({ role: "tool", tool_call_id: c.id, content: "Before finishing, verification ran automatically: " + JSON.stringify(result).slice(0, 8000) + (result.clean ? "\nClean — you may call finish again." : "\nFix these problems, then call check_code again.") });
-          if (!result.clean) await event("status", "Found problems — fixing them.", "debugging");
-          continue;
-        }
-        done = { summary: args.summary, commit_message: args.commit_message };
-        messages.push({ role: "tool", tool_call_id: c.id, content: "ok" });
-        break;
-      }
-      if (name === "write_file" || name === "edit_file" || name === "delete_file") sawWrite = true;
-      if (name === "check_code") sawCheck = true;
+      if (name === "finish") continue;
       if (name === "delegate") {
-        if (delegateResults.has(c.id)) {
-          messages.push({ role: "tool", tool_call_id: c.id, content: delegateResults.get(c.id) });
-          continue;
-        }
-        const agent = subAgents.find((a) => a.id === args.agent_id) || subAgents[0];
-
-        if (!agent) {
-          messages.push({ role: "tool", tool_call_id: c.id, content: "ERR: no sub-agents are configured" });
-          continue;
-        }
-        await event("action", "Delegated to " + agent.label + ": " + String(args.task || "").slice(0, 120), "coding");
-        let report;
-        try { report = await runSubAgent(spec, agent, String(args.task || "")); }
-        catch (e) { report = "Sub-agent failed: " + ((e && e.message) || e); await event("error", report, PHASE, agent); }
-        sawWrite = true;
-        sawCheck = false; // sub-agent work must be verified by the main agent
-        messages.push({ role: "tool", tool_call_id: c.id, content: (agent.label + " reported:\n" + report).slice(0, 20000) });
+        messages.push({ role: "tool", tool_call_id: c.id, content: delegateResults.get(c.id) ?? "ERR: delegation did not run" });
         continue;
       }
-      const nextPhase = phaseFor(name, sawCheck);
-      await event("action", verb(name, args), nextPhase);
-      const out = execTool(name, args);
+      const out = results.get(c.id) ?? "ERR: tool did not run";
       if (name === "check_code") {
         const clean = out.includes('"clean":true');
-        await event(clean ? "status" : "status", clean ? "Checks are clean." : "Found problems — fixing them.", clean ? "checking" : "debugging");
+        await event("status", clean ? "Checks are clean." : "Found problems — fixing them.", clean ? "checking" : "debugging");
       }
-      await log("→ " + name + " " + String(args.path || args.cmd || args.query || "").slice(0, 100));
-      messages.push({ role: "tool", tool_call_id: c.id, content: String(out).slice(0, 40000) });
+      await log("→ " + name);
+      messages.push({ role: "tool", tool_call_id: c.id, content: out });
     }
-    if (done) break;
+
+    if (finishCall) {
+      const args = parse(finishCall);
+      if (sawWrite && !sawCheck) {
+        sawCheck = true;
+        await event("action", "Checked the code I changed for problems", "checking");
+        const result = runCheckCode();
+        messages.push({ role: "tool", tool_call_id: finishCall.id, content: "Before finishing, verification ran automatically: " + JSON.stringify(result).slice(0, 8000) + (result.clean ? "\nClean — you may call finish again." : "\nFix these problems, then call check_code again.") });
+        if (!result.clean) await event("status", "Found problems — fixing them.", "debugging");
+        continue;
+      }
+      done = { summary: args.summary, commit_message: args.commit_message };
+      messages.push({ role: "tool", tool_call_id: finishCall.id, content: "ok" });
+      break;
+    }
   }
+
 
   if (!done) {
     await checkpointAndContinue(messages);
