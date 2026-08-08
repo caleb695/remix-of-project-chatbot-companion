@@ -445,16 +445,39 @@ function trimForCheckpoint(messages) {
 
 function verb(name, args) {
   if (name === "read_file") return "Read " + args.path;
+  if (name === "read_files") return "Read " + (args.paths || []).join(", ").slice(0, 120);
   if (name === "list_files") return "Listed the repository files";
+  if (name === "glob") return "Looked for files matching " + args.pattern;
   if (name === "search_code") return 'Searched for "' + String(args.query || "").slice(0, 60) + '"';
   if (name === "write_file") return "Wrote " + args.path;
   if (name === "edit_file") return "Edited " + args.path;
+  if (name === "multi_edit") return "Edited " + [...new Set((args.edits || []).map((e) => e.path))].join(", ").slice(0, 140);
   if (name === "delete_file") return "Deleted " + args.path;
+  if (name === "move_file") return "Moved " + args.from + " → " + args.to;
   if (name === "run_shell") return "Ran " + String(args.cmd || "").slice(0, 90);
+  if (name === "git_diff") return "Reviewed my diff so far";
+  if (name === "fetch_url") return "Fetched " + String(args.url || "").slice(0, 80);
   if (name === "check_code") return "Checked the code I changed for problems";
   if (name === "update_plan") return "Updated the plan: " + (args.todos || []).map((t) => t.title).join(" · ").slice(0, 200);
   if (name === "delegate") return "Delegated to " + (args.agent_id || "a sub-agent");
   return name;
+}
+
+const WRITE_TOOLS = new Set(["write_file", "edit_file", "multi_edit", "delete_file", "move_file"]);
+
+/* Files each sub-agent has been given, so two agents never edit the same file. */
+const FILE_OWNER = new Map();
+function claimFiles(agentId, files) {
+  const clashes = [];
+  for (const f of files || []) {
+    const owner = FILE_OWNER.get(f);
+    if (owner && owner !== agentId) clashes.push(f + " (already owned by " + owner + ")");
+    else FILE_OWNER.set(f, agentId);
+  }
+  return clashes;
+}
+function releaseFiles(agentId) {
+  for (const [f, owner] of [...FILE_OWNER]) if (owner === agentId) FILE_OWNER.delete(f);
 }
 
 function phaseFor(name, sawCheck) {
