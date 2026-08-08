@@ -157,40 +157,97 @@ function runCheckCode() {
 
   const scripts = pkgScripts();
   const ran = [];
-  for (const name of ["typecheck", "tsc", "lint", "test"]) {
-    if (!scripts[name]) continue;
-    ran.push(name);
-    try { sh("npm run " + name + " --silent"); }
-    catch (e) {
-      const out = ((e.stdout || "") + (e.stderr || "")).toString().slice(-4000);
-      problems.push("npm run " + name + " failed:\n" + out);
+  const hasNodeModules = fs.existsSync("node_modules");
+  const candidates = ["typecheck", "tsc", "lint", "test", "build"].filter((n) => scripts[n]);
+  if (candidates.length && !hasNodeModules) {
+    problems.push("Dependencies are not installed, so " + candidates.join("/") + " could not run. Run `npm ci || npm install` with run_shell first if you need real verification.");
+  } else {
+    for (const name of candidates) {
+      // `build` is slow; only run it when nothing cheaper exists.
+      if (name === "build" && ran.length) continue;
+      ran.push(name);
+      try { sh("npm run " + name + " --silent", { timeout: 1000 * 60 * 12 }); }
+      catch (e) {
+        const out = ((e.stdout || "") + (e.stderr || "")).toString().slice(-4000);
+        problems.push("npm run " + name + " failed:\n" + out);
+      }
     }
   }
   return { changed: files, ran, problems, clean: problems.length === 0 };
 }
 
-function execTool(name, args) {
+/* Simple glob → RegExp (supports **, *, ?). */
+function globToRe(pattern) {
+  let out = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === "*") {
+      if (pattern[i + 1] === "*") { out += ".*"; i++; if (pattern[i + 1] === "/") i++; }
+      else out += "[^/]*";
+    } else if (ch === "?") out += "[^/]";
+    else out += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp("^" + out + "$");
+}
+
+function numbered(content, offset = 1) {
+  return content.split("\n").map((l, i) => (i + offset) + "\t" + l).join("\n");
+}
+
+async function execTool(name, args) {
   try {
     if (name === "list_files") {
       let files = walk(process.cwd()).map((f) => f.path);
       if (args.filter) files = files.filter((f) => f.includes(args.filter));
       return files.slice(0, 800).join("\n") || "(no files)";
     }
-    if (name === "read_file") { const c = readFileSafe(args.path); return c == null ? "ERR: not found" : c.slice(0, 60000); }
+    if (name === "glob") {
+      const re = globToRe(String(args.pattern || "**"));
+      const hits = walk(process.cwd()).map((f) => f.path).filter((p) => re.test(p));
+      return hits.slice(0, Math.min(args.max_results || 300, 1000)).join("\n") || "(no matches)";
+    }
+    if (name === "read_file") {
+      const c = readFileSafe(args.path);
+      if (c == null) return "ERR: not found";
+      if (args.offset || args.limit) {
+        const start = Math.max(1, Math.floor(args.offset || 1));
+        const lines = c.split("\n").slice(start - 1, start - 1 + Math.max(1, Math.floor(args.limit || 200)));
+        return numbered(lines.join("\n"), start).slice(0, 60000);
+      }
+      return numbered(c).slice(0, 60000);
+    }
+    if (name === "read_files") {
+      const paths = Array.isArray(args.paths) ? args.paths.slice(0, 20) : [];
+      return paths.map((p) => {
+        const c = readFileSafe(p);
+        return "--- " + p + " ---\n" + (c == null ? "(not found)" : c.slice(0, 20000));
+      }).join("\n\n").slice(0, 80000) || "ERR: no paths given";
+    }
     if (name === "search_code") {
       let re; try { re = new RegExp(args.query, "i"); } catch (e) { return "ERR: bad pattern " + e.message; }
       const limit = Math.min(args.max_results || 60, 200);
+      const ctx = Math.min(Math.max(args.context || 0, 0), 4);
       const hits = [];
       for (const f of walk(process.cwd())) {
+        if (args.path_filter && !f.path.includes(args.path_filter)) continue;
         const c = readFileSafe(f.path);
         if (c == null) continue;
         const lines = c.split("\n");
         for (let i = 0; i < lines.length; i++) {
-          if (re.test(lines[i])) { hits.push(f.path + ":" + (i + 1) + ": " + lines[i].slice(0, 200).trim()); if (hits.length >= limit) break; }
+          if (re.test(lines[i])) {
+            if (ctx) {
+              const from = Math.max(0, i - ctx);
+              const to = Math.min(lines.length, i + ctx + 1);
+              hits.push(f.path + ":" + (i + 1) + "\n" + lines.slice(from, to).map((l, k) => (from + k + 1) + "\t" + l.slice(0, 200)).join("\n"));
+            } else {
+              hits.push(f.path + ":" + (i + 1) + ": " + lines[i].slice(0, 200).trim());
+            }
+            if (hits.length >= limit) break;
+          }
         }
         if (hits.length >= limit) break;
       }
-      return hits.join("\n") || "(no matches)";
+      return hits.join("\n").slice(0, 40000) || "(no matches)";
     }
     if (name === "write_file") { writeFileSafe(args.path, args.content ?? ""); return "OK wrote " + args.path; }
     if (name === "edit_file") {
@@ -201,8 +258,46 @@ function execTool(name, args) {
       writeFileSafe(args.path, next);
       return "OK edited " + args.path;
     }
+    if (name === "multi_edit") {
+      const edits = Array.isArray(args.edits) ? args.edits : [];
+      if (!edits.length) return "ERR: no edits given";
+      const staged = new Map();
+      for (const e of edits) {
+        const current = staged.has(e.path) ? staged.get(e.path) : readFileSafe(e.path);
+        if (current == null) return "ERR: not found: " + e.path + " (no edits applied)";
+        if (!current.includes(e.find)) return "ERR: `find` text not present in " + e.path + " (no edits applied) — read the file again";
+        staged.set(e.path, e.replace_all ? current.split(e.find).join(e.replace) : current.replace(e.find, e.replace));
+      }
+      for (const [p, content] of staged) writeFileSafe(p, content);
+      return "OK applied " + edits.length + " edits to " + [...staged.keys()].join(", ");
+    }
     if (name === "delete_file") { fs.unlinkSync(args.path); return "OK deleted " + args.path; }
-    if (name === "run_shell") { return sh(args.cmd).slice(0, 8000) || "(no output)"; }
+    if (name === "move_file") {
+      const c = readFileSafe(args.from);
+      if (c == null) return "ERR: not found: " + args.from;
+      writeFileSafe(args.to, c);
+      fs.unlinkSync(args.from);
+      return "OK moved " + args.from + " → " + args.to;
+    }
+    if (name === "run_shell") {
+      const secs = Math.min(Math.max(Math.floor(args.timeout_seconds || 300), 1), 900);
+      return sh(args.cmd, { timeout: secs * 1000 }).slice(0, 12000) || "(no output)";
+    }
+    if (name === "git_diff") {
+      const out = sh("git --no-pager diff -- " + (args.path ? JSON.stringify(args.path) : "."));
+      const untracked = sh("git ls-files --others --exclude-standard").trim();
+      return ((out || "(no tracked changes)") + (untracked ? "\n\nUntracked files:\n" + untracked : "")).slice(0, 30000);
+    }
+    if (name === "fetch_url") {
+      const res = await fetch(String(args.url), { headers: { "User-Agent": "coderbot-runner" } });
+      const text = await res.text();
+      const clean = text
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s{2,}/g, " ");
+      return ("HTTP " + res.status + "\n" + clean).slice(0, 20000);
+    }
     if (name === "check_code") { return JSON.stringify(runCheckCode()).slice(0, 12000); }
     if (name === "update_plan") { TODOS = Array.isArray(args.todos) ? args.todos : []; return "OK"; }
     return "ERR: unknown tool";
