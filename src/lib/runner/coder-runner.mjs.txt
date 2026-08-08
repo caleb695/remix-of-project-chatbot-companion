@@ -533,19 +533,24 @@ function attachmentMessages(readable) {
 }
 
 /* A sub-agent: same tools, same checkout, its own model and activity feed. */
-async function runSubAgent(spec, agent, task) {
+async function runSubAgent(spec, agent, task, ownFiles) {
   const subTools = toolsFor("sub", spec.sub_agents);
-  const messages = [
+  let messages = [
     { role: "system", content:
-      "You are " + agent.label + ", a sub-agent of Coderbot working inside GitHub Actions on the repository checkout. " +
-      "Do only the part of the task you were given — do not touch unrelated files, do not commit. " +
+      "You are " + agent.label + ", a sub-agent of Coderbot working inside GitHub Actions on the repository checkout at " +
+      (spec.repo ? spec.repo.owner + "/" + spec.repo.name : "this repo") + ". " +
+      "Do only the part of the task you were given — do not touch unrelated files, do not commit, do not delegate. " +
+      (ownFiles && ownFiles.length ? "You own these files; do not edit any others: " + ownFiles.join(", ") + ". " : "") +
+      "Other sub-agents may be working on other files in this same checkout at the same time, so never reformat or rewrite files outside your scope. " +
       (agent.instructions ? "Your standing scope: " + agent.instructions + ". " : "") +
-      "Use your tools to read, search, write and edit files, then run check_code and fix what it reports. " +
-      "When your part is done, reply with a plain-text report of exactly what you changed (no tool call)." },
+      "Work efficiently: batch reads with read_files, use search_code/glob to locate things, prefer edit_file or multi_edit over rewriting whole files. " +
+      "Verify with check_code (or a targeted run_shell command) and fix what it reports. " +
+      "When your part is done, reply with a plain-text report of exactly which files you changed and how (no tool call)." },
     { role: "user", content: task },
   ];
   await event("status", "Started on: " + String(task).slice(0, 160), "coding", agent);
-  for (let step = 0; step < 60; step++) {
+  for (let step = 0; step < 80; step++) {
+    messages = await compactIfNeeded(spec, messages, agent);
     const body = await callModel(spec, messages, { model: agent.model, tools: subTools, agent });
     const msg = body.choices && body.choices[0] && body.choices[0].message;
     if (!msg) return "Sub-agent " + agent.id + " returned no message.";
@@ -556,17 +561,38 @@ async function runSubAgent(spec, agent, task) {
       await event("status", "Finished its part.", "done", agent);
       return String(msg.content || "Done.").slice(0, 6000);
     }
-    for (const c of calls) {
-      let args = {};
-      try { args = JSON.parse((c.function && c.function.arguments) || "{}"); } catch {}
-      const name = c.function.name;
-      await event("action", verb(name, args), undefined, agent);
-      const out = name === "delegate" ? "ERR: sub-agents cannot delegate" : execTool(name, args);
-      messages.push({ role: "tool", tool_call_id: c.id, content: String(out).slice(0, 40000) });
-    }
+    const results = await runToolCalls(calls, agent, () => {});
+    for (const c of calls) messages.push({ role: "tool", tool_call_id: c.id, content: results.get(c.id) });
   }
   await event("status", "Hit its step limit.", "done", agent);
   return "Sub-agent " + agent.id + " hit its step limit; check its work.";
+}
+
+/* Execute one assistant turn's tool calls. Read-only calls run concurrently,
+ * writes and shell commands run in order so they can't race each other. */
+async function runToolCalls(calls, agent, onTool) {
+  const results = new Map();
+  const parse = (c) => { try { return JSON.parse((c.function && c.function.arguments) || "{}"); } catch { return {}; } };
+
+  const reads = calls.filter((c) => READ_ONLY_TOOLS.has(c.function.name));
+  const rest = calls.filter((c) => !READ_ONLY_TOOLS.has(c.function.name));
+
+  await Promise.all(reads.map(async (c) => {
+    const args = parse(c);
+    await event("action", verb(c.function.name, args), undefined, agent);
+    onTool(c.function.name, args);
+    results.set(c.id, String(await execTool(c.function.name, args)).slice(0, 40000));
+  }));
+
+  for (const c of rest) {
+    const args = parse(c);
+    const name = c.function.name;
+    if (name === "delegate") { results.set(c.id, "ERR: sub-agents cannot delegate"); continue; }
+    await event("action", verb(name, args), undefined, agent);
+    onTool(name, args);
+    results.set(c.id, String(await execTool(name, args)).slice(0, 40000));
+  }
+  return results;
 }
 
 async function main() {
