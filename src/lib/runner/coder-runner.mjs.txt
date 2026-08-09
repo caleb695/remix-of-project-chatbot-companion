@@ -15,8 +15,25 @@ const BRANCH = process.env.WORKING_BRANCH;
 if (!JOB_ID || !JOB_SECRET || !APP_URL) { console.error("missing env"); process.exit(1); }
 
 const HEAD = { "Content-Type": "application/json", "X-Job-Id": JOB_ID, "X-Job-Secret": JOB_SECRET };
-const api = (p, body) => fetch(APP_URL + p, { method: "POST", headers: HEAD, body: JSON.stringify(body ?? {}) })
-  .then(async (r) => { if (!r.ok) throw new Error(p + " " + r.status + " " + (await r.text())); return r.json(); });
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function api(p, body) {
+  let lastError;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      const r = await fetch(APP_URL + p, { method: "POST", headers: HEAD, body: JSON.stringify(body ?? {}) });
+      if (r.ok) return r.json();
+      const text = await r.text();
+      const error = new Error(p + " " + r.status + " " + text);
+      if (r.status !== 429 && r.status < 500) throw error;
+      lastError = error;
+    } catch (e) {
+      lastError = e;
+      if (attempt === 5) break;
+    }
+    await delay(Math.min(30000, 1000 * (2 ** attempt)) + Math.floor(Math.random() * 500));
+  }
+  throw lastError || new Error(p + " failed after retries");
+}
 
 const log = async (line) => { console.log(line); try { await api("/api/public/jobs/log", { line }); } catch {} };
 
@@ -117,6 +134,16 @@ const READ_ONLY_TOOLS = new Set(["list_files", "glob", "read_file", "read_files"
 function toolsFor(kind, subAgents) {
   if (kind === "sub") return tools.filter((t) => t.function.name !== "finish");
   return subAgents && subAgents.length ? [...tools, DELEGATE_TOOL] : tools;
+}
+
+// Sub-agents reason in parallel, while checkout mutations and commands are
+// serialized. This keeps their speed advantage without corrupting shared files
+// or running builds against half-written code.
+let mutationQueue = Promise.resolve();
+function serialized(task) {
+  const next = mutationQueue.then(task, task);
+  mutationQueue = next.catch(() => {});
+  return next;
 }
 
 /* A cheap orientation pass so the model doesn't burn steps discovering the
@@ -562,6 +589,7 @@ function attachmentMessages(readable) {
 
 /* A sub-agent: same tools, same checkout, its own model and activity feed. */
 async function runSubAgent(spec, agent, task, ownFiles) {
+  const scopedAgent = { ...agent, ownFiles: Array.isArray(ownFiles) ? ownFiles : [] };
   const subTools = toolsFor("sub", spec.sub_agents);
   let messages = [
     { role: "system", content:
@@ -579,17 +607,17 @@ async function runSubAgent(spec, agent, task, ownFiles) {
   await event("status", "Started on: " + String(task).slice(0, 160), "coding", agent);
   for (let step = 0; step < 80; step++) {
     messages = await compactIfNeeded(spec, messages, agent);
-    const body = await callModel(spec, messages, { model: agent.model, tools: subTools, agent });
+    const body = await callModel(spec, messages, { model: agent.model, tools: subTools, agent: scopedAgent });
     const msg = body.choices && body.choices[0] && body.choices[0].message;
     if (!msg) return "Sub-agent " + agent.id + " returned no message.";
     messages.push(sanitizeAssistant(msg));
-    if (msg.content && String(msg.content).trim()) await event("thought", String(msg.content).trim().slice(0, 800), undefined, agent);
+    if (msg.content && String(msg.content).trim()) await event("thought", String(msg.content).trim().slice(0, 800), undefined, scopedAgent);
     const calls = msg.tool_calls || [];
     if (!calls.length) {
       await event("status", "Finished its part.", "done", agent);
       return String(msg.content || "Done.").slice(0, 6000);
     }
-    const results = await runToolCalls(calls, agent, () => {});
+    const results = await runToolCalls(calls, scopedAgent, () => {});
     for (const c of calls) messages.push({ role: "tool", tool_call_id: c.id, content: results.get(c.id) });
   }
   await event("status", "Hit its step limit.", "done", agent);
@@ -616,9 +644,23 @@ async function runToolCalls(calls, agent, onTool) {
     const args = parse(c);
     const name = c.function.name;
     if (name === "delegate") { results.set(c.id, "ERR: sub-agents cannot delegate"); continue; }
+    if (agent && WRITE_TOOLS.has(name) && agent.ownFiles && agent.ownFiles.length) {
+      const requested = name === "multi_edit" ? (args.edits || []).map((e) => e.path)
+        : name === "move_file" ? [args.from, args.to]
+        : [args.path];
+      const outside = requested.filter((p) => p && !agent.ownFiles.includes(p));
+      if (outside.length) {
+        results.set(c.id, "ERR: outside your assigned files: " + outside.join(", "));
+        continue;
+      }
+    }
     await event("action", verb(name, args), undefined, agent);
     onTool(name, args);
-    results.set(c.id, String(await execTool(name, args)).slice(0, 40000));
+    const run = () => execTool(name, args);
+    const output = WRITE_TOOLS.has(name) || name === "run_shell" || name === "check_code"
+      ? await serialized(run)
+      : await run();
+    results.set(c.id, String(output).slice(0, 40000));
   }
   return results;
 }

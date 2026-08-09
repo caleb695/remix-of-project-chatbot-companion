@@ -64,7 +64,14 @@ function ChatThreadPage() {
   const getMsgs = useServerFn(getThreadMessages);
   const getThreadFn = useServerFn(getThread);
 
-  const initial = useQuery({ queryKey: ["messages", threadId], queryFn: () => getMsgs({ data: { threadId } }) });
+  const initial = useQuery({
+    queryKey: ["messages", threadId],
+    queryFn: () => getMsgs({ data: { threadId } }),
+    // GitHub Actions owns durable runs, so keep pulling persisted turns even
+    // after a tab/device restart where the in-memory active job id is gone.
+    refetchInterval: 3000,
+    refetchIntervalInBackground: true,
+  });
   const thread = useQuery({ queryKey: ["thread", threadId], queryFn: () => getThreadFn({ data: { id: threadId } }) });
 
   if (initial.isLoading || thread.isLoading) {
@@ -225,6 +232,10 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     }
     prevRunning.current = jobRunning;
   }, [jobRunning, qc, threadId, repoId]);
+
+  // A remount cannot rely on module memory to identify the active job. The
+  // jobs list below discovers it from durable state; transcript polling above
+  // independently guarantees the final assistant turn appears.
 
   const setModel = useMutation({
     mutationFn: (m: string) => updateFn({ data: { id: threadId, model: m } }),
