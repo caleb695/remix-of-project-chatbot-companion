@@ -210,9 +210,9 @@ export const listJobsForThread = createServerFn({ method: "GET" })
   .handler(async ({ context, data }) => {
     const { data: rows, error } = await context.supabase
       .from("coding_jobs")
-      .select("id, status, prompt, commit_sha, error, finished_at, created_at")
+      .select("id, status, prompt, task_id, commit_sha, error, finished_at, created_at")
       .eq("thread_id", data.threadId)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false });
     if (error) throw error;
     return rows ?? [];
   });
