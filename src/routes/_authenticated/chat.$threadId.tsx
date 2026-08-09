@@ -167,11 +167,27 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   // live phase for the process indicator
   const eventsFn = useServerFn(listAgentEvents);
   const enqueueFn = useServerFn(enqueueCodingJob);
+  const listJobsFn = useServerFn(listJobsForThread);
   const [activeJobId, setActiveJobIdState] = useState<string | null>(() => getRunState(threadId).jobId);
   const setActiveJobId = useCallback((id: string | null) => {
     setActiveJobIdState(id);
     setRunState(threadId, { jobId: id });
   }, [threadId]);
+
+  const durableJobs = useQuery({
+    queryKey: ["jobs", threadId],
+    queryFn: () => listJobsFn({ data: { threadId } }),
+    refetchInterval: 3000,
+    refetchIntervalInBackground: true,
+  });
+  useEffect(() => {
+    const active = durableJobs.data?.find((candidate) =>
+      ["queued", "running", "checkpointed"].includes(candidate.status),
+    );
+    if (!active) return;
+    if (activeJobId !== active.id) setActiveJobId(active.id);
+    if (active.task_id && taskId !== active.task_id) setTaskId(active.task_id);
+  }, [activeJobId, durableJobs.data, setActiveJobId, setTaskId, taskId]);
 
   const runMut = useMutation({
     mutationFn: (prompt: string) => enqueueFn({ data: { threadId, prompt, mode, taskId: crypto.randomUUID() } }),
@@ -855,7 +871,7 @@ function JobsPanel({ threadId, activeJobId, onClear, repo }: {
     refetchInterval: 4000,
   });
   const active = jobs.data?.find((j) => j.id === activeJobId)
-    ?? jobs.data?.find((j) => j.status === "running" || j.status === "queued");
+    ?? jobs.data?.find((j) => ["running", "queued", "checkpointed"].includes(j.status));
   const detail = useQuery({
     queryKey: ["job", active?.id],
     queryFn: () => getFn({ data: { id: active!.id } }),
@@ -875,7 +891,7 @@ function JobsPanel({ threadId, activeJobId, onClear, repo }: {
     id: string; status: string; prompt: string; error: string | null;
     logs?: string | null; commit_sha?: string | null;
   };
-  const running = d.status === "queued" || d.status === "running";
+  const running = ["queued", "running", "checkpointed"].includes(d.status);
 
   return (
     <div className="rounded-lg border border-border bg-card p-3 text-xs">
