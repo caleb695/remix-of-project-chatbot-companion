@@ -730,8 +730,11 @@ async function main() {
     if (delegateCalls.length) {
       await Promise.all(delegateCalls.map(async (c) => {
         const args = parse(c);
-        const agent = subAgents.find((a) => a.id === args.agent_id) || subAgents[0];
-        if (!agent) { delegateResults.set(c.id, "ERR: no sub-agents are configured"); return; }
+        const agent = subAgents.find((a) => a.id === args.agent_id);
+        if (!agent) {
+          delegateResults.set(c.id, "ERR: unknown agent_id " + String(args.agent_id || "") + ". Valid ids: " + subAgents.map((a) => a.id).join(", "));
+          return;
+        }
         const clashes = claimFiles(agent.id, args.files);
         if (clashes.length) {
           delegateResults.set(c.id, "ERR: these files are already assigned to another sub-agent: " + clashes.join(", ") + ". Re-split the work so each agent owns different files.");

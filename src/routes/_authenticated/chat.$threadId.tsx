@@ -182,7 +182,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   });
   useEffect(() => {
     const active = durableJobs.data?.find((candidate) =>
-      ["queued", "running", "checkpointed"].includes(candidate.status),
+      ["queued", "running"].includes(candidate.status),
     );
     if (!active) return;
     if (activeJobId !== active.id) setActiveJobId(active.id);
@@ -226,7 +226,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     enabled: Boolean(activeJobId),
     refetchInterval: 3000,
   });
-  const jobRunning = job.data ? ["queued", "running", "checkpointed"].includes(job.data.status) : false;
+  const jobRunning = job.data ? ["queued", "running"].includes(job.data.status) : false;
   const working = busy || runMut.isPending || jobRunning;
 
   const events = useQuery({
@@ -871,7 +871,7 @@ function JobsPanel({ threadId, activeJobId, onClear, repo }: {
     refetchInterval: 4000,
   });
   const active = jobs.data?.find((j) => j.id === activeJobId)
-    ?? jobs.data?.find((j) => ["running", "queued", "checkpointed"].includes(j.status));
+    ?? jobs.data?.find((j) => ["running", "queued"].includes(j.status));
   const detail = useQuery({
     queryKey: ["job", active?.id],
     queryFn: () => getFn({ data: { id: active!.id } }),
@@ -891,7 +891,7 @@ function JobsPanel({ threadId, activeJobId, onClear, repo }: {
     id: string; status: string; prompt: string; error: string | null;
     logs?: string | null; commit_sha?: string | null;
   };
-  const running = ["queued", "running", "checkpointed"].includes(d.status);
+  const running = ["queued", "running"].includes(d.status);
 
   return (
     <div className="rounded-lg border border-border bg-card p-3 text-xs">
