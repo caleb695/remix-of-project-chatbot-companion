@@ -931,13 +931,26 @@ const TOOL_VERB: Record<string, string> = {
   staged_changes: "Reviewed staged changes",
 };
 
-function MessageBubble({ message }: { message: UIMessage }) {
+type RunData = {
+  jobId: string; taskId?: string; status?: string;
+  reviewBranch?: string | null; baseBranch?: string | null; commitSha?: string | null;
+  files?: Array<{ path: string; status: string }>;
+};
+
+function MessageBubble({ message, threadId }: { message: UIMessage; threadId: string }) {
   const isUser = message.role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={isUser ? "max-w-[85%] rounded-2xl bg-primary px-4 py-2 text-primary-foreground" : "max-w-full text-foreground"}>
         {message.parts.map((part, i) => {
           if (part.type === "text") return <div key={i} className="whitespace-pre-wrap text-sm leading-relaxed">{part.text}</div>;
+          // Persisted with the run, so the review + activity stay available
+          // long after the tab was closed.
+          if (part.type === "data-run") {
+            const data = (part as { data?: RunData }).data;
+            if (!data?.jobId) return null;
+            return <RunCard key={i} threadId={threadId} run={data} />;
+          }
           if (part.type.startsWith("tool-")) {
             const p = part as { type: string; input?: unknown };
             const name = p.type.replace(/^tool-/, "");
@@ -956,6 +969,130 @@ function MessageBubble({ message }: { message: UIMessage }) {
     </div>
   );
 }
+
+/* What the run changed, whether it is waiting for approval, and everything it
+ * did along the way — all rebuilt from the database on every load. */
+function RunCard({ threadId, run }: { threadId: string; run: RunData }) {
+  const qc = useQueryClient();
+  const jobFn = useServerFn(getJob);
+  const diffFn = useServerFn(getJobDiff);
+  const eventsFn = useServerFn(listAgentEvents);
+  const approveFn = useServerFn(approveJob);
+  const discardFn = useServerFn(discardJob);
+  const [changesOpen, setChangesOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+
+  const job = useQuery({ queryKey: ["job", run.jobId], queryFn: () => jobFn({ data: { id: run.jobId } }) });
+  const diff = useQuery({
+    queryKey: ["job-diff", run.jobId],
+    queryFn: () => diffFn({ data: { id: run.jobId } }),
+    enabled: changesOpen,
+  });
+  const events = useQuery({
+    queryKey: ["agent_events", threadId, run.taskId],
+    queryFn: () => eventsFn({ data: { threadId, ...(run.taskId ? { taskId: run.taskId } : {}) } }),
+    enabled: activityOpen && Boolean(run.taskId),
+  });
+
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ["job", run.jobId] });
+    qc.invalidateQueries({ queryKey: ["jobs", threadId] });
+  };
+  const approve = useMutation({
+    mutationFn: () => approveFn({ data: { id: run.jobId } }),
+    onSuccess: (r) => { toast.success(`Merged into ${r.base}`); done(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const discard = useMutation({
+    mutationFn: () => discardFn({ data: { id: run.jobId } }),
+    onSuccess: () => { toast.success("Changes discarded"); done(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const status = job.data?.status ?? run.status ?? "completed";
+  const files = (job.data?.changed_files as Array<{ path: string; status: string }> | undefined)?.length
+    ? (job.data!.changed_files as Array<{ path: string; status: string }>)
+    : (run.files ?? []);
+  const pending = status === "awaiting_review";
+
+  return (
+    <div className="mt-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="flex items-center gap-2">
+        <FileDiff className="h-3.5 w-3.5 text-primary" />
+        <span className="font-medium">
+          {pending ? "Waiting for your approval" : status === "discarded" ? "Changes discarded" : "Changes merged"}
+        </span>
+        <span className="ml-auto text-muted-foreground">{files.length} file{files.length === 1 ? "" : "s"}</span>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => setChangesOpen(true)}>
+          View changes
+        </Button>
+        {run.taskId && (
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => setActivityOpen(true)}>
+            What it did <ArrowUpRight className="ml-1 h-3 w-3" />
+          </Button>
+        )}
+        {pending && (
+          <>
+            <Button
+              size="sm" className="h-7 px-2.5 text-[11px]"
+              disabled={approve.isPending || discard.isPending}
+              onClick={() => approve.mutate()}
+            >
+              {approve.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Check className="mr-1 h-3 w-3" /> Approve &amp; commit</>}
+            </Button>
+            <Button
+              size="sm" variant="ghost" className="h-7 px-2 text-[11px] text-destructive"
+              disabled={approve.isPending || discard.isPending}
+              onClick={() => discard.mutate()}
+            >
+              Discard
+            </Button>
+          </>
+        )}
+      </div>
+
+      <Sheet open={changesOpen} onOpenChange={setChangesOpen}>
+        <SheetContent side="bottom" className="flex h-[85vh] flex-col p-0">
+          <SheetHeader className="border-b border-border/60 p-4">
+            <SheetTitle>Changes from this run</SheetTitle>
+            {run.reviewBranch && (
+              <p className="font-mono text-[10px] text-muted-foreground">{run.reviewBranch} → {run.baseBranch}</p>
+            )}
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto p-3">
+            {files.map((f) => (
+              <div key={f.path} className="flex items-center gap-2 border-b border-border/40 py-2 font-mono text-[11px]">
+                <span className={`w-16 shrink-0 uppercase ${
+                  f.status === "added" ? "text-emerald-500" : f.status === "deleted" ? "text-destructive" : "text-amber-500"
+                }`}>{f.status}</span>
+                <span className="truncate">{f.path}</span>
+              </div>
+            ))}
+            {diff.isLoading && <div className="grid place-items-center py-6"><Loader2 className="h-4 w-4 animate-spin" /></div>}
+            {diff.data?.patch && (
+              <pre className="mt-3 whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono text-[10px] leading-snug">{diff.data.patch}</pre>
+            )}
+            {!diff.isLoading && !diff.data?.patch && files.length === 0 && (
+              <p className="p-4 text-sm text-muted-foreground">No file changes were recorded for this run.</p>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <ActivitySheet
+        open={activityOpen}
+        onOpenChange={setActivityOpen}
+        events={(events.data ?? []) as AgentEvent[]}
+        phase="done"
+        busy={false}
+      />
+    </div>
+  );
+}
+
 
 /* ------------------------------- repo + model ----------------------------- */
 
