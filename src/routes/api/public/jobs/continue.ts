@@ -9,7 +9,7 @@ export const Route = createFileRoute("/api/public/jobs/continue")({
   server: { handlers: { POST: async ({ request }) => {
     let ctx; try { ctx = await authJobRequest(request); } catch (r) { return r as Response; }
     const { job, sb } = ctx;
-    const body = (await request.json().catch(() => ({}))) as { checkpoint?: unknown };
+    const body = (await request.json().catch(() => ({}))) as { checkpoint?: unknown; review_branch?: string };
 
     const { data: sel } = await sb
       .from("repo_selections").select("owner, name, working_branch").eq("id", job.repo_selection_id).single();
