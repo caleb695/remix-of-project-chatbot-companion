@@ -15,6 +15,7 @@ export type DriveFileMeta = {
   path: string; // computed path from chosen root
 };
 
+const isBrowser = typeof window !== "undefined";
 const CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID ?? "";
 const SCOPES = "https://www.googleapis.com/auth/drive.readonly";
 
@@ -23,6 +24,7 @@ let accessToken: string | null = null;
 let accessTokenExpiresAt: number | null = null;
 
 function ensureClientInitialized() {
+  if (!isBrowser) throw new Error("googleDriveClient must be used in the browser only (SSR detected)");
   if (!CLIENT_ID) throw new Error("REACT_APP_GOOGLE_CLIENT_ID is not set");
   if (!(window as any).google) {
     throw new Error("Google Identity Services not loaded. Add <script src=\"https://accounts.google.com/gsi/client\" async defer></script> to index.html");
@@ -43,7 +45,7 @@ function ensureClientInitialized() {
 }
 
 export async function initGoogleIdentity(): Promise<void> {
-  // no-op other than verifying CLIENT_ID and presence of google
+  if (!isBrowser) return Promise.reject(new Error("googleDriveClient must be used in the browser only (SSR detected)"));
   return new Promise((resolve, reject) => {
     try {
       ensureClientInitialized();
@@ -55,6 +57,7 @@ export async function initGoogleIdentity(): Promise<void> {
 }
 
 export async function requestAccessTokenPopup(): Promise<string> {
+  if (!isBrowser) return Promise.reject(new Error("googleDriveClient must be used in the browser only (SSR detected)"));
   ensureClientInitialized();
   return new Promise((resolve, reject) => {
     // set up a temporary callback to capture the token for this request
@@ -87,6 +90,7 @@ export async function requestAccessTokenPopup(): Promise<string> {
 }
 
 export function getAccessToken(): string | null {
+  if (!isBrowser) return null;
   if (!accessToken) return null;
   if (accessTokenExpiresAt && Date.now() > accessTokenExpiresAt - 60000) {
     // token is about to expire (within 60s) - we could optionally refresh silently
@@ -106,6 +110,7 @@ export async function listFolderRecursive(
   accessTokenParam: string,
   rootName = ""
 ): Promise<DriveFileMeta[]> {
+  if (!isBrowser) throw new Error("listFolderRecursive must be called in the browser");
   const results: DriveFileMeta[] = [];
 
   async function listChildren(parentId: string, currentPath: string) {
@@ -155,6 +160,7 @@ const exportMimeMap: Record<string, string> = {
 };
 
 export async function downloadDriveFileAsFile(fileMeta: DriveFileMeta, accessTokenParam: string): Promise<File> {
+  if (!isBrowser) throw new Error("downloadDriveFileAsFile must be called in the browser");
   const isGoogleNative = fileMeta.mimeType.startsWith('application/vnd.google-apps');
   let downloadUrl: string;
   if (isGoogleNative) {
@@ -179,6 +185,7 @@ export async function downloadDriveFileAsFile(fileMeta: DriveFileMeta, accessTok
       fileName = `${fileName}.pdf`;
     }
   }
+  // File constructor is available in browsers; this function is guarded to run only in browsers
   return new File([blob], fileName, { type: blob.type });
 }
 
@@ -193,6 +200,7 @@ export async function uploadDriveFolderToModel(
   uploadFileToModel: (file: File, path: string) => Promise<void>,
   options?: { concurrency?: number; rootName?: string }
 ) {
+  if (!isBrowser) throw new Error("uploadDriveFolderToModel must be called in the browser");
   const concurrency = options?.concurrency ?? 3;
   const token = getAccessToken();
   if (!token) throw new Error('No access token - call requestAccessTokenPopup() first');
