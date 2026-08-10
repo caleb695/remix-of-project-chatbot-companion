@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useUploadToModel } from "@/hooks/useUploadToModel";
+import { useUploadToModel } from "../hooks/useUploadToModel";
 
 export default function GoogleDriveUploader() {
   const { uploadFileToModel } = useUploadToModel();
@@ -15,7 +15,7 @@ export default function GoogleDriveUploader() {
     let mounted = true;
     (async () => {
       try {
-        const client = await import("@/lib/googleDriveClient");
+        const client = await import("../lib/googleDriveClient");
         clientRef.current = client;
         try {
           await client.initGoogleIdentity();
