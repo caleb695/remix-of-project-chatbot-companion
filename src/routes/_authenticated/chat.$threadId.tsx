@@ -14,7 +14,7 @@ import { getThreadMessages, listThreads, createThread, deleteThread, getThread, 
 import { listRepoSelections, commitAndPush } from "@/lib/github.functions";
 import { getKaggleStaged, pushKaggleNotebook, listKaggleNotebooks } from "@/lib/kaggle.functions";
 import { listOpenrouterModels, getOpenrouterSettings } from "@/lib/openrouter.functions";
-import { enqueueCodingJob, listJobsForThread, getJob, cancelJob } from "@/lib/jobs.functions";
+import { enqueueCodingJob, listJobsForThread, getJob, cancelJob, getJobDiff, approveJob, discardJob } from "@/lib/jobs.functions";
 import { listAgentEvents, getStagedChanges, setThreadMode, branchThread } from "@/lib/agent.functions";
 import { getSubAgents, setSubAgents } from "@/lib/subagents.functions";
 import { listAttachments, registerAttachment, setAttachmentCodeOnly, deleteAttachment } from "@/lib/attachments.functions";
