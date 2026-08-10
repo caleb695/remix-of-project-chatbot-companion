@@ -188,7 +188,7 @@ export const getJob = createServerFn({ method: "GET" })
   .handler(async ({ context, data }) => {
     const { data: job, error } = await context.supabase
       .from("coding_jobs")
-      .select("id, status, prompt, logs, error, commit_sha, finished_at, created_at, updated_at")
+      .select("id, status, prompt, logs, error, summary, commit_sha, review_branch, changed_files, working_branch, task_id, finished_at, created_at, updated_at")
       .eq("id", data.id).maybeSingle();
     if (error) throw error;
     // A dispatch can be accepted by GitHub but never start the workflow (missing
@@ -202,6 +202,111 @@ export const getJob = createServerFn({ method: "GET" })
     }
     return job;
   });
+
+/** The full patch the run produced, for the review screen. */
+export const getJobDiff = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ context, data }) => {
+    const { data: job, error } = await context.supabase
+      .from("coding_jobs").select("diff, changed_files, review_branch").eq("id", data.id).maybeSingle();
+    if (error) throw error;
+    const diff = (job?.diff ?? {}) as { patch?: string };
+    return {
+      patch: diff.patch ?? "",
+      files: (job?.changed_files ?? []) as Array<{ path: string; status: string }>,
+      review_branch: job?.review_branch ?? null,
+    };
+  });
+
+async function ghRepoForJob(
+  supabase: { from: (t: string) => { select: (c: string) => { eq: (k: string, v: string) => { maybeSingle: () => Promise<{ data: unknown }>; single: () => Promise<{ data: unknown }> } } } },
+  jobId: string,
+) {
+  void supabase; void jobId;
+}
+
+/** Merge the run's review branch into the working branch — the user's approval. */
+export const approveJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ context, data }) => {
+    const { data: job, error } = await context.supabase
+      .from("coding_jobs")
+      .select("id, status, review_branch, working_branch, repo_selection_id, summary")
+      .eq("id", data.id).single();
+    if (error) throw error;
+    if (!job.review_branch) throw new Error("This run has nothing to approve");
+
+    const { data: sel } = await context.supabase
+      .from("repo_selections").select("owner, name, working_branch").eq("id", job.repo_selection_id).single();
+    const { data: conn } = await context.supabase
+      .from("github_connections").select("access_token").maybeSingle();
+    if (!sel || !conn?.access_token) throw new Error("Connect GitHub first");
+
+    const base = job.working_branch || sel.working_branch;
+    const headers = {
+      Authorization: `Bearer ${conn.access_token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+      "User-Agent": "coderbot-app",
+    };
+    const res = await fetch(`https://api.github.com/repos/${sel.owner}/${sel.name}/merges`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        base,
+        head: job.review_branch,
+        commit_message: `Coderbot: ${job.summary?.slice(0, 60) ?? "approved changes"}`,
+      }),
+    });
+    if (!res.ok && res.status !== 204) {
+      const text = await res.text();
+      if (res.status === 409) throw new Error("GitHub reported a merge conflict with " + base + ". Resolve it on the branch " + job.review_branch + ".");
+      throw new Error(`GitHub merge failed (${res.status}): ${text.slice(0, 200)}`);
+    }
+    const merged = res.status === 204 ? null : ((await res.json()) as { sha?: string }).sha ?? null;
+
+    await fetch(`https://api.github.com/repos/${sel.owner}/${sel.name}/git/refs/heads/${job.review_branch}`, {
+      method: "DELETE", headers,
+    }).catch(() => {});
+
+    await context.supabase.from("coding_jobs")
+      .update({ status: "completed", commit_sha: merged, review_branch: null, updated_at: new Date().toISOString() })
+      .eq("id", job.id);
+    return { ok: true, sha: merged, base };
+  });
+
+/** Throw the run's changes away without touching the working branch. */
+export const discardJob = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ context, data }) => {
+    const { data: job, error } = await context.supabase
+      .from("coding_jobs").select("id, review_branch, repo_selection_id").eq("id", data.id).single();
+    if (error) throw error;
+    const { data: sel } = await context.supabase
+      .from("repo_selections").select("owner, name").eq("id", job.repo_selection_id).single();
+    const { data: conn } = await context.supabase
+      .from("github_connections").select("access_token").maybeSingle();
+    if (job.review_branch && sel && conn?.access_token) {
+      await fetch(`https://api.github.com/repos/${sel.owner}/${sel.name}/git/refs/heads/${job.review_branch}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${conn.access_token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "User-Agent": "coderbot-app",
+        },
+      }).catch(() => {});
+    }
+    await context.supabase.from("coding_jobs")
+      .update({ status: "discarded", review_branch: null, updated_at: new Date().toISOString() })
+      .eq("id", job.id);
+    return { ok: true };
+  });
+
 
 
 export const listJobsForThread = createServerFn({ method: "GET" })
