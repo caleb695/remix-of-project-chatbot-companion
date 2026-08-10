@@ -205,6 +205,7 @@ export type Database = {
       }
       coding_jobs: {
         Row: {
+          changed_files: Json
           checkpoint: Json
           commit_sha: string | null
           continue_of: string | null
@@ -224,7 +225,9 @@ export type Database = {
           progress_total: number | null
           prompt: string
           repo_selection_id: string
+          review_branch: string | null
           status: string
+          summary: string | null
           task_id: string | null
           thread_id: string | null
           updated_at: string
@@ -233,6 +236,7 @@ export type Database = {
           working_branch: string | null
         }
         Insert: {
+          changed_files?: Json
           checkpoint?: Json
           commit_sha?: string | null
           continue_of?: string | null
@@ -252,7 +256,9 @@ export type Database = {
           progress_total?: number | null
           prompt: string
           repo_selection_id: string
+          review_branch?: string | null
           status?: string
+          summary?: string | null
           task_id?: string | null
           thread_id?: string | null
           updated_at?: string
@@ -261,6 +267,7 @@ export type Database = {
           working_branch?: string | null
         }
         Update: {
+          changed_files?: Json
           checkpoint?: Json
           commit_sha?: string | null
           continue_of?: string | null
@@ -280,7 +287,9 @@ export type Database = {
           progress_total?: number | null
           prompt?: string
           repo_selection_id?: string
+          review_branch?: string | null
           status?: string
+          summary?: string | null
           task_id?: string | null
           thread_id?: string | null
           updated_at?: string
