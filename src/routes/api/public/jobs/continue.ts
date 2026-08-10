@@ -51,7 +51,9 @@ export const Route = createFileRoute("/api/public/jobs/continue")({
           job_id: next.id,
           job_secret: secret,
           app_url: origin,
-          working_branch: job.working_branch ?? sel.working_branch,
+          // Continuations check out the review branch so the work in progress
+          // is there; the merge target stays the user's working branch.
+          working_branch: body.review_branch || job.working_branch || sel.working_branch,
         },
       }),
     });
