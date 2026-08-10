@@ -11,6 +11,10 @@ const JOB_ID = process.env.JOB_ID;
 const JOB_SECRET = process.env.JOB_SECRET;
 const APP_URL = process.env.APP_URL;
 const BRANCH = process.env.WORKING_BRANCH;
+/* The branch the user will merge into, and the throwaway branch this task
+ * pushes to. Nothing lands on BASE_BRANCH without the user approving it. */
+let BASE_BRANCH = BRANCH;
+let REVIEW_BRANCH = BRANCH;
 
 if (!JOB_ID || !JOB_SECRET || !APP_URL) { console.error("missing env"); process.exit(1); }
 
