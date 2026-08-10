@@ -674,6 +674,9 @@ async function main() {
   const spec = await api("/api/public/jobs/claim");
   await log("Model: " + spec.model + " · mode: " + (spec.mode || "build"));
 
+  BASE_BRANCH = spec.working_branch || BRANCH;
+  REVIEW_BRANCH = "coderbot/task-" + String(spec.task_id || JOB_ID).slice(0, 40);
+
   if (spec.job_type === "index") { await runIndex(spec); return; }
 
   const resumed = spec.checkpoint && Array.isArray(spec.checkpoint.messages) && spec.checkpoint.messages.length > 0;
