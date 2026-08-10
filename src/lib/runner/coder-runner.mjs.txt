@@ -123,10 +123,10 @@ const tools = [
 
 const DELEGATE_TOOL = { type: "function", function: {
   name: "delegate",
-  description: "Hand a self-contained part of the task to one of your sub-agents. It has the same file tools on this same checkout. Issue SEVERAL delegate calls in the SAME turn to run sub-agents in parallel. Never give two sub-agents the same files.",
+  description: "Hand a FULL workstream — not an errand — to one of your sub-agents. Split the overall task into roughly equal shares: one per sub-agent plus one for yourself. Issue every delegate call for a round in the SAME turn so the sub-agents run in parallel. Each assignment must be a paragraph or more (goal, files it owns, behaviour, how to verify). When they report back, immediately delegate the next comparable chunk if meaningful work remains. Never give two sub-agents the same files.",
   parameters: { type: "object", properties: {
     agent_id: { type: "string" },
-    task: { type: "string", description: "Complete, self-contained instructions: what to change, which files, and how to verify." },
+    task: { type: "string", description: "A complete workstream: the goal, every file it owns, what to implement or change, edge cases, and how to verify. Comparable in size to what you keep for yourself." },
     files: { type: "array", items: { type: "string" }, description: "Files this sub-agent owns. Used to stop two sub-agents editing the same file." },
   }, required: ["agent_id", "task"] },
 } };
