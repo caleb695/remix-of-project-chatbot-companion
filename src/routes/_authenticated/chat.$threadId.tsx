@@ -181,12 +181,14 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     refetchIntervalInBackground: true,
   });
   useEffect(() => {
-    const active = durableJobs.data?.find((candidate) =>
-      ["queued", "running"].includes(candidate.status),
-    );
-    if (!active) return;
-    if (activeJobId !== active.id) setActiveJobId(active.id);
-    if (active.task_id && taskId !== active.task_id) setTaskId(active.task_id);
+    const jobs = durableJobs.data ?? [];
+    const active = jobs.find((candidate) => ["queued", "running"].includes(candidate.status));
+    // After a reload there may be no active job, but the last finished run's
+    // activity log should still be reachable from the composer.
+    const target = active ?? jobs[0];
+    if (!target) return;
+    if (active && activeJobId !== active.id) setActiveJobId(active.id);
+    if (target.task_id && taskId !== target.task_id) setTaskId(target.task_id);
   }, [activeJobId, durableJobs.data, setActiveJobId, setTaskId, taskId]);
 
   const runMut = useMutation({
