@@ -219,13 +219,6 @@ export const getJobDiff = createServerFn({ method: "GET" })
     };
   });
 
-async function ghRepoForJob(
-  supabase: { from: (t: string) => { select: (c: string) => { eq: (k: string, v: string) => { maybeSingle: () => Promise<{ data: unknown }>; single: () => Promise<{ data: unknown }> } } } },
-  jobId: string,
-) {
-  void supabase; void jobId;
-}
-
 /** Merge the run's review branch into the working branch — the user's approval. */
 export const approveJob = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
