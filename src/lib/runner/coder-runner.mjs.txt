@@ -809,30 +809,59 @@ async function main() {
   await commitAndComplete(done);
 }
 
-async function gitCommit(message) {
+async function gitCommit(message, branch) {
   sh("git config user.email 'coderbot@users.noreply.github.com'");
   sh("git config user.name 'Coderbot'");
   const status = sh("git status --porcelain");
   if (!status.trim()) return null;
   sh("git add -A");
   sh("git commit -m " + JSON.stringify(message));
-  sh("git pull --rebase origin " + BRANCH + " || true");
-  sh("git push origin HEAD:" + BRANCH);
+  sh("git push --force origin HEAD:" + branch);
   return sh("git rev-parse HEAD").trim();
 }
 
+/* What the run changed, relative to the branch the user will merge into. */
+function reviewDetails() {
+  let files = [];
+  let patch = "";
+  try {
+    sh("git fetch origin " + BASE_BRANCH + " --depth=200 || true");
+    const range = "origin/" + BASE_BRANCH + "...HEAD";
+    files = sh("git diff --name-status " + range).split("\n").map((l) => l.trim()).filter(Boolean)
+      .map((l) => {
+        const [status, ...rest] = l.split(/\s+/);
+        return { status: status[0] === "A" ? "added" : status[0] === "D" ? "deleted" : status[0] === "R" ? "renamed" : "modified", path: rest.join(" ") };
+      }).slice(0, 500);
+    patch = sh("git --no-pager diff " + range).slice(0, 400000);
+  } catch (e) {
+    log("diff summary failed: " + ((e && e.message) || e));
+  }
+  return { files, patch };
+}
+
+/* The agent never lands work by itself: it pushes to a review branch and the
+ * user approves the merge from the app. */
 async function commitAndComplete(done) {
   try {
-    const sha = await gitCommit(done.commit_message || "Coderbot update");
+    const sha = await gitCommit(done.commit_message || "Coderbot update", REVIEW_BRANCH);
     if (sha) {
-      await event("status", "Committed and pushed " + sha.slice(0, 7) + ".", "done");
-      await api("/api/public/jobs/complete", { status: "completed", summary: done.summary || "Done.", commit_sha: sha });
+      const { files, patch } = reviewDetails();
+      await event("status", "Pushed " + files.length + " changed file(s) to " + REVIEW_BRANCH + " — waiting for your approval.", "done");
+      await api("/api/public/jobs/complete", {
+        status: "awaiting_review",
+        summary: done.summary || "Done.",
+        commit_sha: sha,
+        review_branch: REVIEW_BRANCH,
+        base_branch: BASE_BRANCH,
+        changed_files: files,
+        diff: patch,
+      });
     } else {
       await event("status", "Finished — no file changes were needed.", "done");
       await api("/api/public/jobs/complete", { status: "completed", summary: done.summary || "No changes." });
     }
   } catch (e) {
-    await event("error", "Commit/push failed: " + ((e && e.message) || e), "done");
+    await event("error", "Push failed: " + ((e && e.message) || e), "done");
     await api("/api/public/jobs/complete", { status: "failed", error: String((e && e.message) || e) });
     process.exit(1);
   }
@@ -842,13 +871,14 @@ async function commitAndComplete(done) {
  * run so long tasks survive the 6h GitHub Actions limit. */
 async function checkpointAndContinue(messages) {
   await event("status", "Approaching the GitHub Actions time limit — saving progress and starting a fresh run.", PHASE);
-  try { await gitCommit("Coderbot checkpoint (work in progress)"); } catch (e) { await log("checkpoint push failed: " + ((e && e.message) || e)); }
+  try { await gitCommit("Coderbot checkpoint (work in progress)", REVIEW_BRANCH); } catch (e) { await log("checkpoint push failed: " + ((e && e.message) || e)); }
   const checkpoint = { messages: trimForCheckpoint(messages), todos: TODOS };
   await api("/api/public/jobs/checkpoint", { checkpoint });
-  const res = await api("/api/public/jobs/continue", { checkpoint });
+  const res = await api("/api/public/jobs/continue", { checkpoint, review_branch: REVIEW_BRANCH });
   await event("status", "Continuing in a new GitHub Actions run.", PHASE);
   await log("continuation job " + (res.job_id || "?"));
 }
+
 
 /* ============================ Indexing mode ============================ */
 
