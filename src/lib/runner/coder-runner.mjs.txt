@@ -804,6 +804,13 @@ async function main() {
       messages.push({ role: "tool", tool_call_id: c.id, content: out });
     }
 
+    if (redelegateNote) {
+      messages.push({ role: "user", content: redelegateNote });
+      redelegateNote = null;
+    }
+
+
+
     if (finishCall) {
       const args = parse(finishCall);
       if (sawWrite && !sawCheck) {
