@@ -699,6 +699,7 @@ async function main() {
   let sawCheck = false;
   let sawWrite = false;
   let noProgress = 0;
+  let redelegateNote = null;
 
   for (let step = 0; step < MAX_STEPS; step++) {
     if (Date.now() - START > TIME_LIMIT_MS) {
