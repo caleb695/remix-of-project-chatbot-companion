@@ -742,14 +742,20 @@ async function main() {
           delegateResults.set(c.id, "ERR: unknown agent_id " + String(args.agent_id || "") + ". Valid ids: " + subAgents.map((a) => a.id).join(", "));
           return;
         }
+        const task = String(args.task || "").trim();
+        // A one-line errand wastes a whole agent: make the split substantial.
+        if (task.length < 120) {
+          delegateResults.set(c.id, "ERR: that assignment is too small for a sub-agent. Give it a full workstream of comparable size to your own share — the goal, every file it owns, the behaviour to implement, and how to verify — in at least a short paragraph. Re-issue the delegate call with the bigger chunk.");
+          return;
+        }
         const clashes = claimFiles(agent.id, args.files);
         if (clashes.length) {
           delegateResults.set(c.id, "ERR: these files are already assigned to another sub-agent: " + clashes.join(", ") + ". Re-split the work so each agent owns different files.");
           return;
         }
-        await event("action", "Delegated to " + agent.label + ": " + String(args.task || "").slice(0, 120), "coding");
+        await event("action", "Delegated to " + agent.label + ": " + task.slice(0, 120), "coding");
         try {
-          const report = await runSubAgent(spec, agent, String(args.task || ""), args.files);
+          const report = await runSubAgent(spec, agent, task, args.files);
           delegateResults.set(c.id, (agent.label + " reported:\n" + report).slice(0, 20000));
         } catch (e) {
           const report = "Sub-agent failed: " + ((e && e.message) || e);
@@ -761,7 +767,13 @@ async function main() {
       }));
       sawWrite = true;
       sawCheck = false; // sub-agent work must be verified by the main agent
+      const idle = subAgents.map((a) => a.id + " (" + a.label + ")").join(", ");
+      const pending = TODOS.filter((t) => t.status !== "done").map((t) => t.title).join("; ");
+      redelegateNote = "All sub-agents are idle again: " + idle + ". "
+        + (pending ? "Still open on your plan: " + pending + ". " : "")
+        + "If any meaningful work remains, hand each idle sub-agent another comparable-sized chunk in your NEXT turn (several delegate calls at once) and take an equal share yourself. Only stop delegating when what is left is small enough that splitting it would cost more than doing it.";
     }
+
 
     // finish is handled inline; everything else goes through the shared executor.
     const finishCall = calls.find((c) => c.function.name === "finish");
