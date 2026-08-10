@@ -319,7 +319,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
                   : "Pick a repo or Kaggle notebook to get started."}
             </div>
           )}
-          {messages.map((m) => <MessageBubble key={m.id} message={m} />)}
+          {messages.map((m) => <MessageBubble key={m.id} message={m} threadId={threadId} />)}
           {error && <p className="text-sm text-destructive">{error.message}</p>}
           <JobsPanel threadId={threadId} activeJobId={activeJobId} onClear={() => setActiveJobId(null)} repo={thread.repo_selections} />
         </div>
