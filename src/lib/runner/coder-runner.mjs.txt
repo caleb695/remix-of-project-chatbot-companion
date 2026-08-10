@@ -123,7 +123,7 @@ const tools = [
 
 const DELEGATE_TOOL = { type: "function", function: {
   name: "delegate",
-  description: "Hand a FULL workstream — not an errand — to one of your sub-agents. Split the overall task into roughly equal shares: one per sub-agent plus one for yourself. Issue every delegate call for a round in the SAME turn so the sub-agents run in parallel. Each assignment must be a paragraph or more (goal, files it owns, behaviour, how to verify). When they report back, immediately delegate the next comparable chunk if meaningful work remains. Never give two sub-agents the same files.",
+  description: "Hand a FULL workstream — not an errand — to one of your sub-agents. Split the overall task into roughly equal shares: one per sub-agent plus one for yourself. Issue every delegate call for a round in the SAME turn so the sub-agents run in parallel. Brief each one like a colleague who just walked in: it has not seen this conversation, so give the goal, the exact files it owns, what to change, and how to verify — never 'based on your findings, fix it'. Each assignment must be a paragraph or more. When they report back, immediately delegate the next comparable chunk if meaningful work remains. Never give two sub-agents the same file, and never invent a sub-agent's result — wait for it. Do NOT delegate a single read, grep or one-line edit; do those yourself.",
   parameters: { type: "object", properties: {
     agent_id: { type: "string" },
     task: { type: "string", description: "A complete workstream: the goal, every file it owns, what to implement or change, edge cases, and how to verify. Comparable in size to what you keep for yourself." },
