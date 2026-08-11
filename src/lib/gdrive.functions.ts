@@ -23,6 +23,42 @@ async function driveFetch(path: string, init?: RequestInit) {
   return res;
 }
 
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      for (;;) {
+        const index = next++;
+        if (index >= items.length) return;
+        results[index] = await fn(items[index]);
+      }
+    }),
+  );
+  return results;
+}
+
+async function listDriveFiles(q: string, pageSize = 1000) {
+  const files: Array<Record<string, string>> = [];
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams({
+      q,
+      pageSize: String(pageSize),
+      orderBy: "folder,name",
+      fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const res = await driveFetch(`/files?${params.toString()}`);
+    const json = (await res.json()) as { files?: Array<Record<string, string>>; nextPageToken?: string };
+    files.push(...(json.files ?? []));
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+  return files;
+}
+
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 
 /** Google-native docs need an export mime type; everything else downloads as-is. */
@@ -48,17 +84,8 @@ export const listDrive = createServerFn({ method: "POST" })
     const q = escaped
       ? `name contains '${escaped}' and trashed = false`
       : `'${data.folderId.replace(/'/g, "\\'")}' in parents and trashed = false`;
-    const params = new URLSearchParams({
-      q,
-      pageSize: "200",
-      orderBy: "folder,name",
-      fields: "files(id,name,mimeType,size,modifiedTime)",
-      supportsAllDrives: "true",
-      includeItemsFromAllDrives: "true",
-    });
-    const res = await driveFetch(`/files?${params.toString()}`);
-    const json = (await res.json()) as { files?: Array<Record<string, string>> };
-    return (json.files ?? []).map((f) => ({
+    const files = await listDriveFiles(q, 200);
+    return files.map((f) => ({
       id: f.id!,
       name: f.name!,
       mimeType: f.mimeType!,
@@ -70,19 +97,12 @@ export const listDrive = createServerFn({ method: "POST" })
 
 async function listFolderRecursive(folderId: string, prefix: string, out: Array<DriveEntry & { path: string }>, depth = 0) {
   if (depth > 5 || out.length >= 100) return;
-  const params = new URLSearchParams({
-    q: `'${folderId.replace(/'/g, "\\'")}' in parents and trashed = false`,
-    pageSize: "200",
-    fields: "files(id,name,mimeType,size,modifiedTime)",
-    supportsAllDrives: "true",
-    includeItemsFromAllDrives: "true",
-  });
-  const res = await driveFetch(`/files?${params.toString()}`);
-  const json = (await res.json()) as { files?: Array<Record<string, string>> };
-  for (const f of json.files ?? []) {
+  const files = await listDriveFiles(`'${folderId.replace(/'/g, "\\'")}' in parents and trashed = false`);
+  const folders: Array<{ id: string; prefix: string }> = [];
+  for (const f of files) {
     if (out.length >= 100) return;
     if (f.mimeType === FOLDER_MIME) {
-      await listFolderRecursive(f.id!, `${prefix}${f.name}/`, out, depth + 1);
+      folders.push({ id: f.id!, prefix: `${prefix}${f.name}/` });
     } else {
       out.push({
         id: f.id!, name: f.name!, mimeType: f.mimeType!, size: f.size ? Number(f.size) : null,
@@ -90,6 +110,7 @@ async function listFolderRecursive(folderId: string, prefix: string, out: Array<
       });
     }
   }
+  await mapLimit(folders, 4, (folder) => listFolderRecursive(folder.id, folder.prefix, out, depth + 1));
 }
 
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -121,7 +142,7 @@ export const importFromDrive = createServerFn({ method: "POST" })
     const imported: string[] = [];
     const skipped: Array<{ name: string; reason: string }> = [];
 
-    for (const t of targets.slice(0, 100)) {
+    await mapLimit(targets.slice(0, 100), 6, async (t) => {
       try {
         let mimeType = t.mimeType;
         if (!mimeType) {
@@ -137,7 +158,7 @@ export const importFromDrive = createServerFn({ method: "POST" })
         const buf = new Uint8Array(await fileRes.arrayBuffer());
         if (buf.byteLength > MAX_BYTES) {
           skipped.push({ name: t.name, reason: "larger than 20MB" });
-          continue;
+          return;
         }
         const finalMime = exportAs ? exportAs.mime : (mimeType ?? "application/octet-stream");
         const safe = `${t.name}${exportAs && !t.name.endsWith(exportAs.ext) ? exportAs.ext : ""}`
@@ -160,7 +181,7 @@ export const importFromDrive = createServerFn({ method: "POST" })
       } catch (e) {
         skipped.push({ name: t.name, reason: e instanceof Error ? e.message.slice(0, 160) : "failed" });
       }
-    }
+    });
 
     return { imported, skipped };
   });

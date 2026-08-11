@@ -549,24 +549,39 @@ function phaseFor(name, sawCheck) {
 /* ----------------------------------- main --------------------------------- */
 
 /* Pull the user's uploaded files into the checkout so code can use them. */
+const safeUploadPath = (name) => String(name)
+  .split("/")
+  .filter(Boolean)
+  .map((part) => part.replace(/[^\w.\-]+/g, "_").replace(/^\.+$/, "_").slice(0, 120) || "file")
+  .join("/");
+
 async function fetchAttachments(spec) {
   const list = spec.attachments || [];
   if (!list.length) return [];
   const readable = [];
   fs.mkdirSync("uploads", { recursive: true });
-  for (const a of list) {
-    const safe = String(a.name).replace(/[^\w.\-]+/g, "_");
-    try {
-      const res = await fetch(a.url);
-      if (!res.ok) throw new Error("download " + res.status);
-      const buf = Buffer.from(await res.arrayBuffer());
-      fs.writeFileSync(path.join("uploads", safe), buf);
-      await event("action", "Saved upload uploads/" + safe, PHASE);
-      if (!a.code_only) readable.push({ name: safe, mime: a.mime_type || "", buf });
-    } catch (e) {
-      await log("attachment failed " + safe + ": " + ((e && e.message) || e));
+  let next = 0;
+  const workers = Array.from({ length: Math.min(6, list.length) }, async () => {
+    for (;;) {
+      const index = next++;
+      if (index >= list.length) return;
+      const a = list[index];
+      const safe = safeUploadPath(a.name);
+      try {
+        const res = await fetch(a.url);
+        if (!res.ok) throw new Error("download " + res.status);
+        const buf = Buffer.from(await res.arrayBuffer());
+        const target = path.join("uploads", safe);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, buf);
+        await event("action", "Saved upload uploads/" + safe, PHASE);
+        if (!a.code_only) readable.push({ name: safe, mime: a.mime_type || "", buf });
+      } catch (e) {
+        await log("attachment failed " + safe + ": " + ((e && e.message) || e));
+      }
     }
-  }
+  });
+  await Promise.all(workers);
   return readable;
 }
 
