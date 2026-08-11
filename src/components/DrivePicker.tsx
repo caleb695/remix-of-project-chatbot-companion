@@ -51,6 +51,11 @@ export function DrivePicker({
   });
 
   const selectedCount = Object.keys(selected).length;
+  const openFolder = (entry: DriveEntry) => {
+    setSearch("");
+    setTerm("");
+    setCrumbs((prev) => [...prev, { id: entry.id, name: entry.name }]);
+  };
   const toggle = (e: DriveEntry) =>
     setSelected((prev) => {
       const next = { ...prev };
@@ -121,7 +126,7 @@ export function DrivePicker({
                   type="button"
                   className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   onClick={() => {
-                    if (e.isFolder && !term) setCrumbs((p) => [...p, { id: e.id, name: e.name }]);
+                    if (e.isFolder) openFolder(e);
                     else toggle(e);
                   }}
                 >
