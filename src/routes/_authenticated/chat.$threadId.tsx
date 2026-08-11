@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Loader2, Plus, Trash2, MessageSquare, Search, ChevronDown, X, Github, Zap,
   ExternalLink, GitBranch, Menu, Brain, Hammer, Bug, Sparkles, ArrowUpRight, FileDiff, Check, NotebookPen,
-  Users, Paperclip, Eye, EyeOff,
+  Users, Paperclip, Eye, EyeOff, HardDrive,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getThreadMessages, listThreads, createThread, deleteThread, getThread, updateThread } from "@/lib/threads.functions";
@@ -20,6 +20,7 @@ import { getSubAgents, setSubAgents } from "@/lib/subagents.functions";
 import { listAttachments, registerAttachment, setAttachmentCodeOnly, deleteAttachment } from "@/lib/attachments.functions";
 import { getThreadChat, getRunState, setRunState } from "@/lib/chat-store";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
+import { DrivePicker } from "@/components/DrivePicker";
 
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -571,6 +572,7 @@ function AttachButton({ threadId }: { threadId: string }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const [driveOpen, setDriveOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const files = useQuery({
@@ -676,13 +678,18 @@ function AttachButton({ threadId }: { threadId: string }) {
               </div>
             ))}
           </div>
-          <div className="border-t border-border/60 p-3">
-            <Button variant="secondary" className="w-full" disabled={uploading} onClick={() => fileRef.current?.click()}>
+          <div className="flex gap-2 border-t border-border/60 p-3">
+            <Button variant="secondary" className="flex-1" disabled={uploading} onClick={() => fileRef.current?.click()}>
               <Plus className="mr-1 h-4 w-4" /> Add files
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => { setOpen(false); setDriveOpen(true); }}>
+              <HardDrive className="mr-1 h-4 w-4" /> Google Drive
             </Button>
           </div>
         </SheetContent>
       </Sheet>
+
+      <DrivePicker threadId={threadId} open={driveOpen} onOpenChange={setDriveOpen} onImported={invalidate} />
     </>
   );
 }
