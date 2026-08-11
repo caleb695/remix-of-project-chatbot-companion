@@ -571,6 +571,7 @@ function AttachButton({ threadId }: { threadId: string }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const [driveOpen, setDriveOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const files = useQuery({
