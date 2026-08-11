@@ -677,13 +677,18 @@ function AttachButton({ threadId }: { threadId: string }) {
               </div>
             ))}
           </div>
-          <div className="border-t border-border/60 p-3">
-            <Button variant="secondary" className="w-full" disabled={uploading} onClick={() => fileRef.current?.click()}>
+          <div className="flex gap-2 border-t border-border/60 p-3">
+            <Button variant="secondary" className="flex-1" disabled={uploading} onClick={() => fileRef.current?.click()}>
               <Plus className="mr-1 h-4 w-4" /> Add files
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => { setOpen(false); setDriveOpen(true); }}>
+              <HardDrive className="mr-1 h-4 w-4" /> Google Drive
             </Button>
           </div>
         </SheetContent>
       </Sheet>
+
+      <DrivePicker threadId={threadId} open={driveOpen} onOpenChange={setDriveOpen} onImported={invalidate} />
     </>
   );
 }
