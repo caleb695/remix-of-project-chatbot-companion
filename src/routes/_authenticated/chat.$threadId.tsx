@@ -632,7 +632,7 @@ function AttachButton({ threadId }: { threadId: string }) {
       <div className="relative shrink-0">
         <Button
           type="button" size="icon" variant="secondary" className="h-11 w-11"
-          onClick={() => (count > 0 ? setOpen(true) : fileRef.current?.click())}
+          onClick={() => setOpen(true)}
         >
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
         </Button>
