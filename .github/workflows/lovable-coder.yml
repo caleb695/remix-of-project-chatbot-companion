@@ -7,7 +7,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 358
+    timeout-minutes: 350
     permissions:
       contents: write
     steps:
