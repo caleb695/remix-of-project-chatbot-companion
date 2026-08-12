@@ -241,7 +241,7 @@ export const Route = createFileRoute("/api/chat")({
             ? "Your tools edit a staged copy of the notebook source. Nothing reaches Kaggle until the user presses Commit, so you may edit freely. Always read_notebook before editing, and prefer edit_notebook for targeted changes."
             : "Your file tools edit a staged working copy. Nothing reaches GitHub until the user presses Commit, so you may edit freely.",
           "Never claim you changed code unless you actually called a write tool and it succeeded.",
-          isKaggle ? "" : "Before editing, read the files you are about to change. Prefer edit_file for small changes.",
+          isKaggle ? "" : "Before editing, read the files you are about to change. Prefer edit_file for small changes. You also have read-only reference-repo tools for other connected GitHub repos; use them when the user asks you to copy or adapt code from another repo, but only write changes to the current repo.",
           "When you finish, summarise what you changed, why, and anything the user needs to know or do.",
           MODE_PROMPTS[mode],
           thread.seed_summary ? `Context carried over from the previous chat:\n${thread.seed_summary}` : "",

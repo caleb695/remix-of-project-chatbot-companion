@@ -97,6 +97,14 @@ const tools = [
     parameters: { type: "object", properties: { paths: { type: "array", items: { type: "string" } } }, required: ["paths"] } } },
   { type: "function", function: { name: "search_code", description: "Search the repo for a regular expression. Returns path:line matches. Optional `path_filter` substring and `context` lines.",
     parameters: { type: "object", properties: { query: { type: "string" }, max_results: { type: "number" }, path_filter: { type: "string" }, context: { type: "number" } }, required: ["query"] } } },
+  { type: "function", function: { name: "list_reference_repos", description: "List other connected GitHub repos available read-only as code references. Use these to borrow patterns or copy snippets into the repo you are editing.",
+    parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "list_reference_files", description: "List files in a connected reference repo by owner/name. Read-only; cannot edit that repo.",
+    parameters: { type: "object", properties: { repo: { type: "string", description: "owner/name" }, prefix: { type: "string" } }, required: ["repo"] } } },
+  { type: "function", function: { name: "read_reference_file", description: "Read a file from a connected reference repo by owner/name so you can copy any useful part into the repo you are editing.",
+    parameters: { type: "object", properties: { repo: { type: "string", description: "owner/name" }, path: { type: "string" } }, required: ["repo", "path"] } } },
+  { type: "function", function: { name: "search_reference_code", description: "Search a connected reference repo for code to reuse. Returns matching files with line numbers. Read-only.",
+    parameters: { type: "object", properties: { repo: { type: "string", description: "owner/name" }, query: { type: "string" }, regex: { type: "boolean" }, max_results: { type: "number" } }, required: ["repo", "query"] } } },
   { type: "function", function: { name: "write_file", description: "Create or overwrite a file with the COMPLETE new contents.",
     parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } } },
   { type: "function", function: { name: "edit_file", description: "Replace an exact substring in a file. Prefer this for small edits.",
@@ -132,7 +140,7 @@ const DELEGATE_TOOL = { type: "function", function: {
 } };
 
 /* Read-only tools can safely run at the same time within one assistant turn. */
-const READ_ONLY_TOOLS = new Set(["list_files", "glob", "read_file", "read_files", "search_code", "git_diff", "fetch_url"]);
+const READ_ONLY_TOOLS = new Set(["list_files", "glob", "read_file", "read_files", "search_code", "git_diff", "fetch_url", "list_reference_repos", "list_reference_files", "read_reference_file", "search_reference_code"]);
 
 /* Tools available to the model this step. `finish` and `delegate` are main-agent only. */
 function toolsFor(kind, subAgents) {
@@ -308,6 +316,10 @@ async function execTool(name, args) {
       }
       return hits.join("\n").slice(0, 40000) || "(no matches)";
     }
+    if (name === "list_reference_repos") return JSON.stringify(await api("/api/public/jobs/reference", { action: "list_repos" })).slice(0, 40000);
+    if (name === "list_reference_files") return JSON.stringify(await api("/api/public/jobs/reference", { action: "list_files", repo: args.repo, prefix: args.prefix })).slice(0, 50000);
+    if (name === "read_reference_file") return JSON.stringify(await api("/api/public/jobs/reference", { action: "read_file", repo: args.repo, path: args.path })).slice(0, 70000);
+    if (name === "search_reference_code") return JSON.stringify(await api("/api/public/jobs/reference", { action: "search_code", repo: args.repo, query: args.query, regex: args.regex, max_results: args.max_results })).slice(0, 50000);
     if (name === "write_file") { writeFileSafe(args.path, args.content ?? ""); return "OK wrote " + args.path; }
     if (name === "edit_file") {
       const c = readFileSafe(args.path);
@@ -508,6 +520,10 @@ function verb(name, args) {
   if (name === "list_files") return "Listed the repository files";
   if (name === "glob") return "Looked for files matching " + args.pattern;
   if (name === "search_code") return 'Searched for "' + String(args.query || "").slice(0, 60) + '"';
+  if (name === "list_reference_repos") return "Listed connected reference repos";
+  if (name === "list_reference_files") return "Listed reference files in " + String(args.repo || "");
+  if (name === "read_reference_file") return "Read " + String(args.repo || "") + ":" + String(args.path || "");
+  if (name === "search_reference_code") return 'Searched "' + String(args.query || "").slice(0, 60) + '" in ' + String(args.repo || "");
   if (name === "write_file") return "Wrote " + args.path;
   if (name === "edit_file") return "Edited " + args.path;
   if (name === "multi_edit") return "Edited " + [...new Set((args.edits || []).map((e) => e.path))].join(", ").slice(0, 140);
