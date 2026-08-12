@@ -18,6 +18,7 @@ import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedChatIndexRouteImport } from './routes/_authenticated/chat.index'
 import { Route as ApiGithubCallbackRouteImport } from './routes/api/github.callback'
 import { Route as AuthenticatedChatThreadIdRouteImport } from './routes/_authenticated/chat.$threadId'
+import { Route as ApiPublicJobsReferenceRouteImport } from './routes/api/public/jobs/reference'
 import { Route as ApiPublicJobsLogRouteImport } from './routes/api/public/jobs/log'
 import { Route as ApiPublicJobsIndexProgressRouteImport } from './routes/api/public/jobs/index-progress'
 import { Route as ApiPublicJobsIndexBatchRouteImport } from './routes/api/public/jobs/index-batch'
@@ -72,6 +73,11 @@ const AuthenticatedChatThreadIdRoute =
     path: '/$threadId',
     getParentRoute: () => AuthenticatedChatRoute,
   } as any)
+const ApiPublicJobsReferenceRoute = ApiPublicJobsReferenceRouteImport.update({
+  id: '/api/public/jobs/reference',
+  path: '/api/public/jobs/reference',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicJobsLogRoute = ApiPublicJobsLogRouteImport.update({
   id: '/api/public/jobs/log',
   path: '/api/public/jobs/log',
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/api/public/jobs/index-batch': typeof ApiPublicJobsIndexBatchRoute
   '/api/public/jobs/index-progress': typeof ApiPublicJobsIndexProgressRoute
   '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
+  '/api/public/jobs/reference': typeof ApiPublicJobsReferenceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -148,6 +155,7 @@ export interface FileRoutesByTo {
   '/api/public/jobs/index-batch': typeof ApiPublicJobsIndexBatchRoute
   '/api/public/jobs/index-progress': typeof ApiPublicJobsIndexProgressRoute
   '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
+  '/api/public/jobs/reference': typeof ApiPublicJobsReferenceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -168,6 +176,7 @@ export interface FileRoutesById {
   '/api/public/jobs/index-batch': typeof ApiPublicJobsIndexBatchRoute
   '/api/public/jobs/index-progress': typeof ApiPublicJobsIndexProgressRoute
   '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
+  '/api/public/jobs/reference': typeof ApiPublicJobsReferenceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -188,6 +197,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/index-batch'
     | '/api/public/jobs/index-progress'
     | '/api/public/jobs/log'
+    | '/api/public/jobs/reference'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/index-batch'
     | '/api/public/jobs/index-progress'
     | '/api/public/jobs/log'
+    | '/api/public/jobs/reference'
   id:
     | '__root__'
     | '/'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/index-batch'
     | '/api/public/jobs/index-progress'
     | '/api/public/jobs/log'
+    | '/api/public/jobs/reference'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -240,6 +252,7 @@ export interface RootRouteChildren {
   ApiPublicJobsIndexBatchRoute: typeof ApiPublicJobsIndexBatchRoute
   ApiPublicJobsIndexProgressRoute: typeof ApiPublicJobsIndexProgressRoute
   ApiPublicJobsLogRoute: typeof ApiPublicJobsLogRoute
+  ApiPublicJobsReferenceRoute: typeof ApiPublicJobsReferenceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -306,6 +319,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/chat/$threadId'
       preLoaderRoute: typeof AuthenticatedChatThreadIdRouteImport
       parentRoute: typeof AuthenticatedChatRoute
+    }
+    '/api/public/jobs/reference': {
+      id: '/api/public/jobs/reference'
+      path: '/api/public/jobs/reference'
+      fullPath: '/api/public/jobs/reference'
+      preLoaderRoute: typeof ApiPublicJobsReferenceRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/public/jobs/log': {
       id: '/api/public/jobs/log'
@@ -406,7 +426,18 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicJobsIndexBatchRoute: ApiPublicJobsIndexBatchRoute,
   ApiPublicJobsIndexProgressRoute: ApiPublicJobsIndexProgressRoute,
   ApiPublicJobsLogRoute: ApiPublicJobsLogRoute,
+  ApiPublicJobsReferenceRoute: ApiPublicJobsReferenceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

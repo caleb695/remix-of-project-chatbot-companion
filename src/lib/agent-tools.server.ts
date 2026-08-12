@@ -14,6 +14,21 @@ export interface ToolCtx {
 
 const MAX_READ = 40_000;
 
+async function findReferenceRepo(sb: Sb, userId: string, repo: string) {
+  const [owner, name] = repo.split("/");
+  if (!owner || !name) return { error: "Use repo as owner/name" } as const;
+  const { data, error } = await sb
+    .from("repo_selections")
+    .select("id, owner, name")
+    .eq("user_id", userId)
+    .eq("owner", owner)
+    .eq("name", name)
+    .maybeSingle();
+  if (error) return { error: error.message } as const;
+  if (!data) return { error: `Reference repo not found or not connected: ${repo}` } as const;
+  return { repo: data } as const;
+}
+
 export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
   const { sb, userId, repoId } = ctx;
 
@@ -95,6 +110,94 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           if (hits.length >= limit) break;
         }
         return { count: hits.length, hits };
+      },
+    }),
+
+    list_reference_repos: tool({
+      description:
+        "List other GitHub repos this user connected. Use these read-only reference repos to borrow patterns or copy any relevant code snippets into the repo you are editing.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const { data, error } = await sb
+          .from("repo_selections")
+          .select("owner, name, indexed_at")
+          .eq("user_id", userId)
+          .neq("id", repoId)
+          .order("owner");
+        if (error) return { error: error.message };
+        return { repos: (data ?? []).map((r) => `${r.owner}/${r.name}${r.indexed_at ? "" : " (not indexed/synced yet)"}`) };
+      },
+    }),
+
+    list_reference_files: tool({
+      description: "List files in a connected reference repo by owner/name. Read-only; cannot edit that repo.",
+      inputSchema: z.object({ repo: z.string().describe("owner/name"), prefix: z.string().optional() }),
+      execute: async ({ repo, prefix }) => {
+        const found = await findReferenceRepo(sb, userId, repo);
+        if ("error" in found) return { error: found.error };
+        const { data, error } = await sb
+          .from("working_files")
+          .select("path")
+          .eq("repo_selection_id", found.repo.id)
+          .neq("status", "deleted")
+          .order("path");
+        if (error) return { error: error.message };
+        let rows = data ?? [];
+        if (prefix) rows = rows.filter((r) => r.path.includes(prefix));
+        return { repo, count: rows.length, files: rows.slice(0, 600).map((r) => r.path) };
+      },
+    }),
+
+    read_reference_file: tool({
+      description: "Read a file from a connected reference repo by owner/name so you can copy any useful part into the repo you are editing.",
+      inputSchema: z.object({ repo: z.string().describe("owner/name"), path: z.string() }),
+      execute: async ({ repo, path }) => {
+        const found = await findReferenceRepo(sb, userId, repo);
+        if ("error" in found) return { error: found.error };
+        const { data, error } = await sb
+          .from("working_files")
+          .select("content, status")
+          .eq("repo_selection_id", found.repo.id)
+          .eq("path", path)
+          .maybeSingle();
+        if (error) return { error: error.message };
+        if (!data || data.status === "deleted") return { error: `Not found in ${repo}: ${path}` };
+        const content = data.content ?? "";
+        return { repo, path, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ };
+      },
+    }),
+
+    search_reference_code: tool({
+      description: "Search a connected reference repo for code to reuse. Returns matching files with line numbers. Read-only.",
+      inputSchema: z.object({ repo: z.string().describe("owner/name"), query: z.string(), regex: z.boolean().optional(), max_results: z.number().optional() }),
+      execute: async ({ repo, query, regex, max_results }) => {
+        const found = await findReferenceRepo(sb, userId, repo);
+        if ("error" in found) return { error: found.error };
+        const { data, error } = await sb
+          .from("working_files")
+          .select("path, content")
+          .eq("repo_selection_id", found.repo.id)
+          .neq("status", "deleted");
+        if (error) return { error: error.message };
+        let re: RegExp;
+        try {
+          re = regex ? new RegExp(query, "i") : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+        } catch (e) {
+          return { error: `Bad pattern: ${String(e)}` };
+        }
+        const limit = Math.min(max_results ?? 40, 120);
+        const hits: Array<{ path: string; line: number; text: string }> = [];
+        for (const f of data ?? []) {
+          const lines = (f.content ?? "").split("\n");
+          for (let i = 0; i < lines.length; i++) {
+            if (re.test(lines[i])) {
+              hits.push({ path: f.path, line: i + 1, text: lines[i].slice(0, 200).trim() });
+              if (hits.length >= limit) break;
+            }
+          }
+          if (hits.length >= limit) break;
+        }
+        return { repo, count: hits.length, hits };
       },
     }),
 

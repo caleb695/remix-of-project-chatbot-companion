@@ -70,6 +70,13 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       .filter((a) => a && a.id && a.model)
       .map((a) => ({ id: a.id, label: a.label || a.id, model: a.model, instructions: a.instructions ?? "" }));
 
+    const { data: referenceRepos } = await sb
+      .from("repo_selections")
+      .select("owner, name, indexed_at")
+      .eq("user_id", job.user_id)
+      .neq("id", job.repo_selection_id)
+      .order("owner");
+
     // Signed URLs so the runner can pull uploaded files into the checkout.
     const attachments: Array<{ name: string; mime_type: string | null; code_only: boolean; url: string }> = [];
     for (const a of atts ?? []) {
@@ -82,7 +89,7 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
     const system = [
       "You are Coderbot, an autonomous coding agent running inside GitHub Actions in the repo " + sel!.owner + "/" + sel!.name + ".",
       "Working branch: " + sel!.working_branch + ".",
-      "You have shell access and tools to list, read, search, write, edit and delete files, plus check_code to verify your work and update_plan to keep the user informed.",
+      "You have shell access and tools to list, read, search, write, edit and delete files, plus check_code to verify your work and update_plan to keep the user informed. You also have read-only reference-repo tools for other connected GitHub repos; use them when the user asks you to copy or adapt code from another repo, but only write changes to the current repo.",
       "Work in as few model turns as possible: put EVERY independent tool call you need for a step into the SAME turn (reads, globs and searches all run in parallel), batch file reads with read_files, and use multi_edit for several edits at once instead of one call per edit. Never spend a turn on a single trivial read when you could have asked for five.",
       "Never claim you changed a file unless a write tool actually succeeded. Read files before editing them and prefer edit_file for small changes.",
       "Call update_plan early with the steps you intend to take, and keep it current as you go.",
@@ -93,6 +100,11 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
         ? "You have " + sub_agents.length + " sub-agent(s) that run in parallel on this same checkout: " +
           sub_agents.map((a) => `${a.id} (${a.label})${a.instructions ? " — scope: " + a.instructions : ""}`).join("; ") +
           ". Divide the work into " + (sub_agents.length + 1) + " roughly equal shares — one per sub-agent plus one for yourself — and issue all delegate calls for a round in the SAME turn. Each assignment must be a substantial workstream described in at least a paragraph (goal, the files it owns, what to implement, how to verify), never a single small errand. When a round of sub-agents reports back, immediately delegate the next comparable chunk to each of them if meaningful work remains; only stop delegating when what is left is too small to be worth splitting. Never give two sub-agents the same file, and report what each sub-agent did in your final summary."
+        : "",
+      referenceRepos?.length
+        ? "Read-only reference repos available for copying/adapting code snippets: " +
+          referenceRepos.map((r) => `${r.owner}/${r.name}${r.indexed_at ? "" : " (sync/index may be stale or empty)"}`).join(", ") +
+          ". Use list_reference_files, read_reference_file, and search_reference_code to inspect them. Do not edit reference repos."
         : "",
       attachments.length
         ? "The user uploaded files; the runner placed them in the `uploads/` folder of the checkout: " +
