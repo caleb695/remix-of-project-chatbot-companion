@@ -732,11 +732,19 @@ async function main() {
   let noProgress = 0;
   let redelegateNote = null;
 
+  // Errors in the loop (a request/fetch/tool failure etc.) are analysed by the
+  // model instead of bringing the whole run down. We track consecutive repeats
+  // of the same error so a genuinely stuck loop always saves progress and tells
+  // the user rather than spinning forever.
+  let lastErrorSig = null;
+  let errorStreak = 0;
+
   for (let step = 0; step < MAX_STEPS; step++) {
     if (Date.now() - START > TIME_LIMIT_MS) {
       await checkpointAndContinue(messages);
       return;
     }
+    try {
     messages = await compactIfNeeded(spec, messages);
     const body = await callModel(spec, messages);
     const msg = body.choices && body.choices[0] && body.choices[0].message;
@@ -856,6 +864,51 @@ async function main() {
       messages.push({ role: "tool", tool_call_id: finishCall.id, content: "ok" });
       break;
     }
+    } catch (e) {
+      // A request or fetch (from the provider or another tool) threw. Don't
+      // silently kill the run: if it is a recoverable, unrelated failure, feed
+      // the message back to the model so it can decide whether to retry, and
+      // keep the loop going. If the same error keeps coming back, save progress
+      // and message the user, then stop cleanly.
+      const errText = String((e && e.message) || e) || String(e);
+      const sig = errText.slice(0, 200);
+      if (sig === lastErrorSig) errorStreak += 1;
+      else { lastErrorSig = sig; errorStreak = 1; }
+
+      // Per-minute / rate-limit errors are already retried every 10s (inside
+      // callModel for ~50 minutes and api() with backoff). If one escapes here
+      // the retries were exhausted, so it is a real, persistent problem — treat
+      // it as one.
+      const exhaustedRateLimit = /rate.?limit|per.?minute|429|too many requests|quota|credit|billing/i.test(errText);
+
+      if (errorStreak >= 3 || exhaustedRateLimit) {
+        const why = exhaustedRateLimit
+          ? "Rate / per-minute limits were exhausted after retrying."
+          : "The run kept hitting the same error three times in a row and could not retry past it.";
+        await saveProgressAndNotify(messages, why + " Error: " + errText.slice(0, 1200));
+        return;
+      }
+
+      await event("error", "The loop hit an error; analysing it before continuing: " + errText.slice(0, 600), PHASE);
+      let decision = null;
+      try {
+        decision = await analyzeLoopError(spec, messages, errText);
+      } catch (analysisErr) {
+        // Could not ask the model for a decision (provider may be flaky). Back
+        // off briefly and let the loop try again; the streak guard above stops
+        // any infinite spin on a genuinely stuck error.
+        await log("error analysis failed: " + String((analysisErr && analysisErr.message) || analysisErr));
+        await sleep(10000);
+        continue;
+      }
+
+      if (!decision || decision.action === "abort") {
+        await saveProgressAndNotify(messages, (decision && decision.reason) || ("The model decided the error is unrecoverable. Error: " + errText.slice(0, 1200)));
+        return;
+      }
+      await event("status", "Recovered after the error and continuing the task.", PHASE);
+      messages.push({ role: "user", content: decision.note });
+    }
   }
 
 
@@ -935,6 +988,55 @@ async function checkpointAndContinue(messages) {
   const res = await api("/api/public/jobs/continue", { checkpoint, review_branch: REVIEW_BRANCH });
   await event("status", "Continuing in a new GitHub Actions run.", PHASE);
   await log("continuation job " + (res.job_id || "?"));
+}
+
+
+/* Ask the model whether a non-serial failure in the loop is worth retrying, or
+ * whether the run should stop, save its progress and tell the user. Rate-limit
+ * / per-minute errors never normally reach here because they are retried every
+ * 10 seconds inside callModel and api(); this handles every other error. */
+async function analyzeLoopError(spec, messages, error) {
+  const body = await callModel(spec, [
+    { role: "system", content:
+      "You are the error handler inside an autonomous coding agent running in GitHub Actions. " +
+      "The agent's main loop just hit an error from a request/fetch/tool. Rate-limit and per-minute errors are retried automatically elsewhere and almost never reach you, so this is a different kind of failure.\n" +
+      "Analyse the error message and decide what the loop should do next:\n" +
+      "- retry: the error looks transient, recoverable, or the loop can simply move on (e.g. one flaky tool call while the overall goal is still intact), so continue working.\n" +
+      "- abort: retrying cannot help — the error is fatal, the context is corrupt, or this is a repeat of something that was already retried a few times.\n" +
+      'For retry return ONLY JSON: {"action":"retry","note":"<1-2 short sentences the agent reads about what happened and how to proceed, e.g. what to avoid or try differently>"}\n' +
+      'For abort return ONLY JSON: {"action":"abort","reason":"<a concise reason to show the user>"}\n' +
+      "Return ONLY the JSON object; no prose." },
+    { role: "user", content: "The coding loop hit this error:\n\n" + String(error).slice(0, 4000) + "\n\nDecide: retry or abort." },
+  ], { model: opts_model(spec, undefined), tools: [], agent: undefined });
+  const content = (body && body.choices && body.choices[0] && body.choices[0].message && body.choices[0].message.content) || "";
+  const m = content.match(/\{[\s\S]*\}/);
+  if (!m) {
+    return { action: "retry", note: "Encountered an error in the loop: " + String(error).slice(0, 500) + ". The error handler could not decide, so retry the operation once; if it fails again, save progress and stop." };
+  }
+  try {
+    const parsed = JSON.parse(m[0]);
+    if (parsed.action === "abort") return { action: "abort", reason: String(parsed.reason || "persistent error").slice(0, 2000) };
+    return { action: "retry", note: String(parsed.note || "Retrying after the error.").slice(0, 1500) };
+  } catch {
+    return { action: "retry", note: "Encountered an error in the loop: " + String(error).slice(0, 500) + ". The error handler returned a malformed decision, so retry once; if it fails again, save progress and stop." };
+  }
+}
+
+/* An error the loop cannot retry past: commit whatever work exists so nothing
+ * is lost, store a checkpoint, message the user with the error, then exit.
+ * This mirrors checkpointAndContinue but does NOT dispatch a follow-up run. */
+async function saveProgressAndNotify(messages, reason) {
+  const text = String(reason || "an unexpected error stopped the run.");
+  await event("error", text, PHASE);
+  await event("status", "Saving progress and notifying you about the error.", PHASE);
+  try { await gitCommit("Coderbot progress checkpoint", REVIEW_BRANCH); }
+  catch (e) { await log("progress push failed: " + ((e && e.message) || e)); }
+  const checkpoint = { messages: trimForCheckpoint(messages), todos: TODOS };
+  try { await api("/api/public/jobs/checkpoint", { checkpoint }); } catch {}
+  const userMsg = ("❌ The GitHub Actions run stopped due to an error that kept recurring:\n\n" + text).slice(0, 3000);
+  try { await api("/api/public/jobs/complete", { status: "failed", summary: userMsg, error: text }); } catch {}
+  await log("ABORT " + text);
+  process.exit(1);
 }
 
 
