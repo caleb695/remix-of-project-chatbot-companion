@@ -6,6 +6,12 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import dns from "node:dns";
+/* GitHub Actions runners frequently resolve AAAA (IPv6) records but have no
+ * IPv6 route, so undici's fetch tries IPv6 first and fails hard with
+ * "TypeError: fetch failed" (no IPv4 fallback on some Node versions). Prefer
+ * IPv4 so outbound provider/embedding calls are not dropped at connection time. */
+dns.setDefaultResultOrder("ipv4first");
 
 const JOB_ID = process.env.JOB_ID;
 const JOB_SECRET = process.env.JOB_SECRET;
@@ -553,18 +559,37 @@ async function callModel(spec, messages, opts = {}) {
   let transient = 0;
   for (;;) {
     let res;
+    // A stuck TLS handshake/connection stalls undici's fetch for a long time
+    // before surfacing as a generic "fetch failed". Abort after 10s so a dead
+    // connection becomes a quick, retried transient error instead of hanging.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
       res = await fetch(route.base + "/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + route.key },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + route.key,
+          // Some CI egress filters/proxies drop outbound requests without one.
+          "User-Agent": "coderbot-agent/2 (GitHub Actions)",
+        },
+        signal: controller.signal,
         body: JSON.stringify(activeTools && activeTools.length
           ? { model: route.model, messages, tools: activeTools, tool_choice: "auto" }
           : { model: route.model, messages }),
       });
     } catch (e) {
-      if (++transient > 6) throw new Error("Network error talking to the model provider: " + ((e && e.message) || e));
+      if (++transient > 6) {
+        // Surface the real underlying cause (e.cause) rather than a bare
+        // "fetch failed", so a stuck config is diagnosable from the log.
+        const cause = (e && e.cause && e.cause.message) ? e.cause.message : "";
+        const name = (e && e.name) || "Error";
+        throw new Error("Network error talking to the model provider: " + name + ": " + ((e && e.message) || e) + (cause ? " (" + String(cause) + ")" : ""));
+      }
       await sleep(Math.min(30000, 2000 * transient));
       continue;
+    } finally {
+      clearTimeout(timeout);
     }
     if (res.ok) {
       const body = await res.json().catch(() => null);
