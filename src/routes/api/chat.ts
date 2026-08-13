@@ -321,11 +321,19 @@ export const Route = createFileRoute("/api/chat")({
 
             const assistant = finalMessages[finalMessages.length - 1];
             if (assistant?.role === "assistant") {
+              // Kaggle runs stream in-page (no GitHub Actions runner), so the
+              // final assistant turn is what the user sees after the run. Tag it
+              // with a `data-run` part so the transcript renders a clickable card
+              // ("What it did") that opens the model's thoughts and actions — the
+              // same experience GitHub runs get from the Action runner.
+              const parts = isKaggle
+                ? [...assistant.parts, { type: "data-run", data: { taskId, kaggle: true } }]
+                : assistant.parts;
               await supa.from("chat_messages").insert({
                 thread_id: threadId,
                 user_id: userId,
                 role: "assistant",
-                parts: assistant.parts as unknown as object,
+                parts: parts as unknown as object,
               });
               await supa.from("chat_threads").update({ updated_at: new Date().toISOString() }).eq("id", threadId);
             }

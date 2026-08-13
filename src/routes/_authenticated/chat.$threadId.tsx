@@ -939,9 +939,10 @@ const TOOL_VERB: Record<string, string> = {
 };
 
 type RunData = {
-  jobId: string; taskId?: string; status?: string;
+  jobId?: string; taskId?: string; status?: string;
   reviewBranch?: string | null; baseBranch?: string | null; commitSha?: string | null;
   files?: Array<{ path: string; status: string }>;
+  kaggle?: boolean;
 };
 
 function MessageBubble({ message, threadId }: { message: UIMessage; threadId: string }) {
@@ -955,7 +956,8 @@ function MessageBubble({ message, threadId }: { message: UIMessage; threadId: st
           // long after the tab was closed.
           if (part.type === "data-run") {
             const data = (part as { data?: RunData }).data;
-            if (!data?.jobId) return null;
+            // GitHub runs carry a jobId; in-page Kaggle runs carry taskId only.
+            if (!data?.jobId && !data?.taskId) return null;
             return <RunCard key={i} threadId={threadId} run={data} />;
           }
           if (part.type.startsWith("tool-")) {
@@ -989,11 +991,15 @@ function RunCard({ threadId, run }: { threadId: string; run: RunData }) {
   const [changesOpen, setChangesOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
 
-  const job = useQuery({ queryKey: ["job", run.jobId], queryFn: () => jobFn({ data: { id: run.jobId } }) });
+  const job = useQuery({
+    queryKey: ["job", run.jobId],
+    queryFn: () => jobFn({ data: { id: run.jobId! } }),
+    enabled: Boolean(run.jobId),
+  });
   const diff = useQuery({
     queryKey: ["job-diff", run.jobId],
-    queryFn: () => diffFn({ data: { id: run.jobId } }),
-    enabled: changesOpen,
+    queryFn: () => diffFn({ data: { id: run.jobId! } }),
+    enabled: changesOpen && Boolean(run.jobId),
   });
   const events = useQuery({
     queryKey: ["agent_events", threadId, run.taskId],
@@ -1020,22 +1026,26 @@ function RunCard({ threadId, run }: { threadId: string; run: RunData }) {
   const files = (job.data?.changed_files as Array<{ path: string; status: string }> | undefined)?.length
     ? (job.data!.changed_files as Array<{ path: string; status: string }>)
     : (run.files ?? []);
-  const pending = status === "awaiting_review";
+  const pending = Boolean(run.jobId) && status === "awaiting_review";
 
   return (
     <div className="mt-2 rounded-lg border border-border bg-card p-3 text-xs">
       <div className="flex items-center gap-2">
         <FileDiff className="h-3.5 w-3.5 text-primary" />
         <span className="font-medium">
-          {pending ? "Waiting for your approval" : status === "discarded" ? "Changes discarded" : "Changes merged"}
+          {run.kaggle
+            ? "Changes staged in the notebook"
+            : pending ? "Waiting for your approval" : status === "discarded" ? "Changes discarded" : "Changes merged"}
         </span>
-        <span className="ml-auto text-muted-foreground">{files.length} file{files.length === 1 ? "" : "s"}</span>
+        {!run.kaggle && <span className="ml-auto text-muted-foreground">{files.length} file{files.length === 1 ? "" : "s"}</span>}
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1.5">
-        <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => setChangesOpen(true)}>
-          View changes
-        </Button>
+        {!run.kaggle && (
+          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => setChangesOpen(true)}>
+            View changes
+          </Button>
+        )}
         {run.taskId && (
           <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => setActivityOpen(true)}>
             What it did <ArrowUpRight className="ml-1 h-3 w-3" />
