@@ -2,6 +2,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { webSearch } from "./agent-tools.server";
 
 const API = "https://www.kaggle.com/api/v1";
 
@@ -108,6 +109,15 @@ export function buildKaggleTools(
         if (!nb.working_source) return { error: "Notebook not synced yet. Ask the user to press Sync on the Account tab." };
         return { notebook: `${nb.owner}/${nb.slug}`, language: nb.language, source: nb.working_source.slice(0, 120_000) };
       },
+    }),
+    search_web: tool({
+      description:
+        "Search the web for a query and return titles, URLs and snippets of the top results. Use to look up API docs, package versions, dataset details or pandas/scikit/keras fixes instead of guessing. Read-only.",
+      inputSchema: z.object({
+        query: z.string().describe("The search query"),
+        max_results: z.number().optional().describe("Max results (default 6, max 12)"),
+      }),
+      execute: async ({ query, max_results }) => webSearch(query ?? "", max_results ?? 6),
     }),
     search_notebook: tool({
       description: "Search the notebook source for a string or regex. Returns matching line numbers.",

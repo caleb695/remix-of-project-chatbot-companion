@@ -145,28 +145,29 @@ export async function commitChanges(
     token,
   );
 
-  // Create blobs for additions/modifications
+  // Create blobs for additions/modifications. Blobs are independent, so push
+  // them in parallel instead of one-by-one when there are several changes.
   const treeEntries: Array<{ path: string; mode: "100644"; type: "blob"; sha: string | null }> = [];
-  for (const change of changes) {
+  await Promise.all(changes.map(async (change, index) => {
     if (change.content === null) {
       // deletion: sha=null
-      treeEntries.push({ path: change.path, mode: "100644", type: "blob", sha: null });
-    } else {
-      const blob = await ghFetch<{ sha: string }>(
-        `/repos/${owner}/${name}/git/blobs`,
-        token,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content: Buffer.from(change.content, "utf8").toString("base64"),
-            encoding: "base64",
-          }),
-        },
-      );
-      treeEntries.push({ path: change.path, mode: "100644", type: "blob", sha: blob.sha });
+      treeEntries[index] = { path: change.path, mode: "100644", type: "blob", sha: null };
+      return;
     }
-  }
+    const blob = await ghFetch<{ sha: string }>(
+      `/repos/${owner}/${name}/git/blobs`,
+      token,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: Buffer.from(change.content, "utf8").toString("base64"),
+          encoding: "base64",
+        }),
+      },
+    );
+    treeEntries[index] = { path: change.path, mode: "100644", type: "blob", sha: blob.sha };
+  }));
 
   const newTree = await ghFetch<{ sha: string }>(
     `/repos/${owner}/${name}/git/trees`,

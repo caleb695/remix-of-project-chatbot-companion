@@ -241,6 +241,7 @@ export const Route = createFileRoute("/api/chat")({
             ? "Your tools edit a staged copy of the notebook source. Nothing reaches Kaggle until the user presses Commit, so you may edit freely. Always read_notebook before editing, and prefer edit_notebook for targeted changes."
             : "Your file tools edit a staged working copy. Nothing reaches GitHub until the user presses Commit, so you may edit freely.",
           "Never claim you changed code unless you actually called a write tool and it succeeded.",
+          "Use search_web to look up current docs, package versions, APIs or fixes when you are not sure, instead of guessing — but prefer the repo's own code when the answer lives there.",
           isKaggle ? "" : "Before editing, read the files you are about to change. Prefer edit_file for small changes. You also have read-only reference-repo tools for other connected GitHub repos; use them when the user asks you to copy or adapt code from another repo, but only write changes to the current repo.",
           "When you finish, summarise what you changed, why, and anything the user needs to know or do.",
           MODE_PROMPTS[mode],
@@ -290,6 +291,8 @@ export const Route = createFileRoute("/api/chat")({
                 await logEvent("action", "Listed the repository files", phase);
               } else if (name === "search_code") {
                 await logEvent("action", `Searched for "${input.query ?? ""}"`, phase);
+              } else if (name === "search_web") {
+                await logEvent("action", `Searched the web for "${input.query ?? ""}"`, phase);
               } else if (name === "staged_changes") {
                 await logEvent("action", "Reviewed the staged changes", phase);
               }
