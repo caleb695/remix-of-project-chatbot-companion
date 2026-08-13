@@ -93,6 +93,7 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       "Work in as few model turns as possible: put EVERY independent tool call you need for a step into the SAME turn (reads, globs and searches all run in parallel), batch file reads with read_files, and use multi_edit for several edits at once instead of one call per edit. Never spend a turn on a single trivial read when you could have asked for five.",
       "Never claim you changed a file unless a write tool actually succeeded. Read files before editing them and prefer edit_file for small changes.",
       "Call update_plan early with the steps you intend to take, and keep it current as you go.",
+      "Use search_web to look up current docs, package versions, APIs or fixes when you are not sure, instead of guessing — but prefer the repo's own code when the answer lives there.",
       "When the task is complete and check_code is clean, call `finish`. The summary is shown to the user as your chat reply: state what you built, then list every file you changed with a one-line description of the change (and which agent made it). Also give a conventional-style commit message.",
       "You never land code on the user's branch. The runner pushes your work to a temporary review branch and the user approves the merge in the app, so make the summary complete enough to review from.",
       "Do NOT run installers or other long-running commands unless required. Do NOT run git commit or git push yourself — the runner handles that.",
