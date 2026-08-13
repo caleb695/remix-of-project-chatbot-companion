@@ -496,7 +496,7 @@ function stripLiterals(src: string): string {
     const c = src[i];
     // Line comment
     if (c === "/" && src[i + 1] === "/") {
-      while (i < n && src[i] !== "\n") out += " ";
+      while (i < n && src[i] !== "\n") { out += " "; i++; }
       continue;
     }
     // Block comment
