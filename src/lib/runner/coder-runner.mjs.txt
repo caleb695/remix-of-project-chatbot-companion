@@ -548,6 +548,9 @@ function chatRoute(spec, model) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* Upper bound for one (non-streamed) completion request. */
+const MODEL_TIMEOUT_MS = 1000 * 60 * 10;
+
 /* Per-minute rate limits: wait 10s and retry (up to ~50 minutes of waiting).
  * Transient network/5xx failures back off and retry a few times.
  * Any other limit (quota / credits / context) stops the run with the
@@ -559,11 +562,12 @@ async function callModel(spec, messages, opts = {}) {
   let transient = 0;
   for (;;) {
     let res;
-    // A stuck TLS handshake/connection stalls undici's fetch for a long time
-    // before surfacing as a generic "fetch failed". Abort after 10s so a dead
-    // connection becomes a quick, retried transient error instead of hanging.
+    // The completion is not streamed, so nothing arrives until the model has
+    // finished generating: with tools and a long context that regularly takes
+    // minutes. The abort is only here to stop a dead connection hanging the
+    // job, so it has to be far longer than a normal response.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
+    const timeout = setTimeout(() => controller.abort(), MODEL_TIMEOUT_MS);
     try {
       res = await fetch(route.base + "/chat/completions", {
         method: "POST",
@@ -579,13 +583,20 @@ async function callModel(spec, messages, opts = {}) {
           : { model: route.model, messages }),
       });
     } catch (e) {
+      const timedOut = e && (e.name === "AbortError" || e.name === "TimeoutError");
       if (++transient > 6) {
+        if (timedOut) {
+          throw new Error("The model provider did not respond within " + Math.round(MODEL_TIMEOUT_MS / 60000) + " minutes, over " + transient + " attempts. Try a faster model.");
+        }
         // Surface the real underlying cause (e.cause) rather than a bare
         // "fetch failed", so a stuck config is diagnosable from the log.
         const cause = (e && e.cause && e.cause.message) ? e.cause.message : "";
         const name = (e && e.name) || "Error";
         throw new Error("Network error talking to the model provider: " + name + ": " + ((e && e.message) || e) + (cause ? " (" + String(cause) + ")" : ""));
       }
+      await event("status", timedOut
+        ? "The model provider did not respond in time — retrying."
+        : "Network hiccup talking to the model provider — retrying.");
       await sleep(Math.min(30000, 2000 * transient));
       continue;
     } finally {

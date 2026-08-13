@@ -166,11 +166,17 @@ export function buildKaggleTools(
 
   if (!opts.allowWrites) return readOnly;
 
+  // `update` reports no error when it matches no row (a wrong id, or a row the
+  // caller cannot write under RLS), so ask for the row back and treat an empty
+  // result as a failure instead of telling the model the edit was staged.
   const save = async (source: string) => {
-    const { error } = await sb.from("kaggle_notebooks")
+    const { data, error } = await sb.from("kaggle_notebooks")
       .update({ working_source: source, status: "modified", updated_at: new Date().toISOString() })
-      .eq("id", notebookId);
+      .eq("id", notebookId)
+      .select("id")
+      .maybeSingle();
     if (error) return { error: error.message };
+    if (!data) return { error: "The notebook could not be saved — it was not found for this account. Tell the user to re-add or re-sync the notebook on the Account tab." };
     return { ok: true, bytes: source.length };
   };
 

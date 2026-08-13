@@ -3,6 +3,83 @@ import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
+const GH_HEADERS = (token: string) => ({
+  Authorization: `Bearer ${token}`,
+  Accept: "application/vnd.github+json",
+  "X-GitHub-Api-Version": "2022-11-28",
+  "User-Agent": "coderbot-app",
+});
+
+const contentsUrl = (owner: string, name: string, filePath: string) =>
+  `https://api.github.com/repos/${owner}/${name}/contents/${encodeURIComponent(filePath).replace(/%2F/g, "/")}`;
+
+/** Write a file into the user's repo through the Contents API. */
+async function putRepoFile(args: {
+  token: string;
+  owner: string;
+  name: string;
+  branch: string;
+  path: string;
+  content: string;
+  message: string;
+}) {
+  // Look up existing SHA (needed when the file already exists so PUT counts as update).
+  let sha: string | undefined;
+  const head = await fetch(
+    `${contentsUrl(args.owner, args.name, args.path)}?ref=${encodeURIComponent(args.branch)}`,
+    { headers: GH_HEADERS(args.token) },
+  );
+  if (head.ok) sha = ((await head.json()) as { sha?: string }).sha;
+  const res = await fetch(contentsUrl(args.owner, args.name, args.path), {
+    method: "PUT",
+    headers: { ...GH_HEADERS(args.token), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: args.message,
+      content: Buffer.from(args.content, "utf8").toString("base64"),
+      branch: args.branch,
+      ...(sha ? { sha } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 404) {
+      throw new Error(
+        `GitHub 404 writing ${args.path} on ${args.owner}/${args.name}@${args.branch}. ` +
+        `Reconnect GitHub to grant the required “workflow” permission. If this is an organization repo, ` +
+        `an organization admin may also need to approve the OAuth app. ` +
+        `Detail: ${text.slice(0, 200)}`,
+      );
+    }
+    throw new Error(`GitHub ${res.status} writing ${args.path}: ${text.slice(0, 300)}`);
+  }
+}
+
+/**
+ * Repos keep their own copy of the runner, so a runner fix only reaches them
+ * when the files are rewritten. Compare the version stamped in the installed
+ * workflow and refresh both files when it is behind.
+ */
+async function refreshRunnerIfStale(args: {
+  token: string;
+  owner: string;
+  name: string;
+  branch: string;
+}) {
+  const { WORKFLOW_YML, RUNNER_MJS, RUNNER_VERSION } = await import("./workflow-template.server");
+  const res = await fetch(
+    `${contentsUrl(args.owner, args.name, ".github/workflows/lovable-coder.yml")}?ref=${encodeURIComponent(args.branch)}`,
+    { headers: { ...GH_HEADERS(args.token), Accept: "application/vnd.github.raw+json" } },
+  );
+  if (!res.ok) return;
+  const installed = Number(/runner version (\d+)/.exec(await res.text())?.[1] ?? 0);
+  if (installed >= RUNNER_VERSION) return;
+  const message = `chore: update Lovable coder runner to v${RUNNER_VERSION}`;
+  const runner = "scripts/lovable-coder/runner.mjs";
+  const workflow = ".github/workflows/lovable-coder.yml";
+  await putRepoFile({ ...args, path: runner, content: RUNNER_MJS, message });
+  await putRepoFile({ ...args, path: workflow, content: WORKFLOW_YML, message });
+}
+
 export const installCoderWorkflow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => z.object({ repoId: z.string().uuid() }).parse(i))
@@ -20,61 +97,17 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
     }
 
     // Always (re)write the files so installs also pick up runner updates.
-    const { WORKFLOW_YML, RUNNER_MJS } = await import("./workflow-template.server");
     // Use the Contents API (PUT /repos/{owner}/{name}/contents/{path}) — one call per file.
     // It's more forgiving than the tree/commit dance and gives a clearer error when the
     // OAuth token lacks write permissions for the repo (e.g. org repo not authorized).
+    const { WORKFLOW_YML, RUNNER_MJS } = await import("./workflow-template.server");
     const branch = sel.working_branch || sel.default_branch;
-    const putFile = async (filePath: string, content: string) => {
-      // Look up existing SHA (needed when the file already exists so PUT counts as update).
-      let sha: string | undefined;
-      const head = await fetch(
-        `https://api.github.com/repos/${sel.owner}/${sel.name}/contents/${encodeURIComponent(filePath).replace(/%2F/g, "/")}?ref=${encodeURIComponent(branch)}`,
-        { headers: {
-          Authorization: `Bearer ${conn.access_token}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-          "User-Agent": "coderbot-app",
-        } },
-      );
-      if (head.ok) {
-        const j = await head.json() as { sha?: string };
-        sha = j.sha;
-      }
-      const res = await fetch(
-        `https://api.github.com/repos/${sel.owner}/${sel.name}/contents/${encodeURIComponent(filePath).replace(/%2F/g, "/")}`,
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${conn.access_token}`,
-            Accept: "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "Content-Type": "application/json",
-            "User-Agent": "coderbot-app",
-          },
-          body: JSON.stringify({
-            message: `chore: install Lovable coder workflow (${filePath})`,
-            content: Buffer.from(content, "utf8").toString("base64"),
-            branch,
-            ...(sha ? { sha } : {}),
-          }),
-        },
-      );
-      if (!res.ok) {
-        const text = await res.text();
-        if (res.status === 404) {
-          throw new Error(
-            `GitHub 404 writing ${filePath} on ${sel.owner}/${sel.name}@${branch}. ` +
-            `Reconnect GitHub to grant the required “workflow” permission. If this is an organization repo, ` +
-            `an organization admin may also need to approve the OAuth app. ` +
-            `Detail: ${text.slice(0, 200)}`,
-          );
-        }
-        throw new Error(`GitHub ${res.status} writing ${filePath}: ${text.slice(0, 300)}`);
-      }
-    };
-    await putFile(".github/workflows/lovable-coder.yml", WORKFLOW_YML);
-    await putFile("scripts/lovable-coder/runner.mjs", RUNNER_MJS);
+    const base = { token: conn.access_token, owner: sel.owner, name: sel.name, branch };
+    const message = "chore: install Lovable coder workflow";
+    const runner = "scripts/lovable-coder/runner.mjs";
+    const workflow = ".github/workflows/lovable-coder.yml";
+    await putRepoFile({ ...base, path: workflow, content: WORKFLOW_YML, message });
+    await putRepoFile({ ...base, path: runner, content: RUNNER_MJS, message });
 
     await context.supabase.from("repo_selections")
       .update({ workflow_installed_at: new Date().toISOString() })
@@ -129,6 +162,18 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
       kind: "status",
       text: "Queued on GitHub Actions — you can close this tab, the run continues.",
     });
+
+    // A repo installed before a runner fix would otherwise keep running the old copy.
+    try {
+      await refreshRunnerIfStale({
+        token: conn.access_token,
+        owner: repo.owner,
+        name: repo.name,
+        branch: repo.working_branch,
+      });
+    } catch {
+      /* best-effort — run with whatever is installed */
+    }
 
     const secret = crypto.randomUUID() + crypto.randomUUID();
     const requestUrl = new URL(getRequest().url);
