@@ -4,16 +4,24 @@ import { streamText, convertToModelMessages, stepCountIs, consumeStream, type UI
 
 type Mode = "plan" | "build" | "debug" | "improve";
 
-const MODE_PROMPTS: Record<Mode, string> = {
-  plan:
-    "MODE: PLAN. You are brainstorming with the user. You may read and search the repository, but you must NOT change any file — you have no write tools in this mode. Ask the user clarifying questions about their code and intent, propose approaches, and end with a concrete step-by-step plan. Tell them to switch to Build mode when they want it implemented.",
-  build:
-    "MODE: BUILD. Implement the user's request end to end. Read the files you need, make focused edits with write_file/edit_file/delete_file, then call check_code. If check_code reports problems, fix them and call check_code again. Repeat until it is clean AND the task is actually complete. Only then write your final summary.",
-  debug:
-    "MODE: DEBUG. Find and fix real bugs and problems that are likely to happen — not speculative low-probability ones. Read the relevant code, search for the failure surface, fix it, then call check_code and repeat until clean. Explain each root cause you fixed.",
-  improve:
-    "MODE: IMPROVE. Improve the codebase: add sensible features, simplify and speed up existing code, remove duplication, and harden weak spots. Make real edits, then call check_code and repeat until clean. Do not restructure everything at once — make a coherent set of improvements and explain them.",
-};
+// The write tools differ per target, so the mode instructions have to name the
+// tools the model was actually given — naming repo file tools in a Kaggle run
+// makes the model "finish" without ever editing the notebook.
+function modePrompts(isKaggle: boolean): Record<Mode, string> {
+  const subject = isKaggle ? "the notebook source" : "the repository";
+  const read = isKaggle ? "Read the notebook with read_notebook" : "Read the files you need";
+  const writeTools = isKaggle ? "write_notebook/edit_notebook" : "write_file/edit_file/delete_file";
+  const editing = `${read}, make focused edits with ${writeTools}, then call check_code. If check_code reports problems, fix them and call check_code again. Repeat until it is clean AND the task is actually complete. Only then write your final summary. You must actually call a write tool — a reply that only describes the change is a failed run.`;
+  return {
+    plan:
+      `MODE: PLAN. You are brainstorming with the user. You may read and search ${subject}, but you must NOT change anything — you have no write tools in this mode. Ask the user clarifying questions about their code and intent, propose approaches, and end with a concrete step-by-step plan. Tell them to switch to Build mode when they want it implemented.`,
+    build: `MODE: BUILD. Implement the user's request end to end. ${editing}`,
+    debug:
+      `MODE: DEBUG. Find and fix real bugs and problems that are likely to happen — not speculative low-probability ones. ${read}, search for the failure surface, fix it with ${writeTools}, then call check_code and repeat until clean. Explain each root cause you fixed.`,
+    improve:
+      `MODE: IMPROVE. Improve ${subject}: add sensible features, simplify and speed up existing code, remove duplication, and harden weak spots. Make real edits with ${writeTools}, then call check_code and repeat until clean. Do not restructure everything at once — make a coherent set of improvements and explain them.`,
+  };
+}
 
 const PHASE = { planning: "planning", coding: "coding", checking: "checking", debugging: "debugging", done: "done" } as const;
 
@@ -244,7 +252,7 @@ export const Route = createFileRoute("/api/chat")({
           "Use search_web to look up current docs, package versions, APIs or fixes when you are not sure, instead of guessing — but prefer the repo's own code when the answer lives there.",
           isKaggle ? "" : "Before editing, read the files you are about to change. Prefer edit_file for small changes. You also have read-only reference-repo tools for other connected GitHub repos; use them when the user asks you to copy or adapt code from another repo, but only write changes to the current repo.",
           "When you finish, summarise what you changed, why, and anything the user needs to know or do.",
-          MODE_PROMPTS[mode],
+          modePrompts(isKaggle)[mode],
           thread.seed_summary ? `Context carried over from the previous chat:\n${thread.seed_summary}` : "",
           attachmentContext,
           ragContext,
@@ -323,7 +331,11 @@ export const Route = createFileRoute("/api/chat")({
             }
             await logEvent(
               "status",
-              sawWrite ? "Finished the task and staged the changes." : "Finished.",
+              sawWrite
+                ? "Finished the task and staged the changes."
+                : mode === "plan"
+                  ? "Finished."
+                  : `Finished without changing ${isKaggle ? "the notebook" : "any file"} — the agent only replied. Try again with a more specific instruction.`,
               PHASE.done,
             );
           },
