@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { authJobRequest } from "@/lib/job-auth.server";
+import { ghFetch } from "@/lib/github.server";
 
 /**
  * Called by the runner just before the 6h GitHub Actions limit. Stores the
@@ -37,32 +38,28 @@ export const Route = createFileRoute("/api/public/jobs/continue")({
     if (error) return new Response(`could not queue continuation: ${error.message}`, { status: 500 });
 
     const origin = new URL(request.url).origin;
-    const dispatch = await fetch(`https://api.github.com/repos/${sel.owner}/${sel.name}/dispatches`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${conn.access_token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "coderbot-app",
-      },
-      body: JSON.stringify({
-        event_type: "lovable-coding-job",
-        client_payload: {
-          job_id: next.id,
-          job_secret: secret,
-          app_url: origin,
-          // Continuations check out the review branch so the work in progress
-          // is there; the merge target stays the user's working branch.
-          working_branch: body.review_branch || job.working_branch || sel.working_branch,
-        },
-      }),
-    });
-    if (!dispatch.ok) {
-      const text = await dispatch.text();
+    try {
+      await ghFetch(`/repos/${sel.owner}/${sel.name}/dispatches`, conn.access_token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event_type: "lovable-coding-job",
+          client_payload: {
+            job_id: next.id,
+            job_secret: secret,
+            app_url: origin,
+            // Continuations check out the review branch so the work in progress
+            // is there; the merge target stays the user's working branch.
+            working_branch: body.review_branch || job.working_branch || sel.working_branch,
+          },
+        }),
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       await sb.from("coding_jobs")
-        .update({ status: "failed", error: `continuation dispatch ${dispatch.status}: ${text.slice(0, 300)}` })
+        .update({ status: "failed", error: `continuation dispatch: ${msg.slice(0, 300)}` })
         .eq("id", next.id);
-      return new Response(`dispatch failed ${dispatch.status}`, { status: 502 });
+      return new Response(`dispatch failed: ${msg.slice(0, 120)}`, { status: 502 });
     }
 
     await sb.from("coding_jobs").update({

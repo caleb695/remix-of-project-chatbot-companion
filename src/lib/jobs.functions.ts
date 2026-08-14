@@ -1,17 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { ghFetch } from "@/lib/github.server";
 import { z } from "zod";
 
-const GH_HEADERS = (token: string) => ({
-  Authorization: `Bearer ${token}`,
-  Accept: "application/vnd.github+json",
-  "X-GitHub-Api-Version": "2022-11-28",
-  "User-Agent": "coderbot-app",
-});
-
-const contentsUrl = (owner: string, name: string, filePath: string) =>
-  `https://api.github.com/repos/${owner}/${name}/contents/${encodeURIComponent(filePath).replace(/%2F/g, "/")}`;
+const contentsPath = (owner: string, name: string, filePath: string) =>
+  `/repos/${owner}/${name}/contents/${encodeURIComponent(filePath).replace(/%2F/g, "/")}`;
 
 /** Write a file into the user's repo through the Contents API. */
 async function putRepoFile(args: {
@@ -25,32 +19,37 @@ async function putRepoFile(args: {
 }) {
   // Look up existing SHA (needed when the file already exists so PUT counts as update).
   let sha: string | undefined;
-  const head = await fetch(
-    `${contentsUrl(args.owner, args.name, args.path)}?ref=${encodeURIComponent(args.branch)}`,
-    { headers: GH_HEADERS(args.token) },
-  );
-  if (head.ok) sha = ((await head.json()) as { sha?: string }).sha;
-  const res = await fetch(contentsUrl(args.owner, args.name, args.path), {
-    method: "PUT",
-    headers: { ...GH_HEADERS(args.token), "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message: args.message,
-      content: Buffer.from(args.content, "utf8").toString("base64"),
-      branch: args.branch,
-      ...(sha ? { sha } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    if (res.status === 404) {
+  try {
+    const head = await ghFetch<{ sha?: string }>(
+      `${contentsPath(args.owner, args.name, args.path)}?ref=${encodeURIComponent(args.branch)}`,
+      args.token,
+    );
+    sha = head.sha;
+  } catch {
+    /* 404 means the file does not exist yet — that's fine, the PUT creates it. */
+  }
+  try {
+    await ghFetch(contentsPath(args.owner, args.name, args.path), args.token, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: args.message,
+        content: Buffer.from(args.content, "utf8").toString("base64"),
+        branch: args.branch,
+        ...(sha ? { sha } : {}),
+      }),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/GitHub 404/.test(msg)) {
       throw new Error(
         `GitHub 404 writing ${args.path} on ${args.owner}/${args.name}@${args.branch}. ` +
         `Reconnect GitHub to grant the required “workflow” permission. If this is an organization repo, ` +
         `an organization admin may also need to approve the OAuth app. ` +
-        `Detail: ${text.slice(0, 200)}`,
+        `Detail: ${msg.slice(0, 200)}`,
       );
     }
-    throw new Error(`GitHub ${res.status} writing ${args.path}: ${text.slice(0, 300)}`);
+    throw e;
   }
 }
 
@@ -66,12 +65,12 @@ async function refreshRunnerIfStale(args: {
   branch: string;
 }) {
   const { WORKFLOW_YML, RUNNER_MJS, RUNNER_VERSION } = await import("./workflow-template.server");
-  const res = await fetch(
-    `${contentsUrl(args.owner, args.name, ".github/workflows/lovable-coder.yml")}?ref=${encodeURIComponent(args.branch)}`,
-    { headers: { ...GH_HEADERS(args.token), Accept: "application/vnd.github.raw+json" } },
-  );
-  if (!res.ok) return;
-  const installed = Number(/runner version (\d+)/.exec(await res.text())?.[1] ?? 0);
+  // A transient failure here must not abort the run; fall back to "not stale".
+  const installed = await ghFetch<string>(
+    `${contentsPath(args.owner, args.name, ".github/workflows/lovable-coder.yml")}?ref=${encodeURIComponent(args.branch)}`,
+    args.token,
+    { headers: { Accept: "application/vnd.github.raw+json" } },
+  ).then((t) => Number(/runner version (\d+)/.exec(String(t))?.[1] ?? 0)).catch(() => 0);
   if (installed >= RUNNER_VERSION) return;
   const message = `chore: update Lovable coder runner to v${RUNNER_VERSION}`;
   const runner = "scripts/lovable-coder/runner.mjs";
@@ -196,32 +195,28 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
       }).select().single();
     if (je) throw je;
 
-    // repository_dispatch
-    const dispatch = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.name}/dispatches`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${conn.access_token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json",
-        "User-Agent": "coderbot-app",
-      },
-      body: JSON.stringify({
-        event_type: "lovable-coding-job",
-        client_payload: {
-          job_id: job.id,
-          job_secret: secret,
-          app_url: appUrl,
-          working_branch: repo.working_branch,
-        },
-      }),
-    });
-    if (!dispatch.ok) {
-      const text = await dispatch.text();
+    // repository_dispatch — ghFetch retries transient network/5xx failures so a
+    // dropped connection no longer aborts the edit with a raw error.
+    try {
+      await ghFetch(`/repos/${repo.owner}/${repo.name}/dispatches`, conn.access_token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event_type: "lovable-coding-job",
+          client_payload: {
+            job_id: job.id,
+            job_secret: secret,
+            app_url: appUrl,
+            working_branch: repo.working_branch,
+          },
+        }),
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       await context.supabase.from("coding_jobs")
-        .update({ status: "failed", error: `dispatch: ${dispatch.status} ${text.slice(0, 400)}` })
+        .update({ status: "failed", error: `dispatch: ${msg.slice(0, 400)}` })
         .eq("id", job.id);
-      throw new Error(`GitHub dispatch failed (${dispatch.status}): ${text.slice(0, 200)}`);
+      throw new Error(`GitHub dispatch failed: ${msg.slice(0, 200)}`);
     }
 
     return { jobId: job.id, taskId };
@@ -283,31 +278,30 @@ export const approveJob = createServerFn({ method: "POST" })
     if (!sel || !conn?.access_token) throw new Error("Connect GitHub first");
 
     const base = job.working_branch || sel.working_branch;
-    const headers = {
-      Authorization: `Bearer ${conn.access_token}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      "Content-Type": "application/json",
-      "User-Agent": "coderbot-app",
-    };
-    const res = await fetch(`https://api.github.com/repos/${sel.owner}/${sel.name}/merges`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        base,
-        head: job.review_branch,
-        commit_message: `Coderbot: ${job.summary?.slice(0, 60) ?? "approved changes"}`,
-      }),
-    });
-    if (!res.ok && res.status !== 204) {
-      const text = await res.text();
-      if (res.status === 409) throw new Error("GitHub reported a merge conflict with " + base + ". Resolve it on the branch " + job.review_branch + ".");
-      throw new Error(`GitHub merge failed (${res.status}): ${text.slice(0, 200)}`);
+    // ghFetch retries transient failures and returns null for a 204 (no-op merge).
+    let merged: string | null = null;
+    try {
+      const res = await ghFetch<{ sha?: string } | null>(
+        `/repos/${sel.owner}/${sel.name}/merges`, conn.access_token,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            base,
+            head: job.review_branch,
+            commit_message: `Coderbot: ${job.summary?.slice(0, 60) ?? "approved changes"}`,
+          }),
+        },
+      );
+      merged = res?.sha ?? null;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/GitHub 409/.test(msg)) throw new Error("GitHub reported a merge conflict with " + base + ". Resolve it on the branch " + job.review_branch + ".");
+      throw new Error(`GitHub merge failed: ${msg.slice(0, 200)}`);
     }
-    const merged = res.status === 204 ? null : ((await res.json()) as { sha?: string }).sha ?? null;
 
-    await fetch(`https://api.github.com/repos/${sel.owner}/${sel.name}/git/refs/heads/${job.review_branch}`, {
-      method: "DELETE", headers,
+    await ghFetch(`/repos/${sel.owner}/${sel.name}/git/refs/heads/${job.review_branch}`, conn.access_token, {
+      method: "DELETE",
     }).catch(() => {});
 
     await context.supabase.from("coding_jobs")
@@ -329,14 +323,8 @@ export const discardJob = createServerFn({ method: "POST" })
     const { data: conn } = await context.supabase
       .from("github_connections").select("access_token").maybeSingle();
     if (job.review_branch && sel && conn?.access_token) {
-      await fetch(`https://api.github.com/repos/${sel.owner}/${sel.name}/git/refs/heads/${job.review_branch}`, {
+      await ghFetch(`/repos/${sel.owner}/${sel.name}/git/refs/heads/${job.review_branch}`, conn.access_token, {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${conn.access_token}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-          "User-Agent": "coderbot-app",
-        },
       }).catch(() => {});
     }
     await context.supabase.from("coding_jobs")
@@ -425,31 +413,26 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
       }).select().single();
     if (je) throw je;
 
-    const dispatch = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.name}/dispatches`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${conn.access_token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json",
-        "User-Agent": "coderbot-app",
-      },
-      body: JSON.stringify({
-        event_type: "lovable-coding-job",
-        client_payload: {
-          job_id: job.id,
-          job_secret: secret,
-          app_url: appUrl,
-          working_branch: repo.working_branch,
-        },
-      }),
-    });
-    if (!dispatch.ok) {
-      const text = await dispatch.text();
+    try {
+      await ghFetch(`/repos/${repo.owner}/${repo.name}/dispatches`, conn.access_token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event_type: "lovable-coding-job",
+          client_payload: {
+            job_id: job.id,
+            job_secret: secret,
+            app_url: appUrl,
+            working_branch: repo.working_branch,
+          },
+        }),
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       await context.supabase.from("coding_jobs")
-        .update({ status: "failed", error: `dispatch: ${dispatch.status} ${text.slice(0, 400)}` })
+        .update({ status: "failed", error: `dispatch: ${msg.slice(0, 400)}` })
         .eq("id", job.id);
-      throw new Error(`GitHub dispatch failed (${dispatch.status}): ${text.slice(0, 200)}`);
+      throw new Error(`GitHub dispatch failed: ${msg.slice(0, 200)}`);
     }
     return { jobId: job.id };
   });
