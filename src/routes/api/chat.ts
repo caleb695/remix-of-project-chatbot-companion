@@ -155,6 +155,26 @@ export const Route = createFileRoute("/api/chat")({
         await logEvent("status", `Received task in ${mode} mode`, PHASE.planning);
         await logEvent("thought", "Working out what this task needs and which files matter.", PHASE.planning);
 
+        // Kaggle runs stream in-page, but track them as a coding_job so the run
+        // (status + activity + staged notebook edits) is durable like GitHub
+        // runs: closing the tab no longer loses the record of what happened.
+        let kaggleJobId: string | null = null;
+        if (isKaggle) {
+          const { data: kj } = await supa.from("coding_jobs").insert({
+            user_id: userId,
+            thread_id: threadId,
+            repo_selection_id: null,
+            status: "running",
+            prompt: lastUserText || "",
+            model: modelId,
+            job_type: "kaggle",
+            mode,
+            task_id: taskId,
+            logs: "",
+          }).select("id").single();
+          kaggleJobId = kj?.id ?? null;
+        }
+
         // ---- repo context (RAG + outline) ----------------------------------------
         let ragContext = "";
         const embeddingKey =
@@ -353,6 +373,12 @@ export const Route = createFileRoute("/api/chat")({
           tools,
           stopWhen: stepCountIs(60),
           onStepFinish: async (step) => {
+            // Heartbeat the Kaggle job so a long-running in-page run isn't
+            // mistaken for a dead one (getJob marks kaggle/running jobs stale
+            // after 5 min of inactivity).
+            if (isKaggle && kaggleJobId) {
+              void supa.from("coding_jobs").update({ updated_at: new Date().toISOString() }).eq("id", kaggleJobId);
+            }
             for (const call of step.toolCalls ?? []) {
               const name = call.toolName;
               const input = (call.input ?? {}) as { path?: string; query?: string };
@@ -413,7 +439,7 @@ export const Route = createFileRoute("/api/chat")({
               // only the summary text + the run card. The full thought/action
               // breakdown lives in agent_events, surfaced by the RunCard.
               const parts = isKaggle
-                ? [...assistant.parts.filter((p) => !String(p.type ?? "").startsWith("tool-")), { type: "data-run", data: { taskId, kaggle: true } }]
+                ? [...assistant.parts.filter((p) => !String(p.type ?? "").startsWith("tool-")), { type: "data-run", data: { jobId: kaggleJobId ?? undefined, taskId, kaggle: true } }]
                 : assistant.parts;
               await supa.from("chat_messages").insert({
                 thread_id: threadId,
@@ -432,12 +458,28 @@ export const Route = createFileRoute("/api/chat")({
                   : `Finished without changing ${isKaggle ? "the notebook" : "any file"} — the agent only replied. Try again with a more specific instruction.`,
               PHASE.done,
             );
+            if (isKaggle && kaggleJobId) {
+              await supa.from("coding_jobs").update({
+                status: "completed",
+                summary: sawWrite ? "Finished and staged the notebook changes." : "Finished without changing the notebook.",
+                finished_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }).eq("id", kaggleJobId);
+            }
           },
           onError: (error) => {
             const msg = error instanceof Error ? error.message : String(error);
             // Log the failure at the `done` phase so the process indicator stops
             // on a terminal state instead of freezing on a stale planning phase.
             void logEvent("error", msg, PHASE.done);
+            if (isKaggle && kaggleJobId) {
+              void supa.from("coding_jobs").update({
+                status: "failed",
+                error: msg.slice(0, 500),
+                finished_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }).eq("id", kaggleJobId);
+            }
             return msg;
           },
         }));
