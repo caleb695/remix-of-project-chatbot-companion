@@ -262,7 +262,12 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     },
   });
   const lastEvent = events.data?.[events.data.length - 1];
-  const phase = working && !lastEvent ? "waiting" : (lastEvent?.phase ?? (working ? "planning" : "done"));
+  const lastPhase = lastEvent?.phase;
+  // Treat an in-page stream error as terminal so the indicator stops on a
+  // settled state instead of freezing on a stale "planning" phase when the
+  // connection drops before a `done` event is logged.
+  const failed = !working && Boolean(error) && lastPhase !== "done";
+  const phase = working && !lastEvent ? "waiting" : (failed ? "done" : (lastPhase ?? (working ? "planning" : "done")));
   const limitError = events.data?.filter((e) => e.kind === "error").slice(-1)[0]?.text ?? null;
 
   // Pull the agent's final message into the transcript when a run finishes.
@@ -344,7 +349,13 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
             </div>
           )}
           {messages.map((m) => <MessageBubble key={m.id} message={m} threadId={threadId} />)}
-          {error && <p className="text-sm text-destructive">{error.message}</p>}
+          {error && (
+            <p className="text-sm text-destructive">
+              {/load failed|failed to fetch|networkerror|network request/i.test(error.message)
+                ? "The connection to the model was interrupted. Check your network and try again."
+                : error.message}
+            </p>
+          )}
           <JobsPanel threadId={threadId} activeJobId={activeJobId} onClear={() => setActiveJobId(null)} repo={thread.repo_selections} />
         </div>
       </div>
