@@ -235,11 +235,16 @@ export const Route = createFileRoute("/api/chat")({
           for (;;) {
             let res: Response;
             try {
+              // Combine the SDK's abort signal (so client disconnects still
+              // cancel the provider request) with a hard timeout so a stuck
+              // connection can't hang the whole run.
+              const timeoutSignal = AbortSignal.timeout(1000 * 60 * 5);
+              const signal = init?.signal
+                ? (AbortSignal.any ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal)
+                : timeoutSignal;
               res = await fetch(input as string, {
                 ...init,
-                // A single streaming completion on a big context can take minutes,
-                // but a truly stuck connection must not hang the whole run.
-                signal: AbortSignal.timeout(1000 * 60 * 5),
+                signal,
               });
             } catch (e) {
               if (++transient > 4) {
@@ -403,8 +408,12 @@ export const Route = createFileRoute("/api/chat")({
               // with a `data-run` part so the transcript renders a clickable card
               // ("What it did") that opens the model's thoughts and actions — the
               // same experience GitHub runs get from the Action runner.
+              // For Kaggle, drop the streamed tool-call parts (the chatter of
+              // "Wrote/Read/Checked" the model emitted while working) and keep
+              // only the summary text + the run card. The full thought/action
+              // breakdown lives in agent_events, surfaced by the RunCard.
               const parts = isKaggle
-                ? [...assistant.parts, { type: "data-run", data: { taskId, kaggle: true } }]
+                ? [...assistant.parts.filter((p) => !String(p.type ?? "").startsWith("tool-")), { type: "data-run", data: { taskId, kaggle: true } }]
                 : assistant.parts;
               await supa.from("chat_messages").insert({
                 thread_id: threadId,
