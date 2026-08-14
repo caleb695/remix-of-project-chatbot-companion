@@ -1008,10 +1008,18 @@ function MessageBubble({ message, threadId, liveRun }: { message: UIMessage; thr
         {liveRun && (
           <RunCard threadId={threadId} run={{ taskId: liveRun.taskId, kaggle: liveRun.kaggle, status: "running" }} />
         )}
-        {message.parts.map((part, i) => {
+        {(() => {
+          // A persisted run message (one with a `data-run` part) carries the
+          // model's full streamed text + tool-call parts. Rendering those inline
+          // made completed Kaggle runs look like a wall of "thoughts and actions"
+          // instead of the clean summary + "What it did" card GitHub runs show.
+          // Suppress the inline tool badges for any run message; the activity
+          // sheet (fed from agent_events) keeps the full breakdown.
+          const hasRunPart = message.parts.some((p) => p.type === "data-run");
+          return message.parts.map((part, i) => {
           // The live RunCard above replaces these during the run.
           if (liveRun && part.type === "text") return null;
-          if (liveRun && part.type.startsWith("tool-")) return null;
+          if ((liveRun || hasRunPart) && part.type.startsWith("tool-")) return null;
           if (part.type === "text") return <div key={i} className="whitespace-pre-wrap text-sm leading-relaxed">{part.text}</div>;
           // Persisted with the run, so the review + activity stay available
           // long after the tab was closed.
@@ -1034,7 +1042,8 @@ function MessageBubble({ message, threadId, liveRun }: { message: UIMessage; thr
             );
           }
           return null;
-        })}
+        });
+        })()}
       </div>
     </div>
   );
