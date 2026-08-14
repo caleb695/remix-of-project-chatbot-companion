@@ -228,13 +228,24 @@ export const getJob = createServerFn({ method: "GET" })
   .handler(async ({ context, data }) => {
     const { data: job, error } = await context.supabase
       .from("coding_jobs")
-      .select("id, status, prompt, logs, error, summary, commit_sha, review_branch, changed_files, working_branch, task_id, finished_at, created_at, updated_at")
+      .select("id, status, prompt, logs, error, summary, commit_sha, review_branch, changed_files, working_branch, task_id, job_type, finished_at, created_at, updated_at")
       .eq("id", data.id).maybeSingle();
     if (error) throw error;
     // A dispatch can be accepted by GitHub but never start the workflow (missing
     // or misconfigured workflow file). Don't leave the UI spinning forever.
     if (job && job.status === "queued" && Date.now() - new Date(job.created_at).getTime() > 6 * 60 * 1000) {
       const message = "The GitHub Actions runner never started this job. Re-install the workflow from Account, then try again.";
+      await context.supabase.from("coding_jobs")
+        .update({ status: "failed", error: message, finished_at: new Date().toISOString() })
+        .eq("id", job.id);
+      return { ...job, status: "failed", error: message };
+    }
+    // Kaggle runs stream in-page; if the tab closed the stream is gone. Don't
+    // leave the job spinning forever — staged notebook edits are already saved,
+    // so surface the partial result and let the user re-run if needed.
+    if (job && job.job_type === "kaggle" && job.status === "running"
+        && Date.now() - new Date(job.updated_at).getTime() > 5 * 60 * 1000) {
+      const message = "The run stopped when the tab was closed. Any notebook edits made so far are staged — review them and re-run if needed.";
       await context.supabase.from("coding_jobs")
         .update({ status: "failed", error: message, finished_at: new Date().toISOString() })
         .eq("id", job.id);
