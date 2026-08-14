@@ -25,6 +25,52 @@ function modePrompts(isKaggle: boolean): Record<Mode, string> {
 
 const PHASE = { planning: "planning", coding: "coding", checking: "checking", debugging: "debugging", done: "done" } as const;
 
+/**
+ * Interleave SSE comment lines (`: keepalive\n\n`) into a streaming Response
+ * body while the model is silent. Comments are ignored by SSE clients but keep
+ * the connection alive so a slow first token (reasoning models, large context)
+ * isn't dropped by the platform/proxy and surfaced to the browser as a raw
+ * "load failed". Stops as soon as the underlying stream closes.
+ */
+function withSseHeartbeat(response: Response): Response {
+  if (!response.body) return response;
+  const HEARTBEAT_MS = 15_000;
+  const KEEPALIVE = new TextEncoder().encode(": keepalive\n\n");
+  const source = response.body;
+  const out = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const pump = async () => {
+        const reader = source.getReader();
+        const beat = () => {
+          try { controller.enqueue(KEEPALIVE); } catch { /* closed */ }
+        };
+        const timer: ReturnType<typeof setInterval> | undefined = setInterval(beat, HEARTBEAT_MS);
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) controller.enqueue(value);
+          }
+        } catch {
+          /* reader errored; let the stream close */
+        } finally {
+          if (timer) clearInterval(timer);
+          try { controller.close(); } catch { /* already closed */ }
+        }
+      };
+      pump();
+    },
+    cancel() {
+      try { source.cancel(); } catch { /* already cancelled */ }
+    },
+  });
+  return new Response(out, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
@@ -178,16 +224,47 @@ export const Route = createFileRoute("/api/chat")({
 
         // On a per-minute rate limit: wait 10s and retry, forever. Any other limit
         // (quota/credits/context) stops the run and surfaces the provider's message.
+        // A per-request timeout + transient retry keeps a hung/slow provider
+        // connection from stalling the SSE response until the platform kills it
+        // (which the browser surfaces as a raw "load failed"). On exhausted
+        // retries the stream errors and onError logs a terminal event.
+        const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
         const retryingFetch: typeof fetch = async (input, init) => {
-          for (let attempt = 0; ; attempt++) {
-            const res = await fetch(input as string, init);
-            if (res.status !== 429) return res;
+          let rpmWaits = 0;
+          let transient = 0;
+          for (;;) {
+            let res: Response;
+            try {
+              res = await fetch(input as string, {
+                ...init,
+                // A single streaming completion on a big context can take minutes,
+                // but a truly stuck connection must not hang the whole run.
+                signal: AbortSignal.timeout(1000 * 60 * 5),
+              });
+            } catch (e) {
+              if (++transient > 4) {
+                throw new Error(
+                  "Could not reach the model provider after several attempts: " +
+                  ((e instanceof Error ? e.message : String(e)) || "network error"),
+                );
+              }
+              await sleep(Math.min(20_000, 2000 * transient));
+              continue;
+            }
+            if (res.status !== 429) {
+              // Retry transient server errors so a provider hiccup doesn't fail the run.
+              if ((res.status === 408 || res.status >= 500) && ++transient <= 4) {
+                await sleep(Math.min(20_000, 2000 * transient));
+                continue;
+              }
+              return res;
+            }
             const text = await res.clone().text();
             const isRpm = /per.?minute|rpm|requests per|rate.?limit/i.test(text) || !/quota|credit|balance|billing/i.test(text);
             if (!isRpm) return res;
             await logEvent("status", "Rate limited — waiting 10s and retrying.", PHASE.coding);
-            await new Promise((r) => setTimeout(r, 10_000));
-            if (attempt > 200) return res;
+            await sleep(10_000);
+            if (++rpmWaits > 200) return res;
           }
         };
 
@@ -312,7 +389,7 @@ export const Route = createFileRoute("/api/chat")({
           },
         });
 
-        return result.toUIMessageStreamResponse({
+        return withSseHeartbeat(result.toUIMessageStreamResponse({
           originalMessages: messages,
           // Keep the run going (and persist it) even if the browser disconnects,
           // e.g. the user switches to another tab mid-run.
@@ -354,7 +431,7 @@ export const Route = createFileRoute("/api/chat")({
             void logEvent("error", msg, PHASE.done);
             return msg;
           },
-        });
+        }));
       },
     },
   },
