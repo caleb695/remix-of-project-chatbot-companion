@@ -349,7 +349,9 @@ export const Route = createFileRoute("/api/chat")({
           },
           onError: (error) => {
             const msg = error instanceof Error ? error.message : String(error);
-            void logEvent("error", msg, phase);
+            // Log the failure at the `done` phase so the process indicator stops
+            // on a terminal state instead of freezing on a stale planning phase.
+            void logEvent("error", msg, PHASE.done);
             return msg;
           },
         });

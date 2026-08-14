@@ -232,11 +232,34 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const jobRunning = job.data ? ["queued", "running"].includes(job.data.status) : false;
   const working = busy || runMut.isPending || jobRunning;
 
+  // The in-page stream (Kaggle, plan mode) ends before the server's final
+  // "done" status event is committed, so the process indicator used to freeze
+  // on a stale phase with a checkmark the moment `working` flipped to false.
+  // Track when a run stopped being busy; keep polling agent_events for a short
+  // grace window afterwards until a terminal `done` event arrives, so the
+  // indicator settles on its real state instead of freezing on "planning".
+  const stoppedAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (working) stoppedAtRef.current = null;
+    else if (stoppedAtRef.current === null) stoppedAtRef.current = Date.now();
+  }, [working]);
+  const withinGrace = stoppedAtRef.current !== null && Date.now() - stoppedAtRef.current < 10_000;
+
   const events = useQuery({
     queryKey: ["agent_events", threadId, taskId],
     queryFn: () => eventsFn({ data: { threadId, ...(taskId ? { taskId } : {}) } }),
     enabled: Boolean(taskId),
-    refetchInterval: working || activityOpen ? 1500 : false,
+    // Keep polling while the run is live, while the sheet is open, and for a
+    // short grace window after it ends — but stop as soon as a terminal `done`
+    // event has been fetched so we don't poll a finished run forever.
+    refetchInterval: (query) => {
+      if (activityOpen) return 1500;
+      const rows = query.state.data;
+      const last = Array.isArray(rows) ? rows[rows.length - 1] : undefined;
+      if (last?.phase === "done") return false;
+      if (working || withinGrace) return 1500;
+      return false;
+    },
   });
   const lastEvent = events.data?.[events.data.length - 1];
   const phase = working && !lastEvent ? "waiting" : (lastEvent?.phase ?? (working ? "planning" : "done"));

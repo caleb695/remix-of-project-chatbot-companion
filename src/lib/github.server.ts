@@ -11,21 +11,52 @@ export function ghHeaders(token: string) {
   };
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Fetch a GitHub REST endpoint with a request timeout and automatic retries for
+ * transient failures (network errors, 408, 429, 5xx). GitHub's API is called
+ * from the user-facing enqueue/commit flow, so a single dropped connection used
+ * to surface as a raw "network request error" and abort the whole edit. Retries
+ * only happen for failures where the request did not take effect (the request
+ * threw, timed out, or returned a retryable status), so non-idempotent writes
+ * are not duplicated on success.
+ */
 export async function ghFetch<T = unknown>(
   path: string,
   token: string,
   init: RequestInit = {},
 ): Promise<T> {
   const url = path.startsWith("http") ? path : `${API}${path}`;
-  const res = await fetch(url, {
-    ...init,
-    headers: { ...ghHeaders(token), ...(init.headers as Record<string, string> | undefined) },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`GitHub ${res.status}: ${text.slice(0, 300)}`);
+  const headers = { ...ghHeaders(token), ...(init.headers as Record<string, string> | undefined) };
+  // Some completion/merge calls take a while on large repos; give them room
+  // while still bounding a stuck connection so the request does not hang.
+  const timeoutMs = init.method && init.method !== "GET" ? 60_000 : 30_000;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const res = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) });
+      if (res.ok) {
+        // 204 No Content (e.g. a no-op merge) has an empty body.
+        if (res.status === 204) return null as T;
+        if (Number(res.headers.get("content-length") ?? 0) === 0) return null as T;
+        return (await res.json()) as T;
+      }
+      const text = await res.text();
+      // Retry transient responses; everything else is a real API error.
+      if (res.status === 408 || res.status === 429 || res.status >= 500) {
+        lastError = new Error(`GitHub ${res.status}: ${text.slice(0, 300)}`);
+      } else {
+        throw new Error(`GitHub ${res.status}: ${text.slice(0, 300)}`);
+      }
+    } catch (e) {
+      // A thrown error (network/timeout/abort) is the retryable case. A
+      // non-retryable status was re-thrown above and never reaches here.
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
+    if (attempt < 3) await sleep(750 * 2 ** attempt + Math.floor(Math.random() * 250));
   }
-  return (await res.json()) as T;
+  throw lastError instanceof Error ? lastError : new Error("GitHub request failed after retries");
 }
 
 export interface GhRepo {
