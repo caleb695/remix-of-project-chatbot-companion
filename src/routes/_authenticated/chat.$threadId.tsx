@@ -348,7 +348,22 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
                   : "Pick a repo or Kaggle notebook to get started."}
             </div>
           )}
-          {messages.map((m) => <MessageBubble key={m.id} message={m} threadId={threadId} />)}
+          {messages.map((m, i) => {
+            // The last assistant message while an in-page run is streaming is
+            // the live run — surface it as a RunCard instead of inline parts.
+            // Only Kaggle notebook runs hide their streaming thoughts/actions
+            // behind a RunCard — plan mode is a normal chat whose text reply
+            // is the actual output, so it must stay visible.
+            const isLiveRun = isKaggle && busy && !durable && m.role === "assistant" && i === messages.length - 1 && Boolean(taskId);
+            return (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                threadId={threadId}
+                liveRun={isLiveRun ? { taskId: taskId!, kaggle: isKaggle } : null}
+              />
+            );
+          })}
           {error && (
             <p className="text-sm text-destructive">
               {/load failed|failed to fetch|networkerror|network request/i.test(error.message)
@@ -979,12 +994,24 @@ type RunData = {
   kaggle?: boolean;
 };
 
-function MessageBubble({ message, threadId }: { message: UIMessage; threadId: string }) {
+function MessageBubble({ message, threadId, liveRun }: { message: UIMessage; threadId: string; liveRun?: { taskId: string; kaggle: boolean } | null }) {
   const isUser = message.role === "user";
+  // In-page runs (Kaggle, plan mode) stream the model's thoughts and tool calls
+  // as parts of the live assistant message. Showing them inline made the run
+  // look like a wall of normal messages. GitHub runs already hide all of this
+  // behind a "What it did" RunCard, so do the same for in-page runs: suppress
+  // the streaming text/tool parts and surface the activity through a RunCard
+  // button (the activity sheet is fed from agent_events either way).
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={isUser ? "max-w-[85%] rounded-2xl bg-primary px-4 py-2 text-primary-foreground" : "max-w-full text-foreground"}>
+        {liveRun && (
+          <RunCard threadId={threadId} run={{ taskId: liveRun.taskId, kaggle: liveRun.kaggle, status: "running" }} />
+        )}
         {message.parts.map((part, i) => {
+          // The live RunCard above replaces these during the run.
+          if (liveRun && part.type === "text") return null;
+          if (liveRun && part.type.startsWith("tool-")) return null;
           if (part.type === "text") return <div key={i} className="whitespace-pre-wrap text-sm leading-relaxed">{part.text}</div>;
           // Persisted with the run, so the review + activity stay available
           // long after the tab was closed.
@@ -1068,7 +1095,9 @@ function RunCard({ threadId, run }: { threadId: string; run: RunData }) {
         <FileDiff className="h-3.5 w-3.5 text-primary" />
         <span className="font-medium">
           {run.kaggle
-            ? "Changes staged in the notebook"
+            ? status === "running"
+              ? <span className="inline-flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Working on the notebook…</span>
+              : "Changes staged in the notebook"
             : pending ? "Waiting for your approval" : status === "discarded" ? "Changes discarded" : "Changes merged"}
         </span>
         {!run.kaggle && <span className="ml-auto text-muted-foreground">{files.length} file{files.length === 1 ? "" : "s"}</span>}
