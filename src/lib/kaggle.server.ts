@@ -6,6 +6,55 @@ import { webSearch } from "./agent-tools.server";
 
 const API = "https://www.kaggle.com/api/v1";
 
+/**
+ * Replace Python string literals and comments with spaces (preserving newlines
+ * and length so line numbers and indentation are unchanged) before counting
+ * brackets. Counting brackets on raw source miscounts brackets that appear
+ * inside strings or comments (e.g. print(")") or # use a ( here) and reports
+ * false "unbalanced" problems on perfectly valid code.
+ */
+function stripPythonLiterals(src: string): string {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    // Line comment
+    if (c === "#") {
+      while (i < n && src[i] !== "\n") { out += " "; i++; }
+      continue;
+    }
+    // Triple-quoted string
+    if ((c === '"' || c === "'") && src[i + 1] === c && src[i + 2] === c) {
+      const q = c;
+      out += "   ";
+      i += 3;
+      while (i < n) {
+        if (src[i] === q && src[i + 1] === q && src[i + 2] === q) { out += "   "; i += 3; break; }
+        out += src[i] === "\n" ? "\n" : " ";
+        i++;
+      }
+      continue;
+    }
+    // Single/double-quoted string
+    if (c === '"' || c === "'") {
+      const q = c;
+      out += " ";
+      i++;
+      while (i < n) {
+        if (src[i] === "\\") { out += "  "; i += 2; continue; }
+        if (src[i] === q) { out += " "; i++; break; }
+        out += src[i] === "\n" ? "\n" : " ";
+        i++;
+      }
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
 export function kaggleHeaders(username: string, key: string) {
   const basic = Buffer.from(`${username}:${key}`, "utf8").toString("base64");
   return {
@@ -145,8 +194,11 @@ export function buildKaggleTools(
         const problems: string[] = [];
         if (!src.trim()) problems.push("Notebook source is empty");
         if (/^<{7}|^>{7}|^={7}$/m.test(src)) problems.push("Leftover merge conflict markers");
+        // Count brackets only on code with strings/comments stripped, otherwise
+        // brackets inside strings (e.g. print(")")) are miscounted.
+        const code = stripPythonLiterals(src);
         for (const [o, c, label] of [["{", "}", "braces"], ["(", ")", "parens"], ["[", "]", "brackets"]] as const) {
-          const a = src.split(o).length - 1, b = src.split(c).length - 1;
+          const a = code.split(o).length - 1, b = code.split(c).length - 1;
           if (a !== b) problems.push(`Unbalanced ${label} (${a} vs ${b})`);
         }
         if (/\b(TODO|FIXME)\b/.test(src)) problems.push("Contains TODO/FIXME left in the code");

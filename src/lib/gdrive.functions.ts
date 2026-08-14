@@ -162,7 +162,7 @@ export const importFromDrive = createServerFn({ method: "POST" })
         }
         const finalMime = exportAs ? exportAs.mime : (mimeType ?? "application/octet-stream");
         const safe = `${t.name}${exportAs && !t.name.endsWith(exportAs.ext) ? exportAs.ext : ""}`
-          .replace(/[^\w./\-]+/g, "_");
+          .replace(/[^\w./-]+/g, "_");
         const storagePath = `${context.userId}/${data.threadId}/${Date.now()}-${safe.replace(/\//g, "__")}`;
         const { error: upErr } = await context.supabase.storage
           .from("attachments")

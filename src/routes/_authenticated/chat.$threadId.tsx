@@ -622,7 +622,7 @@ function AttachButton({ threadId }: { threadId: string }) {
       const uid = auth.user?.id;
       if (!uid) throw new Error("Not signed in");
       for (const file of Array.from(picked)) {
-        const safe = file.name.replace(/[^\w.\-]+/g, "_");
+        const safe = file.name.replace(/[^\w.-]+/g, "_");
         const storagePath = `${uid}/${threadId}/${Date.now()}-${safe}`;
         const { error } = await supabase.storage.from("attachments").upload(storagePath, file);
         if (error) throw error;
