@@ -439,7 +439,12 @@ export const Route = createFileRoute("/api/chat")({
               // only the summary text + the run card. The full thought/action
               // breakdown lives in agent_events, surfaced by the RunCard.
               const parts = isKaggle
-                ? [...assistant.parts.filter((p) => !String(p.type ?? "").startsWith("tool-")), { type: "data-run", data: { jobId: kaggleJobId ?? undefined, taskId, kaggle: true } }]
+                ? [...assistant.parts.filter((p) => {
+                    const type = String(p.type ?? "");
+                    // Keep tool-result parts (which confirm edits happened) but drop tool-call parts
+                    if (type === "tool-result") return true;
+                    return !type.startsWith("tool-");
+                  }), { type: "data-run", data: { jobId: kaggleJobId ?? undefined, taskId, kaggle: true } }]
                 : assistant.parts;
               await supa.from("chat_messages").insert({
                 thread_id: threadId,
