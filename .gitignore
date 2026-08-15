@@ -1,58 +1,31 @@
 ```
-# Dependencies
-node_modules/
-
 # Build outputs
 .output/
 dist/
 build/
-target/
 
-# Temporary files
-*.tmp
-*.temp
-.DS_Store
-Thumbs.db
+# Dependencies
+node_modules/
 
-# Environment variables
+# Environment
 .env
 .env.local
 *.env.*
 
-# IDE specific
-.vscode/
-.idea/
-*.swp
-*.swo
-
 # Logs
 *.log
 
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# Package managers
-.npm/
-.yarn/
-.pnpm-store/
-
-# Testing
-.nyc_output/
-.mypy_cache/
-.pytest_cache/
-.jest-cache/
+# Temporary files
+*.tmp
+*.swp
+*.swo
 
 # OS generated files
 .DS_Store
-ehthumbs.db
-Icon?
 Thumbs.db
+
+# Cache directories
+.nitro/
+.vite/
+.cache/
 ```

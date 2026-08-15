@@ -3,6 +3,24 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { swarmExecute } from './swarm-orchestrator.server';
+import { smartPlan } from './smart-planner.server';
+import { learnFromSession, retrieveKnowledge } from './learning-system.server';
+
+// Helper to create tools with consistent typing
+export function createTool<TInput extends Record<string, any>, TOutput>(config: {
+  id: string;
+  name: string;
+  description: string;
+  inputSchema: z.ZodType<TInput>;
+  execute: (input: TInput, context: any) => Promise<TOutput>;
+}) {
+  return tool({
+    description: config.description,
+    inputSchema: config.inputSchema,
+    execute: config.execute,
+  });
+}
 
 type Sb = SupabaseClient<any, any, any>;
 
@@ -135,6 +153,12 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
   const { sb, userId, repoId } = ctx;
 
   const readOnly = {
+    // Advanced harness tools
+    swarm_execute: swarmExecute,
+    smart_plan: smartPlan,
+    learn_from_session: learnFromSession,
+    retrieve_knowledge: retrieveKnowledge,
+
     list_files: tool({
       description:
         "List files in the working copy of the repository. Optionally filter by a path prefix or glob-ish substring.",
