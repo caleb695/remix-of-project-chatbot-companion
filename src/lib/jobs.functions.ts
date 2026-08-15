@@ -81,7 +81,7 @@ async function refreshRunnerIfStale(args: {
 
 export const installCoderWorkflow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ repoId: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ repoId: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: sel, error } = await context.supabase
       .from("repo_selections").select("*").eq("id", data.repoId).single();
@@ -116,7 +116,7 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
 
 export const enqueueCodingJob = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({
+  .validator((i: unknown) => z.object({
     threadId: z.string().uuid(),
     prompt: z.string().min(1).max(20000),
     mode: z.enum(["plan", "build", "debug", "improve"]).optional(),
@@ -224,7 +224,7 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
 
 export const getJob = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: job, error } = await context.supabase
       .from("coding_jobs")
@@ -257,7 +257,7 @@ export const getJob = createServerFn({ method: "GET" })
 /** The full patch the run produced, for the review screen. */
 export const getJobDiff = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: job, error } = await context.supabase
       .from("coding_jobs").select("diff, changed_files, review_branch").eq("id", data.id).maybeSingle();
@@ -273,7 +273,7 @@ export const getJobDiff = createServerFn({ method: "GET" })
 /** Merge the run's review branch into the working branch — the user's approval. */
 export const approveJob = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: job, error } = await context.supabase
       .from("coding_jobs")
@@ -324,7 +324,7 @@ export const approveJob = createServerFn({ method: "POST" })
 /** Throw the run's changes away without touching the working branch. */
 export const discardJob = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: job, error } = await context.supabase
       .from("coding_jobs").select("id, review_branch, repo_selection_id").eq("id", data.id).single();
@@ -348,7 +348,7 @@ export const discardJob = createServerFn({ method: "POST" })
 
 export const listJobsForThread = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ threadId: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ threadId: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: rows, error } = await context.supabase
       .from("coding_jobs")
@@ -361,7 +361,7 @@ export const listJobsForThread = createServerFn({ method: "GET" })
 
 export const cancelJob = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     await context.supabase.from("coding_jobs")
       .update({ status: "failed", error: "cancelled by user", finished_at: new Date().toISOString() })
@@ -371,7 +371,7 @@ export const cancelJob = createServerFn({ method: "POST" })
 
 export const enqueueIndexJob = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({
+  .validator((i: unknown) => z.object({
     repoId: z.string().uuid(),
     model: z.string().min(1).max(200),
   }).parse(i))
@@ -450,7 +450,7 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
 
 export const getLatestIndexJob = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ repoId: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ repoId: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: row } = await context.supabase
       .from("coding_jobs")

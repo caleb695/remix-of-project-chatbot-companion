@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const listAttachments = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ threadId: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ threadId: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: rows, error } = await context.supabase
       .from("chat_attachments")
@@ -18,7 +18,7 @@ export const listAttachments = createServerFn({ method: "GET" })
 /** Record an upload the client already pushed into the private `attachments` bucket. */
 export const registerAttachment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) =>
+  .validator((i: unknown) =>
     z.object({
       threadId: z.string().uuid(),
       name: z.string().min(1).max(200),
@@ -48,7 +48,7 @@ export const registerAttachment = createServerFn({ method: "POST" })
 /** code_only = the agent may use the file from code but never reads its contents. */
 export const setAttachmentCodeOnly = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid(), codeOnly: z.boolean() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid(), codeOnly: z.boolean() }).parse(i))
   .handler(async ({ context, data }) => {
     const { error } = await context.supabase
       .from("chat_attachments").update({ code_only: data.codeOnly }).eq("id", data.id);
@@ -58,7 +58,7 @@ export const setAttachmentCodeOnly = createServerFn({ method: "POST" })
 
 export const deleteAttachment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: row } = await context.supabase
       .from("chat_attachments").select("storage_path").eq("id", data.id).maybeSingle();

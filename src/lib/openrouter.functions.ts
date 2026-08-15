@@ -28,7 +28,7 @@ export const getOpenrouterSettings = createServerFn({ method: "GET" })
 
 export const saveOpenrouterSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       apiKey: z.string().min(10).max(500).optional(),
       mistralApiKey: z.string().min(10).max(500).optional(),
