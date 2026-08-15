@@ -131,14 +131,16 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     if (initial.length > messages.length) setMessages(initial);
   }, [initial, messages.length, setMessages]);
 
-
   const [input, setInput] = useState("");
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerH, setComposerH] = useState(120);
 
-  const busy = status === "submitted" || status === "streaming";
+  // For durable runs (GitHub Actions), don't block user input while the job is running
+  // since the user can send follow-up messages that will be queued for the next run.
+  // For in-page streaming (Kaggle, plan mode), still block to avoid concurrent requests.
+  const busy = (status === "submitted" || status === "streaming") && !durable;
   // Build/Debug/Improve runs happen on GitHub Actions so they survive closing
   // the tab. Plan mode stays as a live in-page conversation.
   // Kaggle notebooks have no GitHub Actions runner, so they always stream in-page.
@@ -207,7 +209,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
 
   const submit = () => {
     const text = input.trim();
-    if (!text || busy || runMut.isPending) return;
+    if (!text || runMut.isPending) return;
     if (durable) { runMut.mutate(text); return; }
     const id = crypto.randomUUID();
     setTaskId(id);

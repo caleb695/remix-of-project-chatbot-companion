@@ -65,9 +65,14 @@ const event = async (kind, text, phase, agent) => {
 
 const sh = (cmd, opts = {}) => execSync(cmd, { stdio: ["pipe", "pipe", "pipe"], encoding: "utf8", timeout: 1000 * 60 * 10, ...opts });
 
-const MAX_STEPS = 200;
 const START = Date.now();
 const TIME_LIMIT_MS = 1000 * 60 * 60 * 5.2; // checkpoint well before the 6h wall
+
+// Mode-specific limits: build stops after task completion, debug/improve run long-term
+function getStepLimit(mode) {
+  if (mode === \"debug\" || mode === \"improve\") return Infinity; // long-running modes
+  return 200; // build/plan modes have fixed limits
+}
 
 /* ---------------------------------- tools --------------------------------- */
 
@@ -965,10 +970,45 @@ async function main() {
   let lastErrorSig = null;
   let errorStreak = 0;
 
-  for (let step = 0; step < MAX_STEPS; step++) {
+  const mode = spec.mode || "build";
+  const stepLimit = getStepLimit(mode);
+  let brainstormingPhase = false;
+  let ideasExhausted = false;
+  let lastMessageCount = messages.length;
+
+  // Poll for new user messages during long-running sessions (debug/improve modes)
+  async function checkForNewMessages() {
+    if (mode !== "debug" && mode !== "improve") return;
+    try {
+      const r = await fetch(APP_URL + "/api/public/jobs/new-messages", {
+        method: "POST",
+        headers: HEAD,
+        body: JSON.stringify({ lastMessageCount }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (data.newMessages && data.newMessages.length > 0) {
+          await log("Received " + data.newMessages.length + " new user message(s) while working");
+          for (const msg of data.newMessages) {
+            messages.push({ role: "user", content: msg.content });
+          }
+          lastMessageCount += data.newMessages.length;
+          await event("status", "Incorporating new user feedback into current work.", "planning");
+        }
+      }
+    } catch (e) {
+      // Silently ignore - don't interrupt the run for polling errors
+    }
+  }
+
+  for (let step = 0; step < stepLimit; step++) {
     if (Date.now() - START > TIME_LIMIT_MS) {
       await checkpointAndContinue(messages);
       return;
+    }
+    // Check for new user messages every 3 steps in long-running modes
+    if (step > 0 && step % 3 === 0) {
+      await checkForNewMessages();
     }
     try {
     messages = await compactIfNeeded(spec, messages);
@@ -983,8 +1023,33 @@ async function main() {
 
     const calls = msg.tool_calls || [];
     if (calls.length === 0) {
-      // The model stopped calling tools. If it never verified its edits, nudge
-      // it once instead of silently finishing on unchecked work.
+      // The model stopped calling tools. Handle differently based on mode.
+      if (mode === \"debug\" || mode === \"improve\") {
+        // Long-running modes: brainstorm for more work or check if done
+        if (!brainstormingPhase && !ideasExhausted) {
+          // Enter brainstorming phase to find more improvements/bugs
+          brainstormingPhase = true;
+          const prompt = mode === \"debug\"
+            ? \"You have not identified any more bugs to fix. Take a systematic approach: review the codebase for potential issues like error handling gaps, edge cases, performance bottlenecks, security concerns, or logic errors. List specific files and line numbers where problems might exist, then investigate and fix them. Only call finish when you've thoroughly checked and found nothing else to debug.\"
+            : \"You have not identified any more improvements. Brainstorm systematically: review the codebase for optimization opportunities, code quality improvements, missing features that would add value, refactoring chances to reduce duplication, better patterns to adopt, or hardening of weak spots. List specific improvements with file locations, then implement them. Only call finish when you've exhausted meaningful improvements.\";
+          messages.push({ role: "user", content: prompt });
+          continue;
+        }
+        if (brainstormingPhase && noProgress === 0) {
+          // Gave it a chance to brainstorm but still no tool calls - mark as exhausted
+          ideasExhausted = true;
+          noProgress++;
+          messages.push({ role: "user", content: "If you genuinely cannot find any more " + (mode === "debug" ? "bugs" : "improvements") + " after systematic review, explain what you checked and why nothing else needs attention, then call finish. Otherwise, start investigating specific areas you mentioned." });
+          continue;
+        }
+        if (ideasExhausted) {
+          // Truly exhausted - allow finish
+          done = { summary: msg.content || "No more " + mode + " opportunities found.", commit_message: "Coderbot " + mode + " session complete" };
+          break;
+        }
+      }
+      
+      // Build/plan mode or fallback: normal finish behavior
       if (sawWrite && !sawCheck && noProgress === 0) {
         noProgress++;
         messages.push({ role: "user", content: "You changed files but never ran check_code. Run it now, fix anything it reports, then call finish." });

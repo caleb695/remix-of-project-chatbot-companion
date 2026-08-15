@@ -152,8 +152,10 @@ export const Route = createFileRoute("/api/chat")({
             if (text) await supa.from("chat_threads").update({ title: text }).eq("id", threadId);
           }
         }
+        // Log that we received the message - for long-running modes, this helps the AI
+        // see that new user input arrived while it was working
         await logEvent("status", `Received task in ${mode} mode`, PHASE.planning);
-        await logEvent("thought", "Working out what this task needs and which files matter.", PHASE.planning);
+        await logEvent("thought", "Working out what this task needs and which files matter. For long-running sessions, check if there are newer user messages to incorporate.", PHASE.planning);
 
         // Kaggle runs stream in-page, but track them as a coding_job so the run
         // (status + activity + staged notebook edits) is durable like GitHub
