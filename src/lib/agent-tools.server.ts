@@ -13,6 +13,7 @@ export interface ToolCtx {
 }
 
 const MAX_READ = 40_000;
+const MAX_BATCH_READ = 5; // Max files for batch operations
 
 async function findReferenceRepo(sb: Sb, userId: string, repo: string) {
   const [owner, name] = repo.split("/");
@@ -126,6 +127,10 @@ export async function webSearch(query: string, maxResults: number): Promise<stri
   return `No results for "${q}".`;
 }
 
+// Cache for frequently accessed file lists (per-repo, short-lived)
+const fileListCache = new Map<string, { data: any[]; timestamp: number }>();
+const CACHE_TTL_MS = 30_000; // 30 seconds
+
 export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
   const { sb, userId, repoId } = ctx;
 
@@ -135,8 +140,27 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         "List files in the working copy of the repository. Optionally filter by a path prefix or glob-ish substring.",
       inputSchema: z.object({
         prefix: z.string().optional().describe("Only return paths containing this substring"),
+        force_refresh: z.boolean().optional().describe("Skip cache and fetch fresh data"),
       }),
-      execute: async ({ prefix }) => {
+      execute: async ({ prefix, force_refresh }) => {
+        const cacheKey = `files:${repoId}:${prefix || ""}`;
+        const now = Date.now();
+        const cached = fileListCache.get(cacheKey);
+        
+        // Use cache if valid and not forcing refresh
+        if (!force_refresh && cached && (now - cached.timestamp) < CACHE_TTL_MS) {
+          let rows = cached.data;
+          if (prefix) rows = rows.filter((r) => r.path.includes(prefix));
+          if (rows.length === 0) {
+            return {
+              files: [],
+              note: "Working copy is empty. Ask the user to press Sync on the Account tab for this repo.",
+              cached: true,
+            };
+          }
+          return { count: rows.length, files: rows.slice(0, 600).map((r) => `${r.path}${r.status !== "unchanged" ? ` (${r.status})` : ""}`), cached: true };
+        }
+        
         const { data, error } = await sb
           .from("working_files")
           .select("path, status")
@@ -145,7 +169,10 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           .order("path");
         if (error) return { error: error.message };
         let rows = data ?? [];
-        if (prefix) rows = rows.filter((r) => r.path.includes(prefix));
+        
+        // Update cache
+        fileListCache.set(cacheKey, { data: rows, timestamp: now });
+        
         if (rows.length === 0) {
           return {
             files: [],
@@ -170,6 +197,31 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         if (!data || data.status === "deleted") return { error: `Not found: ${path}` };
         const content = data.content ?? "";
         return { path, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ };
+      },
+    }),
+
+    batch_read_files: tool({
+      description: "Read multiple files at once for efficiency. Returns an array of file contents. Use when you need to understand relationships between files or make cross-file changes.",
+      inputSchema: z.object({ paths: z.array(z.string()).max(MAX_BATCH_READ) }),
+      execute: async ({ paths }) => {
+        const { data, error } = await sb
+          .from("working_files")
+          .select("path, content, status")
+          .eq("repo_selection_id", repoId)
+          .in("path", paths);
+        if (error) return { error: error.message };
+        const results: Array<{ path: string; content: string; truncated: boolean; error?: string }> = [];
+        const foundPaths = new Set(data?.map(d => d.path) || []);
+        for (const p of paths) {
+          const row = data?.find(d => d.path === p);
+          if (!row || row.status === "deleted") {
+            results.push({ path: p, content: "", truncated: false, error: "Not found" });
+          } else {
+            const content = row.content ?? "";
+            results.push({ path: p, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ });
+          }
+        }
+        return { files: results, missing: paths.filter(p => !foundPaths.has(p)) };
       },
     }),
 
@@ -219,6 +271,27 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       }),
       execute: async ({ query, max_results }) => {
         return webSearch(query ?? "", max_results ?? 6);
+      },
+    }),
+
+    fetch_url: tool({
+      description: "Fetch the text content of a URL (e.g., documentation, API reference, RFC). Returns up to 50KB of content. Use this to read external resources needed for the code.",
+      inputSchema: z.object({ url: z.string().describe("The URL to fetch") }),
+      execute: async ({ url }) => {
+        const u = String(url || "").trim();
+        if (!u) return "fetch_url requires a ?url=";
+        if (!/^https?:\/\//i.test(u)) return "URL must start with http:// or https://";
+        try {
+          const res = await fetch(u, { 
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; Coderbot/1.0)" }, 
+            signal: AbortSignal.timeout(15000) 
+          });
+          if (!res.ok) return `HTTP ${res.status}`;
+          const text = await res.text();
+          return text.slice(0, 50_000) + (text.length > 50_000 ? "\n\n[...truncated]" : "");
+        } catch (e) {
+          return `Fetch failed: ${String(e)}`;
+        }
       },
     }),
 
@@ -335,24 +408,26 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           .neq("status", "deleted");
         const existing = new Set((allRows ?? []).map((r) => r.path));
 
-        const problems: Array<{ path: string; issue: string }> = [];
+        const problems: Array<{ path: string; issue: string; severity: "error" | "warning" | "info"; suggestion?: string }> = [];
+        const suggestions: Array<{ path: string; type: string; message: string }> = [];
+        
         for (const f of files) {
           const content = f.content ?? "";
           if (!content.trim()) {
-            problems.push({ path: f.path, issue: "File is empty" });
+            problems.push({ path: f.path, issue: "File is empty", severity: "warning" });
             continue;
           }
           if (/^<{7}|^>{7}|^={7}$/m.test(content)) {
-            problems.push({ path: f.path, issue: "Leftover merge conflict markers" });
+            problems.push({ path: f.path, issue: "Leftover merge conflict markers", severity: "error" });
           }
           const code = stripLiterals(content);
           for (const [open, close, label] of [["{", "}", "braces"], ["(", ")", "parens"], ["[", "]", "brackets"]] as const) {
             const o = code.split(open).length - 1;
             const c = code.split(close).length - 1;
-            if (o !== c) problems.push({ path: f.path, issue: `Unbalanced ${label} (${o} vs ${c})` });
+            if (o !== c) problems.push({ path: f.path, issue: `Unbalanced ${label} (${o} vs ${c})`, severity: "error" });
           }
           if (/\b(TODO|FIXME)\b/.test(content)) {
-            problems.push({ path: f.path, issue: "Contains TODO/FIXME left in the code" });
+            problems.push({ path: f.path, issue: "Contains TODO/FIXME left in the code", severity: "warning" });
           }
           const importRe = /(?:from|require\()\s*['"](\.[^'"]+)['"]/g;
           let m: RegExpExecArray | null;
@@ -362,11 +437,36 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
             const candidates = [base, `${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}.jsx`, `${base}.mjs`,
               `${base}/index.ts`, `${base}/index.tsx`, `${base}/index.js`, `${base}.py`, `${base}.css`, `${base}.json`];
             if (!candidates.some((c) => existing.has(c))) {
-              problems.push({ path: f.path, issue: `Imports missing local file: ${spec}` });
+              problems.push({ path: f.path, issue: `Imports missing local file: ${spec}`, severity: "error" });
             }
           }
+          // Check for common syntax issues
+          if (/\b(async)\s+(?!\()/i.test(content) && !/\bawait\b/.test(content)) {
+            problems.push({ path: f.path, issue: "async function without await - might be unnecessary", severity: "warning" });
+          }
+          if (/console\.log\s*\(/i.test(content)) {
+            problems.push({ path: f.path, issue: "Contains console.log - consider removing before commit", severity: "warning" });
+          }
+          
+          // NEW: Detect missing package imports (external dependencies)
+          const externalImports = content.match(/(?:from|require\(['"])([a-zA-Z@][^'"]*)['"]/g) || [];
+          const knownBuiltins = new Set(["fs", "path", "http", "https", "os", "crypto", "stream", "events", "util", "child_process", "cluster", "dns", "net", "readline", "tls", "zlib", "assert", "buffer", "querystring", "url", "vm"]);
+          for (const imp of externalImports) {
+            const pkg = imp.replace(/^(?:from|require\(['"])([a-zA-Z@][^'"]*)['"].*/, "$1").split("/")[0];
+            if (!knownBuiltins.has(pkg) && !pkg.startsWith(".")) {
+              suggestions.push({ path: f.path, type: "dependency", message: `Uses external package '${pkg}' - ensure it's in package.json` });
+            }
+          }
+          
+          // NEW: Detect potential performance issues
+          if (/\bforEach\s*\([^)]*\)\s*\{[^}]*\bawait\b/.test(content)) {
+            suggestions.push({ path: f.path, type: "performance", message: "Using await inside forEach - consider Promise.all or for...of for better performance" });
+          }
+          if (/\bJSON\.parse\s*\(\s*JSON\.stringify\s*\(/.test(content)) {
+            suggestions.push({ path: f.path, type: "performance", message: "Deep cloning with JSON.parse/stringify - consider structuredClone() for better performance" });
+          }
         }
-        return { checked: files.map((f) => f.path), problems, clean: problems.length === 0 };
+        return { checked: files.map((f) => f.path), problems, suggestions, clean: problems.length === 0 };
       },
     }),
   };
@@ -433,6 +533,48 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           .eq("id", row.id);
         if (error) return { error: error.message };
         return { ok: true, path, action: "edited" };
+      },
+    }),
+
+    batch_edit_files: tool({
+      description: "Apply the same find/replace edit across multiple files at once. Use when you need to make the same change in several files (e.g., renaming a function, updating imports). More efficient than calling edit_file repeatedly.",
+      inputSchema: z.object({
+        paths: z.array(z.string()).max(10),
+        find: z.string(),
+        replace: z.string(),
+        replace_all: z.boolean().optional(),
+      }),
+      execute: async ({ paths, find, replace, replace_all }) => {
+        const results: Array<{ path: string; success: boolean; error?: string }> = [];
+        for (const path of paths) {
+          const { data: row } = await sb
+            .from("working_files")
+            .select("id, content")
+            .eq("repo_selection_id", repoId)
+            .eq("path", path)
+            .maybeSingle();
+          if (!row) {
+            results.push({ path, success: false, error: "Not found" });
+            continue;
+          }
+          const content = row.content ?? "";
+          if (!content.includes(find)) {
+            results.push({ path, success: false, error: "Find text not in file" });
+            continue;
+          }
+          const next = replace_all ? content.split(find).join(replace) : content.replace(find, replace);
+          const { error } = await sb
+            .from("working_files")
+            .update({ content: next, status: "modified", updated_at: new Date().toISOString() })
+            .eq("id", row.id);
+          if (error) {
+            results.push({ path, success: false, error: error.message });
+          } else {
+            results.push({ path, success: true });
+          }
+        }
+        const succeeded = results.filter(r => r.success).length;
+        return { total: paths.length, succeeded, failed: paths.length - succeeded, results };
       },
     }),
 

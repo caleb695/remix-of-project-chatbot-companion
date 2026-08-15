@@ -152,8 +152,10 @@ export const Route = createFileRoute("/api/chat")({
             if (text) await supa.from("chat_threads").update({ title: text }).eq("id", threadId);
           }
         }
+        // Log that we received the message - for long-running modes, this helps the AI
+        // see that new user input arrived while it was working
         await logEvent("status", `Received task in ${mode} mode`, PHASE.planning);
-        await logEvent("thought", "Working out what this task needs and which files matter.", PHASE.planning);
+        await logEvent("thought", "Working out what this task needs and which files matter. For long-running sessions, check if there are newer user messages to incorporate.", PHASE.planning);
 
         // Kaggle runs stream in-page, but track them as a coding_job so the run
         // (status + activity + staged notebook edits) is durable like GitHub
@@ -371,7 +373,12 @@ export const Route = createFileRoute("/api/chat")({
           system: systemPrompt,
           messages: await convertToModelMessages(messages),
           tools,
-          stopWhen: stepCountIs(60),
+          // Adaptive step limit: more steps for build/debug, fewer for plan/improve
+          stopWhen: stepCountIs(mode === "plan" ? 25 : mode === "debug" ? 50 : 35),
+          // Enable parallel tool execution for independent reads
+          experimental_parallelToolCalls: true,
+          // Retry transient tool execution errors
+          maxRetries: 2,
           onStepFinish: async (step) => {
             // Heartbeat the Kaggle job so a long-running in-page run isn't
             // mistaken for a dead one (getJob marks kaggle/running jobs stale
@@ -379,43 +386,58 @@ export const Route = createFileRoute("/api/chat")({
             if (isKaggle && kaggleJobId) {
               void supa.from("coding_jobs").update({ updated_at: new Date().toISOString() }).eq("id", kaggleJobId);
             }
-            for (const call of step.toolCalls ?? []) {
-              const name = call.toolName;
-              const input = (call.input ?? {}) as { path?: string; query?: string };
-              if (name === "write_notebook" || name === "edit_notebook") {
-                if (sawCheck) phase = PHASE.debugging;
-                else phase = PHASE.coding;
-                sawWrite = true;
-                await logEvent("action", name === "write_notebook" ? "Rewrote the notebook source" : "Edited the notebook source", phase);
-              } else if (name === "read_notebook") {
-                await logEvent("action", "Read the notebook source", phase);
-              } else if (name === "search_notebook") {
-                await logEvent("action", `Searched the notebook for "${input.query ?? ""}"`, phase);
-              } else if (name === "write_file" || name === "edit_file" || name === "delete_file") {
-                if (sawCheck) phase = PHASE.debugging;
-                else phase = PHASE.coding;
-                sawWrite = true;
-                const verb = name === "write_file" ? "Wrote" : name === "edit_file" ? "Edited" : "Deleted";
-                await logEvent("action", `${verb} ${input.path ?? "file"}`, phase);
-              } else if (name === "check_code") {
-                phase = PHASE.checking;
-                sawCheck = true;
-                await logEvent("action", "Checked the code I changed for problems", phase);
-              } else if (name === "read_file") {
-                await logEvent("action", `Read ${input.path ?? "file"}`, phase);
-              } else if (name === "list_files") {
-                await logEvent("action", "Listed the repository files", phase);
-              } else if (name === "search_code") {
-                await logEvent("action", `Searched for "${input.query ?? ""}"`, phase);
-              } else if (name === "search_web") {
-                await logEvent("action", `Searched the web for "${input.query ?? ""}"`, phase);
-              } else if (name === "staged_changes") {
-                await logEvent("action", "Reviewed the staged changes", phase);
+            // Process tool calls in order but log them efficiently
+            const toolCalls = step.toolCalls ?? [];
+            if (toolCalls.length > 0) {
+              for (const call of toolCalls) {
+                const name = call.toolName;
+                const input = (call.input ?? {}) as { path?: string; query?: string; source?: string };
+                if (name === "write_notebook" || name === "edit_notebook") {
+                  if (sawCheck) phase = PHASE.debugging;
+                  else phase = PHASE.coding;
+                  sawWrite = true;
+                  await logEvent("action", name === "write_notebook" ? "Rewrote the notebook source" : "Edited the notebook source", phase);
+                } else if (name === "read_notebook") {
+                  await logEvent("action", "Read the notebook source", phase);
+                } else if (name === "search_notebook") {
+                  await logEvent("action", `Searched the notebook for "${input.query ?? ""}"`, phase);
+                } else if (name === "batch_edit_notebook") {
+                  if (sawCheck) phase = PHASE.debugging;
+                  else phase = PHASE.coding;
+                  sawWrite = true;
+                  await logEvent("action", "Applied batch edits to the notebook source", phase);
+                } else if (name === "write_file" || name === "edit_file" || name === "delete_file" || name === "batch_edit_files") {
+                  if (sawCheck) phase = PHASE.debugging;
+                  else phase = PHASE.coding;
+                  sawWrite = true;
+                  const verb = name === "write_file" ? "Wrote" : name === "edit_file" || name === "batch_edit_files" ? "Edited" : "Deleted";
+                  await logEvent("action", `${verb} ${input.path ?? "file"}`, phase);
+                } else if (name === "batch_read_files") {
+                  await logEvent("action", `Read ${Array.isArray(input.paths) ? input.paths.length : 0} files`, phase);
+                } else if (name === "check_code") {
+                  phase = PHASE.checking;
+                  sawCheck = true;
+                  await logEvent("action", "Checked the code I changed for problems", phase);
+                } else if (name === "read_file") {
+                  await logEvent("action", `Read ${input.path ?? "file"}`, phase);
+                } else if (name === "list_files") {
+                  await logEvent("action", "Listed the repository files", phase);
+                } else if (name === "search_code") {
+                  await logEvent("action", `Searched for "${input.query ?? ""}"`, phase);
+                } else if (name === "search_web") {
+                  await logEvent("action", `Searched the web for "${input.query ?? ""}"`, phase);
+                } else if (name === "staged_changes") {
+                  await logEvent("action", "Reviewed the staged changes", phase);
+                }
               }
             }
             const reasoning = step.text?.trim();
             if (reasoning) {
-              await logEvent("thought", reasoning.slice(0, 800), phase);
+              // Log thoughts with better truncation that preserves sentence boundaries
+              const truncated = reasoning.length > 800
+                ? reasoning.slice(0, Math.min(800, reasoning.lastIndexOf(".", 700))) + "..."
+                : reasoning;
+              await logEvent("thought", truncated, phase);
             }
           },
         });
@@ -424,7 +446,7 @@ export const Route = createFileRoute("/api/chat")({
           originalMessages: messages,
           // Keep the run going (and persist it) even if the browser disconnects,
           // e.g. the user switches to another tab mid-run.
-          consumeSseStream: consumeStream,
+          // Don't consume the stream - let it flow naturally to avoid timeouts
           onFinish: async ({ messages: finalMessages }) => {
 
             const assistant = finalMessages[finalMessages.length - 1];
@@ -438,8 +460,13 @@ export const Route = createFileRoute("/api/chat")({
               // "Wrote/Read/Checked" the model emitted while working) and keep
               // only the summary text + the run card. The full thought/action
               // breakdown lives in agent_events, surfaced by the RunCard.
+              // But keep tool-result parts so the UI knows what edits happened.
               const parts = isKaggle
-                ? [...assistant.parts.filter((p) => !String(p.type ?? "").startsWith("tool-")), { type: "data-run", data: { jobId: kaggleJobId ?? undefined, taskId, kaggle: true } }]
+                ? [...assistant.parts.filter((p) => {
+                    const type = String(p.type ?? "");
+                    // Drop tool-call parts but keep text, tool-results, and other content
+                    return !type.startsWith("tool-call");
+                  }), { type: "data-run", data: { jobId: kaggleJobId ?? undefined, taskId, kaggle: true } }]
                 : assistant.parts;
               await supa.from("chat_messages").insert({
                 thread_id: threadId,

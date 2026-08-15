@@ -6,6 +6,24 @@ import { webSearch } from "./agent-tools.server";
 
 const API = "https://www.kaggle.com/api/v1";
 
+/** Fetch a URL and return its text content (truncated to 50KB). */
+async function fetchUrl(url: string): Promise<string> {
+  const u = String(url || "").trim();
+  if (!u) return "fetch_url requires a ?url=";
+  if (!/^https?:\/\//i.test(u)) return "URL must start with http:// or https://";
+  try {
+    const res = await fetch(u, { 
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Coderbot/1.0)" }, 
+      signal: AbortSignal.timeout(15000) 
+    });
+    if (!res.ok) return `HTTP ${res.status}`;
+    const text = await res.text();
+    return text.slice(0, 50_000) + (text.length > 50_000 ? "\n\n[...truncated]" : "");
+  } catch (e) {
+    return `Fetch failed: ${String(e)}`;
+  }
+}
+
 /**
  * Replace Python string literals and comments with spaces (preserving newlines
  * and length so line numbers and indentation are unchanged) before counting
@@ -159,6 +177,11 @@ export function buildKaggleTools(
         return { notebook: `${nb.owner}/${nb.slug}`, language: nb.language, source: nb.working_source.slice(0, 120_000) };
       },
     }),
+    fetch_url: tool({
+      description: "Fetch the text content of a URL (e.g., documentation, API reference, dataset page). Returns up to 50KB of content. Use this to read external resources needed for the notebook.",
+      inputSchema: z.object({ url: z.string().describe("The URL to fetch") }),
+      execute: async ({ url }) => fetchUrl(url),
+    }),
     search_web: tool({
       description:
         "Search the web for a query and return titles, URLs and snippets of the top results. Use to look up API docs, package versions, dataset details or pandas/scikit/keras fixes instead of guessing. Read-only.",
@@ -191,27 +214,48 @@ export function buildKaggleTools(
       execute: async () => {
         const nb = await load();
         const src = nb?.working_source ?? "";
-        const problems: string[] = [];
-        if (!src.trim()) problems.push("Notebook source is empty");
-        if (/^<{7}|^>{7}|^={7}$/m.test(src)) problems.push("Leftover merge conflict markers");
+        const problems: Array<{ issue: string; severity: "error" | "warning"; line?: number }> = [];
+        const suggestions: Array<{ type: string; message: string; line?: number }> = [];
+        if (!src.trim()) problems.push({ issue: "Notebook source is empty", severity: "error" });
+        if (/^<{7}|^>{7}|^={7}$/m.test(src)) problems.push({ issue: "Leftover merge conflict markers", severity: "error" });
         // Count brackets only on code with strings/comments stripped, otherwise
         // brackets inside strings (e.g. print(")")) are miscounted.
         const code = stripPythonLiterals(src);
         for (const [o, c, label] of [["{", "}", "braces"], ["(", ")", "parens"], ["[", "]", "brackets"]] as const) {
           const a = code.split(o).length - 1, b = code.split(c).length - 1;
-          if (a !== b) problems.push(`Unbalanced ${label} (${a} vs ${b})`);
+          if (a !== b) problems.push({ issue: `Unbalanced ${label} (${a} vs ${b})`, severity: "error" });
         }
-        if (/\b(TODO|FIXME)\b/.test(src)) problems.push("Contains TODO/FIXME left in the code");
+        if (/\b(TODO|FIXME)\b/.test(src)) problems.push({ issue: "Contains TODO/FIXME left in the code", severity: "warning" });
         const lines = src.split("\n");
         lines.forEach((l: string, i: number) => {
           if (/:\s*$/.test(l.trim()) && /^(def|class|if|for|while|with|try|else|elif|except)\b/.test(l.trim())) {
             const next = lines[i + 1];
             if (next !== undefined && next.trim() && next.search(/\S/) <= l.search(/\S/)) {
-              problems.push(`Line ${i + 2}: block opened on line ${i + 1} is not indented`);
+              problems.push({ issue: `Line ${i + 2}: block opened on line ${i + 1} is not indented`, severity: "error", line: i + 1 });
             }
           }
+          // Check for common Python issues
+          if (/^\s*print\s*\(/i.test(l) && !/# noqa|# type: ignore/.test(l)) {
+            problems.push({ issue: `Line ${i + 1}: Contains print() - consider using logging or removing before commit`, severity: "warning", line: i + 1 });
+          }
+          if (/import\s+pandas|from\s+pandas/.test(l) && !/as\s+pd/.test(l)) {
+            problems.push({ issue: `Line ${i + 1}: pandas imported without 'as pd' alias - consider following convention`, severity: "warning", line: i + 1 });
+          }
+          
+          // NEW: Detect potential performance issues in data processing
+          if (/\.apply\s*\(/.test(l) && !/#.*vectorize/.test(l)) {
+            suggestions.push({ type: "performance", message: "Using .apply() - consider vectorized operations for better performance", line: i + 1 });
+          }
+          if (/for\s+\w+\s+in\s+range\s*\(/.test(l) && /len\s*\(/.test(l)) {
+            suggestions.push({ type: "performance", message: "Manual iteration with range(len()) - consider enumerate() or direct iteration", line: i + 1 });
+          }
+          
+          // NEW: Detect deprecated patterns
+          if (/\bix\b\s*\[/.test(l)) {
+            problems.push({ issue: `Line ${i + 1}: Uses deprecated .ix[] indexer - use .loc[] or .iloc[] instead`, severity: "warning", line: i + 1 });
+          }
         });
-        return { problems, clean: problems.length === 0 };
+        return { problems, suggestions, clean: problems.length === 0 };
       },
     }),
   };
@@ -247,6 +291,27 @@ export function buildKaggleTools(
         const src = nb?.working_source ?? "";
         if (!src.includes(find)) return { error: "The `find` text does not appear in the notebook. Read it again." };
         return save(replace_all ? src.split(find).join(replace) : src.replace(find, replace));
+      },
+    }),
+    batch_edit_notebook: tool({
+      description: "Apply multiple find/replace edits to the notebook source in a single operation. More efficient than calling edit_notebook repeatedly for multiple changes.",
+      inputSchema: z.object({ edits: z.array(z.object({ find: z.string(), replace: z.string(), replace_all: z.boolean().optional() })).max(20) }),
+      execute: async ({ edits }) => {
+        const nb = await load();
+        let src = nb?.working_source ?? "";
+        const results: Array<{ find: string; success: boolean; error?: string }> = [];
+        for (const edit of edits) {
+          if (!src.includes(edit.find)) {
+            results.push({ find: edit.find.slice(0, 50), success: false, error: "Find text not in notebook" });
+            continue;
+          }
+          src = edit.replace_all ? src.split(edit.find).join(edit.replace) : src.replace(edit.find, edit.replace);
+          results.push({ find: edit.find.slice(0, 50), success: true });
+        }
+        const saveResult = await save(src);
+        if (saveResult.error) return { error: saveResult.error };
+        const succeeded = results.filter(r => r.success).length;
+        return { total: edits.length, succeeded, failed: edits.length - succeeded, results, bytes: src.length };
       },
     }),
   };
