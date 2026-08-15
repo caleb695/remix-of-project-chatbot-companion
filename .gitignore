@@ -1,58 +1,105 @@
 ```
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.out
+*.class
+*.so
+*.dll
+*.exe
+*.a
+
 # Dependencies
 node_modules/
+venv/
+.venv/
+.env
+.env.local
+.env.*
 
 # Build outputs
-.output/
 dist/
 build/
 target/
+.output/
 
-# Temporary files
+# Logs and temp files
+*.log
 *.tmp
-*.temp
-.DS_Store
-Thumbs.db
+*.swp
+*.swo
 
-# Environment variables
-.env
-.env.local
-*.env.*
-
-# IDE specific
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Logs
-*.log
+# System files
+.DS_Store
+Thumbs.db
 
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Coverage reports
+# Coverage
 coverage/
 htmlcov/
 .coverage
 
-# Package managers
-.npm/
-.yarn/
-.pnpm-store/
+# Python specific
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Testing
-.nyc_output/
+# Node.js specific
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# MyPy
 .mypy_cache/
 .pytest_cache/
-.jest-cache/
 
-# OS generated files
-.DS_Store
-ehthumbs.db
-Icon?
-Thumbs.db
+# Gradle
+.gradle/
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
