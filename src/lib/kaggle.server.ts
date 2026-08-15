@@ -2,9 +2,29 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { webSearch } from "./agent-tools.server";
 
 const API = "https://www.kaggle.com/api/v1";
+
+/** Encode username:key to base64 for Basic auth (works in edge/Cloudflare) */
+function kaggleAuthHeader(username: string, key: string): string {
+  const text = `${username}:${key}`;
+  // Use TextEncoder for edge compatibility instead of Node's Buffer
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+export function kaggleHeaders(username: string, key: string) {
+  const basic = kaggleAuthHeader(username, key);
+  return {
+    Authorization: `Basic ${basic}`,
+    "Content-Type": "application/json",
+    "User-Agent": "coderbot-app",
+  };
+}
 
 /** Fetch a URL and return its text content (truncated to 50KB). */
 async function fetchUrl(url: string): Promise<string> {
@@ -71,15 +91,6 @@ function stripPythonLiterals(src: string): string {
     i++;
   }
   return out;
-}
-
-export function kaggleHeaders(username: string, key: string) {
-  const basic = Buffer.from(`${username}:${key}`, "utf8").toString("base64");
-  return {
-    Authorization: `Basic ${basic}`,
-    "Content-Type": "application/json",
-    "User-Agent": "coderbot-app",
-  };
 }
 
 async function kaggleFetch(
