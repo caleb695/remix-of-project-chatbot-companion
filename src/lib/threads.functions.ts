@@ -15,7 +15,7 @@ export const listThreads = createServerFn({ method: "GET" })
 
 export const createThread = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({
+  .validator((input: unknown) => z.object({
     repoId: z.string().uuid().optional(),
     kaggleNotebookId: z.string().uuid().optional(),
     model: z.string().optional(),
@@ -48,7 +48,7 @@ export const createThread = createServerFn({ method: "POST" })
 
 export const deleteThread = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .validator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ context, data }) => {
     const { error } = await context.supabase.from("chat_threads").delete().eq("id", data.id);
     if (error) throw error;
@@ -57,7 +57,7 @@ export const deleteThread = createServerFn({ method: "POST" })
 
 export const getThreadMessages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ threadId: z.string().uuid() }).parse(input))
+  .validator((input: unknown) => z.object({ threadId: z.string().uuid() }).parse(input))
   .handler(async ({ context, data }) => {
     const { data: rows, error } = await context.supabase
       .from("chat_messages")
@@ -74,7 +74,7 @@ export const getThreadMessages = createServerFn({ method: "GET" })
 
 export const renameThread = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ id: z.string().uuid(), title: z.string().min(1).max(200) }).parse(input),
   )
   .handler(async ({ context, data }) => {
@@ -86,7 +86,7 @@ export const renameThread = createServerFn({ method: "POST" })
 
 export const getThread = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .validator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ context, data }) => {
     const { data: row, error } = await context.supabase
       .from("chat_threads")
@@ -99,7 +99,7 @@ export const getThread = createServerFn({ method: "GET" })
 
 export const updateThread = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       id: z.string().uuid(),
       model: z.string().optional(),

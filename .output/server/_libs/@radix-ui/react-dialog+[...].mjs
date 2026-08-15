@@ -1,10 +1,11 @@
 import { i as __toESM } from "../../_runtime.mjs";
 import { c as require_react, s as require_jsx_runtime } from "../@ai-sdk/react+[...].mjs";
-import { l as require_react_dom } from "../@floating-ui/react-dom+[...].mjs";
 import { a as createSlot, n as Primitive, o as useComposedRefs, r as dispatchDiscreteCustomEvent } from "./react-arrow+[...].mjs";
+import { l as require_react_dom } from "../@floating-ui/react-dom+[...].mjs";
 import { t as composeEventHandlers } from "../radix-ui__primitive.mjs";
 import { n as createContextScope } from "./react-collection+[...].mjs";
 //#region node_modules/tslib/tslib.es6.mjs
+var import_react = /* @__PURE__ */ __toESM(require_react(), 1);
 var __assign = function() {
 	__assign = Object.assign || function __assign(t) {
 		for (var s, i = 1, n = arguments.length; i < n; i++) {
@@ -61,7 +62,6 @@ function __spreadArray(to, from, pack) {
 }
 //#endregion
 //#region node_modules/@radix-ui/react-use-callback-ref/dist/index.mjs
-var import_react = /* @__PURE__ */ __toESM(require_react(), 1);
 function useCallbackRef$1(callback) {
 	const callbackRef = import_react.useRef(callback);
 	import_react.useEffect(() => {

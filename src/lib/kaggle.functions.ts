@@ -13,7 +13,7 @@ async function creds(sb: { from: (t: string) => any }) {
 
 export const saveKaggleCreds = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({
+  .validator((i: unknown) => z.object({
     username: z.string().min(1).max(100),
     key: z.string().min(10).max(500),
   }).parse(i))
@@ -64,7 +64,7 @@ export const listKaggleNotebooks = createServerFn({ method: "GET" })
 
 export const addKaggleNotebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ ref: z.string().min(3).max(200) }).parse(i))
+  .validator((i: unknown) => z.object({ ref: z.string().min(3).max(200) }).parse(i))
   .handler(async ({ context, data }) => {
     const [owner, slug] = data.ref.split("/");
     if (!owner || !slug) throw new Error("Notebook reference must look like username/notebook-slug");
@@ -94,7 +94,7 @@ export const addKaggleNotebook = createServerFn({ method: "POST" })
 
 export const removeKaggleNotebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { error } = await context.supabase.from("kaggle_notebooks").delete().eq("id", data.id);
     if (error) throw error;
@@ -104,7 +104,7 @@ export const removeKaggleNotebook = createServerFn({ method: "POST" })
 /** Re-pull from Kaggle, discarding staged edits. */
 export const syncKaggleNotebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: nb, error: ne } = await context.supabase
       .from("kaggle_notebooks").select("owner, slug").eq("id", data.id).single();
@@ -123,7 +123,7 @@ export const syncKaggleNotebook = createServerFn({ method: "POST" })
 
 export const getKaggleStaged = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: nb } = await context.supabase
       .from("kaggle_notebooks")
@@ -140,7 +140,7 @@ export const getKaggleStaged = createServerFn({ method: "GET" })
 /** Push the staged notebook source back to Kaggle (a new version). */
 export const pushKaggleNotebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: nb, error: ne } = await context.supabase
       .from("kaggle_notebooks").select("*").eq("id", data.id).single();

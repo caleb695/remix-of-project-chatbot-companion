@@ -76,7 +76,7 @@ export type DriveEntry = {
 /** Browse a Drive folder (or search across the whole Drive when `query` is set). */
 export const listDrive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) =>
+  .validator((i: unknown) =>
     z.object({ folderId: z.string().default("root"), query: z.string().max(200).optional() }).parse(i),
   )
   .handler(async ({ data }): Promise<DriveEntry[]> => {
@@ -121,7 +121,7 @@ const MAX_BYTES = 20 * 1024 * 1024;
  */
 export const importFromDrive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) =>
+  .validator((i: unknown) =>
     z.object({
       threadId: z.string().uuid(),
       items: z.array(z.object({ id: z.string(), name: z.string(), isFolder: z.boolean() })).min(1).max(50),

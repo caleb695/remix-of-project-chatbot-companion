@@ -1,8 +1,8 @@
 import { i as __toESM } from "../../_runtime.mjs";
-import { _ as useFocusGuards, d as useControllableState, f as Presence, g as FocusScope, h as useLayoutEffect2, l as ReactRemoveScroll, m as useId, p as Portal, u as hideOthers, v as DismissableLayer, y as useCallbackRef } from "./react-dialog+[...].mjs";
 import { c as require_react, s as require_jsx_runtime } from "../@ai-sdk/react+[...].mjs";
-import { l as require_react_dom } from "../@floating-ui/react-dom+[...].mjs";
 import { a as createSlot, n as Primitive, o as useComposedRefs } from "./react-arrow+[...].mjs";
+import { _ as useFocusGuards, d as useControllableState, f as Presence, g as FocusScope, h as useLayoutEffect2, l as ReactRemoveScroll, m as useId, p as Portal, u as hideOthers, v as DismissableLayer, y as useCallbackRef } from "./react-dialog+[...].mjs";
+import { l as require_react_dom } from "../@floating-ui/react-dom+[...].mjs";
 import { t as clamp } from "../radix-ui__number.mjs";
 import { t as composeEventHandlers } from "../radix-ui__primitive.mjs";
 import { n as createContextScope, t as createCollection } from "./react-collection+[...].mjs";

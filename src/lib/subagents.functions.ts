@@ -11,7 +11,7 @@ const subAgentSchema = z.object({
 
 export const getSubAgents = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ threadId: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ threadId: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: row } = await context.supabase
       .from("chat_threads").select("sub_agents").eq("id", data.threadId).maybeSingle();
@@ -21,7 +21,7 @@ export const getSubAgents = createServerFn({ method: "GET" })
 
 export const setSubAgents = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) =>
+  .validator((i: unknown) =>
     z.object({ threadId: z.string().uuid(), subAgents: z.array(subAgentSchema).max(20) }).parse(i),
   )
   .handler(async ({ context, data }) => {

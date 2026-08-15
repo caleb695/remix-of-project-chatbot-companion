@@ -1,8 +1,8 @@
 import { i as __toESM } from "../../_runtime.mjs";
-import { h as useLayoutEffect2, y as useCallbackRef } from "./react-dialog+[...].mjs";
 import { c as require_react, s as require_jsx_runtime } from "../@ai-sdk/react+[...].mjs";
-import { a as offset, c as useFloating, i as limitShift, n as flip, o as shift, r as hide, s as size, t as arrow } from "../@floating-ui/react-dom+[...].mjs";
 import { n as Primitive, o as useComposedRefs, t as Root } from "./react-arrow+[...].mjs";
+import { h as useLayoutEffect2, y as useCallbackRef } from "./react-dialog+[...].mjs";
+import { a as offset, c as useFloating, i as limitShift, n as flip, o as shift, r as hide, s as size, t as arrow } from "../@floating-ui/react-dom+[...].mjs";
 import { n as createContextScope } from "./react-collection+[...].mjs";
 import { n as autoUpdate } from "../@floating-ui/dom+[...].mjs";
 //#region node_modules/@radix-ui/react-use-size/dist/index.mjs

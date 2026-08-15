@@ -62,7 +62,7 @@ export const listUserRepos = createServerFn({ method: "GET" })
 
 export const addRepoSelection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       github_repo_id: z.number(),
       owner: z.string(),
@@ -100,7 +100,7 @@ export const listRepoSelections = createServerFn({ method: "GET" })
 
 export const getRepoSelection = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .validator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ context, data }) => {
     const { data: row, error } = await context.supabase
       .from("repo_selections")
@@ -113,7 +113,7 @@ export const getRepoSelection = createServerFn({ method: "GET" })
 
 export const removeRepoSelection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .validator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ context, data }) => {
     const { error } = await context.supabase.from("repo_selections").delete().eq("id", data.id);
     if (error) throw error;
@@ -122,7 +122,7 @@ export const removeRepoSelection = createServerFn({ method: "POST" })
 
 export const syncRepoFromGithub = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ repoId: z.string().uuid() }).parse(input))
+  .validator((input: unknown) => z.object({ repoId: z.string().uuid() }).parse(input))
   .handler(async ({ context, data }) => {
     const { data: sel, error: e1 } = await context.supabase
       .from("repo_selections")
@@ -170,7 +170,7 @@ export const syncRepoFromGithub = createServerFn({ method: "POST" })
 
 export const commitAndPush = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ repoId: z.string().uuid(), message: z.string().min(1).max(500) }).parse(input),
   )
   .handler(async ({ context, data }) => {
@@ -226,7 +226,7 @@ export const commitAndPush = createServerFn({ method: "POST" })
 
 export const listWorkingFiles = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ repoId: z.string().uuid() }).parse(input))
+  .validator((input: unknown) => z.object({ repoId: z.string().uuid() }).parse(input))
   .handler(async ({ context, data }) => {
     const { data: rows, error } = await context.supabase
       .from("working_files")
@@ -239,7 +239,7 @@ export const listWorkingFiles = createServerFn({ method: "GET" })
 
 export const getWorkingFile = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ repoId: z.string().uuid(), path: z.string() }).parse(input),
   )
   .handler(async ({ context, data }) => {

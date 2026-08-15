@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const listAgentEvents = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) =>
+  .validator((i: unknown) =>
     z.object({ threadId: z.string().uuid(), taskId: z.string().optional() }).parse(i),
   )
   .handler(async ({ context, data }) => {
@@ -21,7 +21,7 @@ export const listAgentEvents = createServerFn({ method: "GET" })
 
 export const getLatestTask = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ threadId: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ threadId: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: row } = await context.supabase
       .from("agent_events")
@@ -35,7 +35,7 @@ export const getLatestTask = createServerFn({ method: "GET" })
 
 export const getStagedChanges = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ repoId: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ repoId: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: rows, error } = await context.supabase
       .from("working_files")
@@ -49,7 +49,7 @@ export const getStagedChanges = createServerFn({ method: "GET" })
 
 export const setThreadMode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) =>
+  .validator((i: unknown) =>
     z.object({ id: z.string().uuid(), mode: z.enum(["plan", "build", "debug", "improve"]) }).parse(i),
   )
   .handler(async ({ context, data }) => {
@@ -64,7 +64,7 @@ export const setThreadMode = createServerFn({ method: "POST" })
 /** Summarise a thread and open a fresh thread seeded with that summary. */
 export const branchThread = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ threadId: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ threadId: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: thread, error: te } = await context.supabase
       .from("chat_threads")
@@ -147,7 +147,7 @@ export const branchThread = createServerFn({ method: "POST" })
 
 export const getThreadSeed = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
     const { data: row } = await context.supabase
       .from("chat_threads")

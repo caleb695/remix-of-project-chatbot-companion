@@ -1,3 +1,25 @@
 ```
+# Build outputs
+.output/
+dist/
+build/
+.nitro/
+
+# Dependencies
 node_modules/
+
+# Compiled JavaScript
+*.mjs
+
+# Logs and temp files
+*.log
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
 ```
