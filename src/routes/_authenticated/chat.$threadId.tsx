@@ -1019,7 +1019,8 @@ function MessageBubble({ message, threadId, liveRun }: { message: UIMessage; thr
           return message.parts.map((part, i) => {
           // The live RunCard above replaces these during the run.
           if (liveRun && part.type === "text") return null;
-          if ((liveRun || hasRunPart) && part.type.startsWith("tool-")) return null;
+          // Hide tool-call chatter but keep tool-results that show what was edited
+          if ((liveRun || hasRunPart) && part.type.startsWith("tool-call")) return null;
           if (part.type === "text") return <div key={i} className="whitespace-pre-wrap text-sm leading-relaxed">{part.text}</div>;
           // Persisted with the run, so the review + activity stay available
           // long after the tab was closed.
