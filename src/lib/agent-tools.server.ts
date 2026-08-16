@@ -3,9 +3,6 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { swarmExecute } from './swarm-orchestrator.server';
-import { smartPlan } from './smart-planner.server';
-import { learnFromSession, retrieveKnowledge } from './learning-system.server';
 
 type Sb = SupabaseClient<any, any, any>;
 

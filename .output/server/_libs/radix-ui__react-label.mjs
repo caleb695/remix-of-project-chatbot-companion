@@ -1,11 +1,15 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { c as require_react, s as require_jsx_runtime } from "./@ai-sdk/react+[...].mjs";
-import { n as Primitive } from "./@radix-ui/react-arrow+[...].mjs";
+import { b as Primitive } from "./@radix-ui/react-dialog+[...].mjs";
 //#region node_modules/@radix-ui/react-label/dist/index.mjs
 var import_react = /* @__PURE__ */ __toESM(require_react(), 1);
 var import_jsx_runtime = require_jsx_runtime();
-var NAME = "Label";
-var Label = import_react.forwardRef((props, forwardedRef) => {
+var __defProp = Object.defineProperty;
+var __name = (target, value) => __defProp(target, "name", {
+	value,
+	configurable: true
+});
+var Root = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function Label2(props, forwardedRef) {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Primitive.label, {
 		...props,
 		ref: forwardedRef,
@@ -15,8 +19,6 @@ var Label = import_react.forwardRef((props, forwardedRef) => {
 			if (!event.defaultPrevented && event.detail > 1) event.preventDefault();
 		}
 	});
-});
-Label.displayName = NAME;
-var Root = Label;
+}, "Label"));
 //#endregion
 export { Root as t };

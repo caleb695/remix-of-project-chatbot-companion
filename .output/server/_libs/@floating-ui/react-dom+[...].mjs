@@ -140,7 +140,7 @@ var require_react_dom_production = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.useFormStatus = function() {
 		return ReactSharedInternals.H.useHostTransitionStatus();
 	};
-	exports.version = "19.2.7";
+	exports.version = "19.2.8";
 }));
 //#endregion
 //#region node_modules/react-dom/index.js

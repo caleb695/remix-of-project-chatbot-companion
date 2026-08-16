@@ -162,7 +162,15 @@ function hashKey(queryKey) {
 function partialMatchKey(a, b) {
 	if (a === b) return true;
 	if (typeof a !== typeof b) return false;
-	if (a && b && typeof a === "object" && typeof b === "object") return Object.keys(b).every((key) => partialMatchKey(a[key], b[key]));
+	if (a && b && typeof a === "object" && typeof b === "object") {
+		if (Array.isArray(a) && Array.isArray(b)) {
+			for (let i = 0; i < b.length; i++) if (!partialMatchKey(a[i], b[i])) return false;
+			return true;
+		}
+		const bKeys = Object.keys(b);
+		for (const key of bKeys) if (!partialMatchKey(a[key], b[key])) return false;
+		return true;
+	}
 	return false;
 }
 var hasOwn = Object.prototype.hasOwnProperty;
@@ -552,7 +560,7 @@ var Removable = class {
 		}, this.gcTime);
 	}
 	updateGcTime(newGcTime) {
-		this.gcTime = Math.max(this.gcTime || 0, newGcTime ?? (environmentManager.isServer() ? Infinity : 300 * 1e3));
+		this.gcTime = Math.max(this.gcTime || 0, newGcTime ?? (environmentManager.isServer() ? Infinity : 3e5));
 	}
 	clearGcTimeout() {
 		if (this.#gcTimeout !== void 0) {
@@ -771,8 +779,10 @@ var Query = class extends Removable {
 		if (this.observers.includes(observer)) {
 			this.observers = this.observers.filter((x) => x !== observer);
 			if (!this.observers.length) {
-				if (this.#retryer) if (this.#abortSignalConsumed || this.#isInitialPausedFetch()) this.#retryer.cancel({ revert: true });
-				else this.#retryer.cancelRetry();
+				if (this.#retryer) {
+					if (this.#abortSignalConsumed || this.#isInitialPausedFetch()) this.#retryer.cancel({ revert: true });
+					else this.#retryer.cancelRetry();
+				}
 				this.scheduleGc();
 			}
 			this.#cache.notify({
@@ -1209,15 +1219,17 @@ var QueryObserver = class extends Subscribable {
 				isPlaceholderData = true;
 			}
 		}
-		if (options.select && data !== void 0 && !skipSelect) if (prevResult && data === prevResultState?.data && options.select === this.#selectFn) data = this.#selectResult;
-		else try {
-			this.#selectFn = options.select;
-			data = options.select(data);
-			data = replaceData(prevResult?.data, data, options);
-			this.#selectResult = data;
-			this.#selectError = null;
-		} catch (selectError) {
-			this.#selectError = selectError;
+		if (options.select && data !== void 0 && !skipSelect) {
+			if (prevResult && data === prevResultState?.data && options.select === this.#selectFn) data = this.#selectResult;
+			else try {
+				this.#selectFn = options.select;
+				data = options.select(data);
+				data = replaceData(prevResult?.data, data, options);
+				this.#selectResult = data;
+				this.#selectError = null;
+			} catch (selectError) {
+				this.#selectError = selectError;
+			}
 		}
 		if (this.#selectError) {
 			error = this.#selectError;
@@ -1277,9 +1289,7 @@ var QueryObserver = class extends Subscribable {
 				case "fulfilled":
 					if (isErrorWithoutData || nextResult.data !== prevThenable.value) recreateThenable();
 					break;
-				case "rejected":
-					if (!isErrorWithoutData || nextResult.error !== prevThenable.reason) recreateThenable();
-					break;
+				case "rejected": if (!isErrorWithoutData || nextResult.error !== prevThenable.reason) recreateThenable();
 			}
 		}
 		return nextResult;
@@ -1401,8 +1411,10 @@ var Mutation = class extends Removable {
 		});
 	}
 	optionalRemove() {
-		if (!this.#observers.length) if (this.state.status === "pending") this.scheduleGc();
-		else this.#mutationCache.remove(this);
+		if (!this.#observers.length) {
+			if (this.state.status === "pending") this.scheduleGc();
+			else this.#mutationCache.remove(this);
+		}
 	}
 	continue() {
 		return this.#retryer?.continue() ?? this.execute(this.state.variables);

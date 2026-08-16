@@ -583,14 +583,15 @@ function isStorageError(error) {
 * Includes HTTP status code and service-specific error code
 */
 var StorageApiError = class extends StorageError {
-	constructor(message, status, statusCode, namespace = "storage") {
+	constructor(message, status, statusCode, namespace = "storage", code) {
 		super(message, namespace, status, statusCode);
 		this.name = namespace === "vectors" ? "StorageVectorsApiError" : "StorageApiError";
 		this.status = status;
 		this.statusCode = statusCode;
+		this.code = code;
 	}
 	toJSON() {
-		return _objectSpread2({}, super.toJSON());
+		return _objectSpread2(_objectSpread2({}, super.toJSON()), {}, { code: this.code });
 	}
 };
 /**
@@ -698,6 +699,17 @@ var isValidBucketName = (bucketName) => {
 	return /^[\w!.\*'() &$@=;:+,?-]+$/.test(bucketName);
 };
 /**
+* Percent-encodes each segment of a storage path so URL delimiters within a
+* key (e.g. `?`, `#`) can't be interpreted as a querystring/fragment start.
+*
+* Splits on `/` so real path separators stay literal — the storage server
+* routes on them and decodes each segment back to the original key.
+*
+* @param path - A bucket id or `bucketId/objectKey` path
+* @returns The path with each `/`-delimited segment percent-encoded
+*/
+var encodeStoragePath = (path) => path.split("/").map(encodeURIComponent).join("/");
+/**
 * Extracts error message from various error response formats
 * @param err - Error object from API
 * @returns Human-readable error message
@@ -730,7 +742,7 @@ var handleError = async (error, reject, options, namespace) => {
 		if (!Number.isFinite(status)) status = 500;
 		responseError.json().then((err) => {
 			const statusCode = (err === null || err === void 0 ? void 0 : err.statusCode) || (err === null || err === void 0 ? void 0 : err.code) || status + "";
-			reject(new StorageApiError(_getErrorMessage(err), status, statusCode, namespace));
+			reject(new StorageApiError(_getErrorMessage(err), status, statusCode, namespace, err === null || err === void 0 ? void 0 : err.code));
 		}).catch(() => {
 			const statusCode = status + "";
 			reject(new StorageApiError(responseError.statusText || `HTTP ${status} error`, status, statusCode, namespace));
@@ -1812,7 +1824,7 @@ var StorageFileApi = class extends BaseApiClient {
 	async purgeCache(path, options, parameters) {
 		var _this13 = this;
 		return _this13.handleOperation(async () => {
-			const _path = _this13._getFinalPath(path);
+			const _path = encodeStoragePath(_this13._getFinalPath(path));
 			const query = new URLSearchParams();
 			if (options === null || options === void 0 ? void 0 : options.transformations) query.set("transformations", "true");
 			const queryString = query.toString();
@@ -1998,7 +2010,7 @@ var StorageFileApi = class extends BaseApiClient {
 		return query;
 	}
 };
-var DEFAULT_HEADERS = { "X-Client-Info": `storage-js/2.110.2` };
+var DEFAULT_HEADERS = { "X-Client-Info": `storage-js/2.112.3` };
 var StorageBucketApi = class extends BaseApiClient {
 	constructor(url, headers = {}, fetch$1, opts) {
 		const baseUrl = new URL(url);
@@ -2329,7 +2341,7 @@ var StorageBucketApi = class extends BaseApiClient {
 			const query = new URLSearchParams();
 			if (options === null || options === void 0 ? void 0 : options.transformations) query.set("transformations", "true");
 			const queryString = query.toString();
-			return await remove(_this7.fetch, `${_this7.url}/cdn/${id}${queryString ? `?${queryString}` : ""}`, {}, { headers: _this7.headers }, parameters);
+			return await remove(_this7.fetch, `${_this7.url}/cdn/${encodeStoragePath(id)}${queryString ? `?${queryString}` : ""}`, {}, { headers: _this7.headers }, parameters);
 		});
 	}
 	listBucketOptionsToQueryString(options) {

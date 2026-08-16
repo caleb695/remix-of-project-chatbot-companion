@@ -1,16 +1,20 @@
 import { i as __toESM } from "../../_runtime.mjs";
 import { c as require_react, s as require_jsx_runtime } from "../@ai-sdk/react+[...].mjs";
-import { a as createSlot, n as Primitive, o as useComposedRefs } from "./react-arrow+[...].mjs";
-import { _ as useFocusGuards, d as useControllableState, f as Presence, g as FocusScope, h as useLayoutEffect2, l as ReactRemoveScroll, m as useId, p as Portal, u as hideOthers, v as DismissableLayer, y as useCallbackRef } from "./react-dialog+[...].mjs";
 import { l as require_react_dom } from "../@floating-ui/react-dom+[...].mjs";
+import { _ as useFocusGuards, b as Primitive, d as useControllableState, f as Presence, g as FocusScope, h as useLayoutEffect2, l as ReactRemoveScroll, m as useId, p as Portal, u as hideOthers, v as DismissableLayer, y as useCallbackRef } from "./react-dialog+[...].mjs";
+import { a as useComposedRefs, i as createSlot, n as createContextScope, t as createCollection } from "./react-collection+[...].mjs";
 import { t as clamp } from "../radix-ui__number.mjs";
 import { t as composeEventHandlers } from "../radix-ui__primitive.mjs";
-import { n as createContextScope, t as createCollection } from "./react-collection+[...].mjs";
 import { t as useDirection } from "../radix-ui__react-direction.mjs";
-import { a as createPopperScope, i as Root2, n as Arrow, r as Content, t as Anchor } from "./react-popper+[...].mjs";
+import { i as createPopperScope, n as Content, r as Root2, t as Anchor } from "./react-popper+[...].mjs";
 //#region node_modules/@radix-ui/react-use-previous/dist/index.mjs
 var import_react_dom = /* @__PURE__ */ __toESM(require_react_dom(), 1);
 var import_react = /* @__PURE__ */ __toESM(require_react(), 1);
+var __defProp$1 = Object.defineProperty;
+var __name$1 = (target, value) => __defProp$1(target, "name", {
+	value,
+	configurable: true
+});
 function usePrevious(value) {
 	const ref = import_react.useRef({
 		value,
@@ -24,6 +28,7 @@ function usePrevious(value) {
 		return ref.current.previous;
 	}, [value]);
 }
+__name$1(usePrevious, "usePrevious");
 //#endregion
 //#region node_modules/@radix-ui/react-visually-hidden/dist/index.mjs
 var import_jsx_runtime = require_jsx_runtime();
@@ -39,20 +44,13 @@ var VISUALLY_HIDDEN_STYLES = Object.freeze({
 	whiteSpace: "nowrap",
 	wordWrap: "normal"
 });
-var NAME = "VisuallyHidden";
-var VisuallyHidden = import_react.forwardRef((props, forwardedRef) => {
-	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Primitive.span, {
-		...props,
-		ref: forwardedRef,
-		style: {
-			...VISUALLY_HIDDEN_STYLES,
-			...props.style
-		}
-	});
-});
-VisuallyHidden.displayName = NAME;
 //#endregion
 //#region node_modules/@radix-ui/react-select/dist/index.mjs
+var __defProp = Object.defineProperty;
+var __name = (target, value) => __defProp(target, "name", {
+	value,
+	configurable: true
+});
 var OPEN_KEYS = [
 	" ",
 	"Enter",
@@ -66,7 +64,6 @@ var [createSelectContext, createSelectScope] = createContextScope(SELECT_NAME, [
 var usePopperScope = createPopperScope();
 var [SelectProviderImpl, useSelectContext] = createSelectContext(SELECT_NAME);
 var [SelectNativeOptionsProvider, useSelectNativeOptionsContext] = createSelectContext(SELECT_NAME);
-var PROVIDER_NAME = "SelectProvider";
 function SelectProvider(props) {
 	const { __scopeSelect, children, open: openProp, defaultOpen, onOpenChange, value: valueProp, defaultValue, onValueChange, dir, name, autoComplete, disabled, required, form, internal_do_not_use_render } = props;
 	const popperScope = usePopperScope(__scopeSelect);
@@ -91,7 +88,7 @@ function SelectProvider(props) {
 	import_react.useEffect(() => {
 		const associatedForm = form ? trigger?.ownerDocument.getElementById(form) : trigger?.form;
 		if (associatedForm instanceof HTMLFormElement) {
-			const reset = () => setValue(initialValueRef.current);
+			const reset = /* @__PURE__ */ __name(() => setValue(initialValueRef.current), "reset");
 			associatedForm.addEventListener("reset", reset);
 			return () => associatedForm.removeEventListener("reset", reset);
 		}
@@ -154,18 +151,17 @@ function SelectProvider(props) {
 		})
 	});
 }
-SelectProvider.displayName = PROVIDER_NAME;
-var Select = (props) => {
+__name(SelectProvider, "SelectProvider");
+var Select = /* @__PURE__ */ __name((props) => {
 	const { __scopeSelect, children, ...providerProps } = props;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectProvider, {
 		__scopeSelect,
 		...providerProps,
 		internal_do_not_use_render: ({ isFormControl }) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [children, isFormControl ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectBubbleInput, { __scopeSelect }) : null] })
 	});
-};
-Select.displayName = SELECT_NAME;
+}, "Select");
 var TRIGGER_NAME = "SelectTrigger";
-var SelectTrigger = import_react.forwardRef((props, forwardedRef) => {
+var SelectTrigger = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectTrigger2(props, forwardedRef) {
 	const { __scopeSelect, disabled = false, ...triggerProps } = props;
 	const popperScope = usePopperScope(__scopeSelect);
 	const context = useSelectContext(TRIGGER_NAME, __scopeSelect);
@@ -178,7 +174,7 @@ var SelectTrigger = import_react.forwardRef((props, forwardedRef) => {
 		const nextItem = findNextItem(enabledItems, search, enabledItems.find((item) => item.value === context.value));
 		if (nextItem !== void 0) context.onValueChange(nextItem.value);
 	});
-	const handleOpen = (pointerEvent) => {
+	const handleOpen = /* @__PURE__ */ __name((pointerEvent) => {
 		if (!isDisabled) {
 			context.onOpenChange(true);
 			resetTypeahead();
@@ -187,7 +183,7 @@ var SelectTrigger = import_react.forwardRef((props, forwardedRef) => {
 			x: Math.round(pointerEvent.pageX),
 			y: Math.round(pointerEvent.pageY)
 		};
-	};
+	}, "handleOpen");
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Anchor, {
 		asChild: true,
 		...popperScope,
@@ -229,10 +225,9 @@ var SelectTrigger = import_react.forwardRef((props, forwardedRef) => {
 			})
 		})
 	});
-});
-SelectTrigger.displayName = TRIGGER_NAME;
+}, "SelectTrigger"));
 var VALUE_NAME = "SelectValue";
-var SelectValue = import_react.forwardRef((props, forwardedRef) => {
+var SelectValue = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectValue2(props, forwardedRef) {
 	const { __scopeSelect, className, style, children, placeholder = "", ...valueProps } = props;
 	const context = useSelectContext(VALUE_NAME, __scopeSelect);
 	const { onValueNodeHasChildrenChange } = context;
@@ -249,10 +244,8 @@ var SelectValue = import_react.forwardRef((props, forwardedRef) => {
 		style: { pointerEvents: "none" },
 		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_react.Fragment, { children: showPlaceholder ? placeholder : children }, showPlaceholder ? "placeholder" : "value")
 	});
-});
-SelectValue.displayName = VALUE_NAME;
-var ICON_NAME = "SelectIcon";
-var SelectIcon = import_react.forwardRef((props, forwardedRef) => {
+}, "SelectValue"));
+var SelectIcon = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectIcon2(props, forwardedRef) {
 	const { __scopeSelect, children, ...iconProps } = props;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Primitive.span, {
 		"aria-hidden": true,
@@ -260,11 +253,9 @@ var SelectIcon = import_react.forwardRef((props, forwardedRef) => {
 		ref: forwardedRef,
 		children: children || "▼"
 	});
-});
-SelectIcon.displayName = ICON_NAME;
-var PORTAL_NAME = "SelectPortal";
-var [PortalProvider, usePortalContext] = createSelectContext(PORTAL_NAME, { forceMount: void 0 });
-var SelectPortal = (props) => {
+}, "SelectIcon"));
+var [PortalProvider, usePortalContext] = createSelectContext("SelectPortal", { forceMount: void 0 });
+var SelectPortal = /* @__PURE__ */ __name((props) => {
 	const { __scopeSelect, forceMount, ...portalProps } = props;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PortalProvider, {
 		scope: props.__scopeSelect,
@@ -274,10 +265,9 @@ var SelectPortal = (props) => {
 			...portalProps
 		})
 	});
-};
-SelectPortal.displayName = PORTAL_NAME;
+}, "SelectPortal");
 var CONTENT_NAME = "SelectContent";
-var SelectContent = import_react.forwardRef((props, forwardedRef) => {
+var SelectContent = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectContent2(props, forwardedRef) {
 	const portalContext = usePortalContext(CONTENT_NAME, props.__scopeSelect);
 	const { forceMount = portalContext.forceMount, ...contentProps } = props;
 	const context = useSelectContext(CONTENT_NAME, props.__scopeSelect);
@@ -295,9 +285,8 @@ var SelectContent = import_react.forwardRef((props, forwardedRef) => {
 			fragment
 		})
 	});
-});
-SelectContent.displayName = CONTENT_NAME;
-var SelectContentFragment = import_react.forwardRef((props, forwardedRef) => {
+}, "SelectContent"));
+var SelectContentFragment = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectContentFragment2(props, forwardedRef) {
 	const { __scopeSelect, children, fragment } = props;
 	if (!fragment) return null;
 	return import_react_dom.createPortal(/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectContentProvider, {
@@ -310,13 +299,11 @@ var SelectContentFragment = import_react.forwardRef((props, forwardedRef) => {
 			})
 		})
 	}), fragment);
-});
-SelectContentFragment.displayName = "SelectContentFragment";
+}, "SelectContentFragment"));
 var CONTENT_MARGIN = 10;
 var [SelectContentProvider, useSelectContentContext] = createSelectContext(CONTENT_NAME);
-var CONTENT_IMPL_NAME = "SelectContentImpl";
 var Slot = createSlot("SelectContent.RemoveScroll");
-var SelectContentImpl = import_react.forwardRef((props, forwardedRef) => {
+var SelectContentImpl = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectContentImpl2(props, forwardedRef) {
 	const { __scopeSelect } = props;
 	const { position = "item-aligned", onCloseAutoFocus, onEscapeKeyDown, onPointerDownOutside, side, sideOffset, align, alignOffset, arrowPadding, collisionBoundary, collisionPadding, sticky, hideWhenDetached, avoidCollisions, ...contentProps } = props;
 	const context = useSelectContext(CONTENT_NAME, __scopeSelect);
@@ -360,18 +347,18 @@ var SelectContentImpl = import_react.forwardRef((props, forwardedRef) => {
 				x: 0,
 				y: 0
 			};
-			const handlePointerMove = (event) => {
+			const handlePointerMove = /* @__PURE__ */ __name((event) => {
 				pointerMoveDelta = {
 					x: Math.abs(Math.round(event.pageX) - (triggerPointerDownPosRef.current?.x ?? 0)),
 					y: Math.abs(Math.round(event.pageY) - (triggerPointerDownPosRef.current?.y ?? 0))
 				};
-			};
-			const handlePointerUp = (event) => {
+			}, "handlePointerMove");
+			const handlePointerUp = /* @__PURE__ */ __name((event) => {
 				if (pointerMoveDelta.x <= 10 && pointerMoveDelta.y <= 10) event.preventDefault();
 				else if (!event.composedPath().includes(content)) onOpenChange(false);
 				document.removeEventListener("pointermove", handlePointerMove);
 				triggerPointerDownPosRef.current = null;
-			};
+			}, "handlePointerUp");
 			if (triggerPointerDownPosRef.current !== null) {
 				document.addEventListener("pointermove", handlePointerMove);
 				document.addEventListener("pointerup", handlePointerUp, {
@@ -390,7 +377,7 @@ var SelectContentImpl = import_react.forwardRef((props, forwardedRef) => {
 		triggerPointerDownPosRef
 	]);
 	import_react.useEffect(() => {
-		const close = () => onOpenChange(false);
+		const close = /* @__PURE__ */ __name(() => onOpenChange(false), "close");
 		window.addEventListener("blur", close);
 		window.addEventListener("resize", close);
 		return () => {
@@ -504,10 +491,8 @@ var SelectContentImpl = import_react.forwardRef((props, forwardedRef) => {
 			})
 		})
 	});
-});
-SelectContentImpl.displayName = CONTENT_IMPL_NAME;
-var ITEM_ALIGNED_POSITION_NAME = "SelectItemAlignedPosition";
-var SelectItemAlignedPosition = import_react.forwardRef((props, forwardedRef) => {
+}, "SelectContentImpl"));
+var SelectItemAlignedPosition = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectItemAlignedPosition2(props, forwardedRef) {
 	const { __scopeSelect, onPlaced, ...popperProps } = props;
 	const context = useSelectContext(CONTENT_NAME, __scopeSelect);
 	const contentContext = useSelectContentContext(CONTENT_NAME, __scopeSelect);
@@ -600,17 +585,18 @@ var SelectItemAlignedPosition = import_react.forwardRef((props, forwardedRef) =>
 	useLayoutEffect2(() => {
 		if (content) setContentZIndex(window.getComputedStyle(content).zIndex);
 	}, [content]);
+	const handleScrollButtonChange = import_react.useCallback((node) => {
+		if (node && shouldRepositionRef.current === true) {
+			position();
+			focusSelectedItem?.();
+			shouldRepositionRef.current = false;
+		}
+	}, [position, focusSelectedItem]);
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectViewportProvider, {
 		scope: __scopeSelect,
 		contentWrapper,
 		shouldExpandOnScrollRef,
-		onScrollButtonChange: import_react.useCallback((node) => {
-			if (node && shouldRepositionRef.current === true) {
-				position();
-				focusSelectedItem?.();
-				shouldRepositionRef.current = false;
-			}
-		}, [position, focusSelectedItem]),
+		onScrollButtonChange: handleScrollButtonChange,
 		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 			ref: setContentWrapper,
 			style: {
@@ -630,10 +616,8 @@ var SelectItemAlignedPosition = import_react.forwardRef((props, forwardedRef) =>
 			})
 		})
 	});
-});
-SelectItemAlignedPosition.displayName = ITEM_ALIGNED_POSITION_NAME;
-var POPPER_POSITION_NAME = "SelectPopperPosition";
-var SelectPopperPosition = import_react.forwardRef((props, forwardedRef) => {
+}, "SelectItemAlignedPosition"));
+var SelectPopperPosition = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectPopperPosition2(props, forwardedRef) {
 	const { __scopeSelect, align = "start", collisionPadding = CONTENT_MARGIN, ...popperProps } = props;
 	const popperScope = usePopperScope(__scopeSelect);
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Content, {
@@ -652,11 +636,10 @@ var SelectPopperPosition = import_react.forwardRef((props, forwardedRef) => {
 			"--radix-select-trigger-height": "var(--radix-popper-anchor-height)"
 		}
 	});
-});
-SelectPopperPosition.displayName = POPPER_POSITION_NAME;
+}, "SelectPopperPosition"));
 var [SelectViewportProvider, useSelectViewportContext] = createSelectContext(CONTENT_NAME, {});
 var VIEWPORT_NAME = "SelectViewport";
-var SelectViewport = import_react.forwardRef((props, forwardedRef) => {
+var SelectViewport = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectViewport2(props, forwardedRef) {
 	const { __scopeSelect, nonce, ...viewportProps } = props;
 	const contentContext = useSelectContentContext(VIEWPORT_NAME, __scopeSelect);
 	const viewportContext = useSelectViewportContext(VIEWPORT_NAME, __scopeSelect);
@@ -704,27 +687,10 @@ var SelectViewport = import_react.forwardRef((props, forwardedRef) => {
 			})
 		})
 	})] });
-});
-SelectViewport.displayName = VIEWPORT_NAME;
-var GROUP_NAME = "SelectGroup";
-var [SelectGroupContextProvider, useSelectGroupContext] = createSelectContext(GROUP_NAME);
-var SelectGroup = import_react.forwardRef((props, forwardedRef) => {
-	const { __scopeSelect, ...groupProps } = props;
-	const groupId = useId();
-	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectGroupContextProvider, {
-		scope: __scopeSelect,
-		id: groupId,
-		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Primitive.div, {
-			role: "group",
-			"aria-labelledby": groupId,
-			...groupProps,
-			ref: forwardedRef
-		})
-	});
-});
-SelectGroup.displayName = GROUP_NAME;
+}, "SelectViewport"));
+var [SelectGroupContextProvider, useSelectGroupContext] = createSelectContext("SelectGroup");
 var LABEL_NAME = "SelectLabel";
-var SelectLabel = import_react.forwardRef((props, forwardedRef) => {
+var SelectLabel = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectLabel2(props, forwardedRef) {
 	const { __scopeSelect, ...labelProps } = props;
 	const groupContext = useSelectGroupContext(LABEL_NAME, __scopeSelect);
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Primitive.div, {
@@ -732,26 +698,26 @@ var SelectLabel = import_react.forwardRef((props, forwardedRef) => {
 		...labelProps,
 		ref: forwardedRef
 	});
-});
-SelectLabel.displayName = LABEL_NAME;
+}, "SelectLabel"));
 var ITEM_NAME = "SelectItem";
 var [SelectItemContextProvider, useSelectItemContext] = createSelectContext(ITEM_NAME);
-var SelectItem = import_react.forwardRef((props, forwardedRef) => {
+var SelectItem = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectItem2(props, forwardedRef) {
 	const { __scopeSelect, value, disabled = false, textValue: textValueProp, ...itemProps } = props;
 	const context = useSelectContext(ITEM_NAME, __scopeSelect);
 	const contentContext = useSelectContentContext(ITEM_NAME, __scopeSelect);
 	const isSelected = context.value === value;
 	const [textValue, setTextValue] = import_react.useState(textValueProp ?? "");
 	const [isFocused, setIsFocused] = import_react.useState(false);
-	const composedRefs = useComposedRefs(forwardedRef, useCallbackRef((node) => contentContext.itemRefCallback?.(node, value, disabled)));
+	const handleItemRefCallback = useCallbackRef((node) => contentContext.itemRefCallback?.(node, value, disabled));
+	const composedRefs = useComposedRefs(forwardedRef, handleItemRefCallback);
 	const textId = useId();
 	const pointerTypeRef = import_react.useRef("touch");
-	const handleSelect = () => {
+	const handleSelect = /* @__PURE__ */ __name(() => {
 		if (!disabled) {
 			context.onValueChange(value);
 			context.onOpenChange(false);
 		}
-	};
+	}, "handleSelect");
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectItemContextProvider, {
 		scope: __scopeSelect,
 		value,
@@ -805,10 +771,9 @@ var SelectItem = import_react.forwardRef((props, forwardedRef) => {
 			})
 		})
 	});
-});
-SelectItem.displayName = ITEM_NAME;
+}, "SelectItem"));
 var ITEM_TEXT_NAME = "SelectItemText";
-var SelectItemText = import_react.forwardRef((props, forwardedRef) => {
+var SelectItemText = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectItemText2(props, forwardedRef) {
 	const { __scopeSelect, className, style, ...itemTextProps } = props;
 	const context = useSelectContext(ITEM_TEXT_NAME, __scopeSelect);
 	const contentContext = useSelectContentContext(ITEM_TEXT_NAME, __scopeSelect);
@@ -841,20 +806,18 @@ var SelectItemText = import_react.forwardRef((props, forwardedRef) => {
 		...itemTextProps,
 		ref: composedRefs
 	}), itemContext.isSelected && context.valueNode && !context.valueNodeHasChildren && !shouldShowPlaceholder(context.value) ? import_react_dom.createPortal(itemTextProps.children, context.valueNode) : null] });
-});
-SelectItemText.displayName = ITEM_TEXT_NAME;
+}, "SelectItemText"));
 var ITEM_INDICATOR_NAME = "SelectItemIndicator";
-var SelectItemIndicator = import_react.forwardRef((props, forwardedRef) => {
+var SelectItemIndicator = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectItemIndicator2(props, forwardedRef) {
 	const { __scopeSelect, ...itemIndicatorProps } = props;
 	return useSelectItemContext(ITEM_INDICATOR_NAME, __scopeSelect).isSelected ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Primitive.span, {
 		"aria-hidden": true,
 		...itemIndicatorProps,
 		ref: forwardedRef
 	}) : null;
-});
-SelectItemIndicator.displayName = ITEM_INDICATOR_NAME;
+}, "SelectItemIndicator"));
 var SCROLL_UP_BUTTON_NAME = "SelectScrollUpButton";
-var SelectScrollUpButton = import_react.forwardRef((props, forwardedRef) => {
+var SelectScrollUpButton = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectScrollUpButton2(props, forwardedRef) {
 	const contentContext = useSelectContentContext(SCROLL_UP_BUTTON_NAME, props.__scopeSelect);
 	const viewportContext = useSelectViewportContext(SCROLL_UP_BUTTON_NAME, props.__scopeSelect);
 	const [canScrollUp, setCanScrollUp] = import_react.useState(false);
@@ -865,6 +828,7 @@ var SelectScrollUpButton = import_react.forwardRef((props, forwardedRef) => {
 				const canScrollUp2 = viewport.scrollTop > 0;
 				setCanScrollUp(canScrollUp2);
 			};
+			__name(handleScroll2, "handleScroll");
 			const viewport = contentContext.viewport;
 			handleScroll2();
 			viewport.addEventListener("scroll", handleScroll2);
@@ -879,10 +843,9 @@ var SelectScrollUpButton = import_react.forwardRef((props, forwardedRef) => {
 			if (viewport && selectedItem) viewport.scrollTop = viewport.scrollTop - selectedItem.offsetHeight;
 		}
 	}) : null;
-});
-SelectScrollUpButton.displayName = SCROLL_UP_BUTTON_NAME;
+}, "SelectScrollUpButton"));
 var SCROLL_DOWN_BUTTON_NAME = "SelectScrollDownButton";
-var SelectScrollDownButton = import_react.forwardRef((props, forwardedRef) => {
+var SelectScrollDownButton = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectScrollDownButton2(props, forwardedRef) {
 	const contentContext = useSelectContentContext(SCROLL_DOWN_BUTTON_NAME, props.__scopeSelect);
 	const viewportContext = useSelectViewportContext(SCROLL_DOWN_BUTTON_NAME, props.__scopeSelect);
 	const [canScrollDown, setCanScrollDown] = import_react.useState(false);
@@ -894,6 +857,7 @@ var SelectScrollDownButton = import_react.forwardRef((props, forwardedRef) => {
 				const canScrollDown2 = Math.ceil(viewport.scrollTop) < maxScroll;
 				setCanScrollDown(canScrollDown2);
 			};
+			__name(handleScroll2, "handleScroll");
 			const viewport = contentContext.viewport;
 			handleScroll2();
 			viewport.addEventListener("scroll", handleScroll2);
@@ -908,9 +872,8 @@ var SelectScrollDownButton = import_react.forwardRef((props, forwardedRef) => {
 			if (viewport && selectedItem) viewport.scrollTop = viewport.scrollTop + selectedItem.offsetHeight;
 		}
 	}) : null;
-});
-SelectScrollDownButton.displayName = SCROLL_DOWN_BUTTON_NAME;
-var SelectScrollButtonImpl = import_react.forwardRef((props, forwardedRef) => {
+}, "SelectScrollDownButton"));
+var SelectScrollButtonImpl = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectScrollButtonImpl2(props, forwardedRef) {
 	const { __scopeSelect, onAutoScroll, ...scrollIndicatorProps } = props;
 	const contentContext = useSelectContentContext("SelectScrollButton", __scopeSelect);
 	const autoScrollTimerRef = import_react.useRef(null);
@@ -946,30 +909,17 @@ var SelectScrollButtonImpl = import_react.forwardRef((props, forwardedRef) => {
 			clearAutoScrollTimer();
 		})
 	});
-});
-var SEPARATOR_NAME = "SelectSeparator";
-var SelectSeparator = import_react.forwardRef((props, forwardedRef) => {
+}, "SelectScrollButtonImpl"));
+var SelectSeparator = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectSeparator2(props, forwardedRef) {
 	const { __scopeSelect, ...separatorProps } = props;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Primitive.div, {
 		"aria-hidden": true,
 		...separatorProps,
 		ref: forwardedRef
 	});
-});
-SelectSeparator.displayName = SEPARATOR_NAME;
-var ARROW_NAME = "SelectArrow";
-var SelectArrow = import_react.forwardRef((props, forwardedRef) => {
-	const { __scopeSelect, ...arrowProps } = props;
-	const popperScope = usePopperScope(__scopeSelect);
-	return useSelectContentContext(ARROW_NAME, __scopeSelect).position === "popper" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Arrow, {
-		...popperScope,
-		...arrowProps,
-		ref: forwardedRef
-	}) : null;
-});
-SelectArrow.displayName = ARROW_NAME;
+}, "SelectSeparator"));
 var BUBBLE_INPUT_NAME = "SelectBubbleInput";
-var SelectBubbleInput = import_react.forwardRef(({ __scopeSelect, ...props }, forwardedRef) => {
+var SelectBubbleInput = /* @__PURE__ */ import_react.forwardRef(/* @__PURE__ */ __name(function SelectBubbleInput2({ __scopeSelect, ...props }, forwardedRef) {
 	const context = useSelectContext(BUBBLE_INPUT_NAME, __scopeSelect);
 	const { value, onValueChange, required, disabled, name, autoComplete, form } = context;
 	const { nativeOptions, nativeSelectKey } = context;
@@ -1007,14 +957,15 @@ var SelectBubbleInput = import_react.forwardRef(({ __scopeSelect, ...props }, fo
 		defaultValue: selectValue,
 		children: [shouldShowPlaceholder(value) && !hasEmptyValueOption ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "" }) : null, Array.from(nativeOptions)]
 	}, nativeSelectKey);
-});
-SelectBubbleInput.displayName = BUBBLE_INPUT_NAME;
+}, "SelectBubbleInput"));
 function isFunction(value) {
 	return typeof value === "function";
 }
+__name(isFunction, "isFunction");
 function shouldShowPlaceholder(value) {
 	return value === "" || value === void 0;
 }
+__name(shouldShowPlaceholder, "shouldShowPlaceholder");
 function useTypeaheadSearch(onSearchChange) {
 	const handleSearchChange = useCallbackRef(onSearchChange);
 	const searchRef = import_react.useRef("");
@@ -1022,11 +973,11 @@ function useTypeaheadSearch(onSearchChange) {
 	const handleTypeaheadSearch = import_react.useCallback((key) => {
 		const search = searchRef.current + key;
 		handleSearchChange(search);
-		(function updateSearch(value) {
+		(/* @__PURE__ */ __name((function updateSearch(value) {
 			searchRef.current = value;
 			window.clearTimeout(timerRef.current);
 			if (value !== "") timerRef.current = window.setTimeout(() => updateSearch(""), 1e3);
-		})(search);
+		}), "updateSearch"))(search);
 	}, [handleSearchChange]);
 	const resetTypeahead = import_react.useCallback(() => {
 		searchRef.current = "";
@@ -1041,6 +992,7 @@ function useTypeaheadSearch(onSearchChange) {
 		resetTypeahead
 	];
 }
+__name(useTypeaheadSearch, "useTypeaheadSearch");
 function findNextItem(items, search, currentItem) {
 	const normalizedSearch = search.length > 1 && Array.from(search).every((char) => char === search[0]) ? search[0] : search;
 	const currentItemIndex = currentItem ? items.indexOf(currentItem) : -1;
@@ -1049,8 +1001,10 @@ function findNextItem(items, search, currentItem) {
 	const nextItem = wrappedItems.find((item) => item.textValue.toLowerCase().startsWith(normalizedSearch.toLowerCase()));
 	return nextItem !== currentItem ? nextItem : void 0;
 }
+__name(findNextItem, "findNextItem");
 function wrapArray(array, startIndex) {
 	return array.map((_, index) => array[(startIndex + index) % array.length]);
 }
+__name(wrapArray, "wrapArray");
 //#endregion
 export { SelectItemIndicator as a, SelectPortal as c, SelectSeparator as d, SelectTrigger as f, SelectItem as i, SelectScrollDownButton as l, SelectViewport as m, SelectContent as n, SelectItemText as o, SelectValue as p, SelectIcon as r, SelectLabel as s, Select as t, SelectScrollUpButton as u };
