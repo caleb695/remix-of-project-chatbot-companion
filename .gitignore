@@ -1,31 +1,53 @@
 ```
 # Build outputs
 .output/
-dist/
-build/
 
 # Dependencies
 node_modules/
 
-# Environment
+# Environment variables
 .env
 .env.local
 *.env.*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Logs
 *.log
 
 # Temporary files
 *.tmp
-*.swp
-*.swo
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Distribution / packaging
+.dist/
+.build/
+*.egg-info/
 
 # OS generated files
 .DS_Store
 Thumbs.db
 
-# Cache directories
-.nitro/
-.vite/
-.cache/
+# Nuxt/Nitro specific
+.nuxt/
+.output/
+.node-version
+.vercel
+.netlify
 ```

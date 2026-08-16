@@ -26,7 +26,7 @@ export const swarmExecute = createTool({
   }),
   execute: async ({ tasks }, context) => {
     const results = await Promise.allSettled(
-      tasks.map(async (task) => {
+      tasks.map(async (task: any) => {
         try {
           // Simulate parallel worker execution
           // In a real implementation, this would dispatch to isolated worker threads or separate API calls
