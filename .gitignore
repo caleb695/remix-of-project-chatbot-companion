@@ -1,31 +1,22 @@
 ```
-# Build outputs
-.output/
-dist/
-build/
-
 # Dependencies
 node_modules/
+
+# Compiled and build artifacts
+dist/
+build/
+target/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Editors
+.vscode/
+.idea/
 
 # Environment
 .env
 .env.local
-*.env.*
-
-# Logs
-*.log
-
-# Temporary files
-*.tmp
-*.swp
-*.swo
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Cache directories
-.nitro/
-.vite/
-.cache/
+.env.*
 ```

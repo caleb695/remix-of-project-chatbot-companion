@@ -1,0 +1,210 @@
+import { c as createServerFn, u as getRequest } from "./createServerFn-BFFE07zL.mjs";
+import { t as requireSupabaseAuth } from "./auth-middleware-UH_Jp6hR.mjs";
+import { Ft as stringType, Nt as numberType, Pt as objectType } from "../_libs/@ai-sdk/gateway+[...].mjs";
+import { t as createServerRpc } from "./createServerRpc-MBa5GZ-L.mjs";
+import processModule from "node:process";
+//#region node_modules/.nitro/vite/services/ssr/assets/github.functions-DC8a5aL7.js
+var startGithubOAuth_createServerFn_handler = createServerRpc({
+	id: "97110434a438c49cd499e3c70a52a036435a2b85749b0e8361f876324203dfd0",
+	name: "startGithubOAuth",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => startGithubOAuth.__executeServer(opts));
+var startGithubOAuth = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(startGithubOAuth_createServerFn_handler, async ({ context }) => {
+	const clientId = processModule.env.GITHUB_CLIENT_ID;
+	if (!clientId) throw new Error("GitHub OAuth is not configured yet. Ask the app owner to set GITHUB_CLIENT_ID.");
+	const { signState } = await import("./oauth-state.server-MOpra_96.mjs");
+	const state = signState({
+		uid: context.userId,
+		n: crypto.randomUUID()
+	});
+	const requestUrl = new URL(getRequest().url);
+	const redirect = `${requestUrl.protocol}//${requestUrl.host}/api/github/callback`;
+	const url = new URL("https://github.com/login/oauth/authorize");
+	url.searchParams.set("client_id", clientId);
+	url.searchParams.set("redirect_uri", redirect);
+	url.searchParams.set("scope", "repo workflow read:user");
+	url.searchParams.set("state", state);
+	return { url: url.toString() };
+});
+var getGithubConnection_createServerFn_handler = createServerRpc({
+	id: "f8a5ee7e0516d76c89994a5a0ca79a2c69121197830b39ab46a1733b63d98e69",
+	name: "getGithubConnection",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => getGithubConnection.__executeServer(opts));
+var getGithubConnection = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(getGithubConnection_createServerFn_handler, async ({ context }) => {
+	const { data } = await context.supabase.from("github_connections").select("github_login, avatar_url, created_at, scope").maybeSingle();
+	return data;
+});
+var disconnectGithub_createServerFn_handler = createServerRpc({
+	id: "263f8c6eb13c8d3d8a803f3c828a8d917c503f678c57393732b8761dcb9e4aea",
+	name: "disconnectGithub",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => disconnectGithub.__executeServer(opts));
+var disconnectGithub = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(disconnectGithub_createServerFn_handler, async ({ context }) => {
+	await context.supabase.from("github_connections").delete().eq("user_id", context.userId);
+	return { ok: true };
+});
+var listUserRepos_createServerFn_handler = createServerRpc({
+	id: "5865ecbb18260a33286678ab6e0d140bdd55f92f5a13a78396f5525e53aadf83",
+	name: "listUserRepos",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => listUserRepos.__executeServer(opts));
+var listUserRepos = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(listUserRepos_createServerFn_handler, async ({ context }) => {
+	const { data: conn, error } = await context.supabase.from("github_connections").select("access_token").maybeSingle();
+	if (error) throw error;
+	if (!conn) throw new Error("Connect GitHub first");
+	const { listAllRepos } = await import("./github.server-liDhNs7u.mjs").then((n) => n.n);
+	return (await listAllRepos(conn.access_token)).map((r) => ({
+		id: r.id,
+		name: r.name,
+		full_name: r.full_name,
+		owner: r.owner.login,
+		private: r.private,
+		default_branch: r.default_branch,
+		description: r.description,
+		updated_at: r.updated_at
+	}));
+});
+var addRepoSelection_createServerFn_handler = createServerRpc({
+	id: "e8a78c2dbc421c44f3e114c7646a04afc3834e1523aca5e4d5dbcfeaec3968da",
+	name: "addRepoSelection",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => addRepoSelection.__executeServer(opts));
+var addRepoSelection = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).validator((input) => objectType({
+	github_repo_id: numberType(),
+	owner: stringType(),
+	name: stringType(),
+	default_branch: stringType()
+}).parse(input)).handler(addRepoSelection_createServerFn_handler, async ({ context, data }) => {
+	const { data: row, error } = await context.supabase.from("repo_selections").upsert({
+		user_id: context.userId,
+		github_repo_id: data.github_repo_id,
+		owner: data.owner,
+		name: data.name,
+		default_branch: data.default_branch,
+		working_branch: data.default_branch
+	}, { onConflict: "user_id,github_repo_id" }).select().single();
+	if (error) throw error;
+	return row;
+});
+var listRepoSelections_createServerFn_handler = createServerRpc({
+	id: "0f99a1504db237cd1d0bdf49ddb56d47b84997c156e56ec386bc71971f0590b9",
+	name: "listRepoSelections",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => listRepoSelections.__executeServer(opts));
+var listRepoSelections = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(listRepoSelections_createServerFn_handler, async ({ context }) => {
+	const { data, error } = await context.supabase.from("repo_selections").select("*").order("created_at", { ascending: false });
+	if (error) throw error;
+	return data ?? [];
+});
+var getRepoSelection_createServerFn_handler = createServerRpc({
+	id: "efa440b4311e373bbe3f4bb8a8f7d9e763f339a8e716a7937d7ab2c1a2cb7c32",
+	name: "getRepoSelection",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => getRepoSelection.__executeServer(opts));
+var getRepoSelection = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).validator((input) => objectType({ id: stringType().uuid() }).parse(input)).handler(getRepoSelection_createServerFn_handler, async ({ context, data }) => {
+	const { data: row, error } = await context.supabase.from("repo_selections").select("*").eq("id", data.id).single();
+	if (error) throw error;
+	return row;
+});
+var removeRepoSelection_createServerFn_handler = createServerRpc({
+	id: "5c46a8c7f4107f0d11228ba99265b67c97b569009ab856968686e41bc4483633",
+	name: "removeRepoSelection",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => removeRepoSelection.__executeServer(opts));
+var removeRepoSelection = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).validator((input) => objectType({ id: stringType().uuid() }).parse(input)).handler(removeRepoSelection_createServerFn_handler, async ({ context, data }) => {
+	const { error } = await context.supabase.from("repo_selections").delete().eq("id", data.id);
+	if (error) throw error;
+	return { ok: true };
+});
+var syncRepoFromGithub_createServerFn_handler = createServerRpc({
+	id: "a0196570d479357d50e8b01c9cad32872c32f205b29dd876fabf47ca17239a31",
+	name: "syncRepoFromGithub",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => syncRepoFromGithub.__executeServer(opts));
+var syncRepoFromGithub = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).validator((input) => objectType({ repoId: stringType().uuid() }).parse(input)).handler(syncRepoFromGithub_createServerFn_handler, async ({ context, data }) => {
+	const { data: sel, error: e1 } = await context.supabase.from("repo_selections").select("*").eq("id", data.repoId).single();
+	if (e1) throw e1;
+	const { data: conn, error: e2 } = await context.supabase.from("github_connections").select("access_token").maybeSingle();
+	if (e2) throw e2;
+	if (!conn) throw new Error("GitHub not connected");
+	const { pullRepoFiles } = await import("./github.server-liDhNs7u.mjs").then((n) => n.n);
+	const files = await pullRepoFiles(sel.owner, sel.name, sel.working_branch, conn.access_token);
+	await context.supabase.from("working_files").delete().eq("repo_selection_id", data.repoId);
+	const rows = files.map((f) => ({
+		repo_selection_id: data.repoId,
+		user_id: context.userId,
+		path: f.path,
+		content: f.content,
+		original_content: f.content,
+		original_sha: f.sha,
+		status: "unchanged"
+	}));
+	for (let i = 0; i < rows.length; i += 100) {
+		const chunk = rows.slice(i, i + 100);
+		const { error } = await context.supabase.from("working_files").insert(chunk);
+		if (error) throw error;
+	}
+	await context.supabase.from("repo_selections").update({ last_synced_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", data.repoId);
+	return { count: rows.length };
+});
+var commitAndPush_createServerFn_handler = createServerRpc({
+	id: "6d52b6b8ecf415ee128139843febbaaa574fdebea4a56d5196d37d2f57371819",
+	name: "commitAndPush",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => commitAndPush.__executeServer(opts));
+var commitAndPush = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).validator((input) => objectType({
+	repoId: stringType().uuid(),
+	message: stringType().min(1).max(500)
+}).parse(input)).handler(commitAndPush_createServerFn_handler, async ({ context, data }) => {
+	const { data: sel, error: e1 } = await context.supabase.from("repo_selections").select("*").eq("id", data.repoId).single();
+	if (e1) throw e1;
+	const { data: conn, error: e2 } = await context.supabase.from("github_connections").select("access_token").maybeSingle();
+	if (e2) throw e2;
+	if (!conn) throw new Error("GitHub not connected");
+	const { data: files, error: e3 } = await context.supabase.from("working_files").select("path, content, status").eq("repo_selection_id", data.repoId).neq("status", "unchanged");
+	if (e3) throw e3;
+	if (!files || files.length === 0) throw new Error("No pending changes");
+	const { commitChanges } = await import("./github.server-liDhNs7u.mjs").then((n) => n.n);
+	const changes = files.map((f) => ({
+		path: f.path,
+		content: f.status === "deleted" ? null : f.content ?? ""
+	}));
+	const result = await commitChanges(sel.owner, sel.name, sel.working_branch, conn.access_token, changes, data.message);
+	await context.supabase.from("working_files").delete().eq("repo_selection_id", data.repoId).eq("status", "deleted");
+	await context.supabase.from("working_files").update({
+		status: "unchanged",
+		original_content: null
+	}).eq("repo_selection_id", data.repoId).neq("status", "unchanged");
+	const { data: touched } = await context.supabase.from("working_files").select("id, content").eq("repo_selection_id", data.repoId);
+	if (touched) for (const t of touched) await context.supabase.from("working_files").update({ original_content: t.content }).eq("id", t.id);
+	return {
+		sha: result.sha,
+		count: files.length
+	};
+});
+var listWorkingFiles_createServerFn_handler = createServerRpc({
+	id: "e112093d4fe65c6dcb569054830b78ff48691e7b06ef4607f563fcd0ba9412ea",
+	name: "listWorkingFiles",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => listWorkingFiles.__executeServer(opts));
+var listWorkingFiles = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).validator((input) => objectType({ repoId: stringType().uuid() }).parse(input)).handler(listWorkingFiles_createServerFn_handler, async ({ context, data }) => {
+	const { data: rows, error } = await context.supabase.from("working_files").select("id, path, status, updated_at").eq("repo_selection_id", data.repoId).order("path");
+	if (error) throw error;
+	return rows ?? [];
+});
+var getWorkingFile_createServerFn_handler = createServerRpc({
+	id: "536f9c9c915f5101a66e533d2b37f11b778483e860b85afe7d0f8d003c30381b",
+	name: "getWorkingFile",
+	filename: "src/lib/github.functions.ts"
+}, (opts) => getWorkingFile.__executeServer(opts));
+var getWorkingFile = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).validator((input) => objectType({
+	repoId: stringType().uuid(),
+	path: stringType()
+}).parse(input)).handler(getWorkingFile_createServerFn_handler, async ({ context, data }) => {
+	const { data: row, error } = await context.supabase.from("working_files").select("*").eq("repo_selection_id", data.repoId).eq("path", data.path).maybeSingle();
+	if (error) throw error;
+	return row;
+});
+//#endregion
+export { addRepoSelection_createServerFn_handler, commitAndPush_createServerFn_handler, disconnectGithub_createServerFn_handler, getGithubConnection_createServerFn_handler, getRepoSelection_createServerFn_handler, getWorkingFile_createServerFn_handler, listRepoSelections_createServerFn_handler, listUserRepos_createServerFn_handler, listWorkingFiles_createServerFn_handler, removeRepoSelection_createServerFn_handler, startGithubOAuth_createServerFn_handler, syncRepoFromGithub_createServerFn_handler };

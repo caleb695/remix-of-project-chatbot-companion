@@ -1,0 +1,66 @@
+import { c as createServerFn } from "./createServerFn-BFFE07zL.mjs";
+import { t as requireSupabaseAuth } from "./auth-middleware-UH_Jp6hR.mjs";
+import { Ft as stringType, Nt as numberType, Pt as objectType, jt as booleanType } from "../_libs/@ai-sdk/gateway+[...].mjs";
+import { t as createServerRpc } from "./createServerRpc-MBa5GZ-L.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/attachments.functions-B6dutD1n.js
+var listAttachments_createServerFn_handler = createServerRpc({
+	id: "817a626ecc4b3a6ce25414eb31421835d5432bb5a2846e67921ea783d600e1c7",
+	name: "listAttachments",
+	filename: "src/lib/attachments.functions.ts"
+}, (opts) => listAttachments.__executeServer(opts));
+var listAttachments = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).validator((i) => objectType({ threadId: stringType().uuid() }).parse(i)).handler(listAttachments_createServerFn_handler, async ({ context, data }) => {
+	const { data: rows, error } = await context.supabase.from("chat_attachments").select("id, name, mime_type, size_bytes, code_only, created_at").eq("thread_id", data.threadId).order("created_at");
+	if (error) throw error;
+	return rows ?? [];
+});
+var registerAttachment_createServerFn_handler = createServerRpc({
+	id: "2d56b64b961fd1ec50056da409115389cc513d1c46949d4765c871e418f81dfe",
+	name: "registerAttachment",
+	filename: "src/lib/attachments.functions.ts"
+}, (opts) => registerAttachment.__executeServer(opts));
+var registerAttachment = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).validator((i) => objectType({
+	threadId: stringType().uuid(),
+	name: stringType().min(1).max(200),
+	mimeType: stringType().max(200).optional(),
+	sizeBytes: numberType().int().nonnegative().optional(),
+	storagePath: stringType().min(1).max(400)
+}).parse(i)).handler(registerAttachment_createServerFn_handler, async ({ context, data }) => {
+	if (!data.storagePath.startsWith(`${context.userId}/`)) throw new Error("Invalid upload path");
+	const { data: row, error } = await context.supabase.from("chat_attachments").insert({
+		user_id: context.userId,
+		thread_id: data.threadId,
+		name: data.name,
+		mime_type: data.mimeType ?? null,
+		size_bytes: data.sizeBytes ?? null,
+		storage_path: data.storagePath
+	}).select("id, name, mime_type, size_bytes, code_only, created_at").single();
+	if (error) throw error;
+	return row;
+});
+var setAttachmentCodeOnly_createServerFn_handler = createServerRpc({
+	id: "11458bebf5cace5dd9074d9f98cd6de15041edcfa313739fde3e45dff2be0441",
+	name: "setAttachmentCodeOnly",
+	filename: "src/lib/attachments.functions.ts"
+}, (opts) => setAttachmentCodeOnly.__executeServer(opts));
+var setAttachmentCodeOnly = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).validator((i) => objectType({
+	id: stringType().uuid(),
+	codeOnly: booleanType()
+}).parse(i)).handler(setAttachmentCodeOnly_createServerFn_handler, async ({ context, data }) => {
+	const { error } = await context.supabase.from("chat_attachments").update({ code_only: data.codeOnly }).eq("id", data.id);
+	if (error) throw error;
+	return { ok: true };
+});
+var deleteAttachment_createServerFn_handler = createServerRpc({
+	id: "db2812fd35bc89a2c1a545b8baa27e4404b7d56206cebd296793d9ae262ac2f3",
+	name: "deleteAttachment",
+	filename: "src/lib/attachments.functions.ts"
+}, (opts) => deleteAttachment.__executeServer(opts));
+var deleteAttachment = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).validator((i) => objectType({ id: stringType().uuid() }).parse(i)).handler(deleteAttachment_createServerFn_handler, async ({ context, data }) => {
+	const { data: row } = await context.supabase.from("chat_attachments").select("storage_path").eq("id", data.id).maybeSingle();
+	if (row) await context.supabase.storage.from("attachments").remove([row.storage_path]);
+	const { error } = await context.supabase.from("chat_attachments").delete().eq("id", data.id);
+	if (error) throw error;
+	return { ok: true };
+});
+//#endregion
+export { deleteAttachment_createServerFn_handler, listAttachments_createServerFn_handler, registerAttachment_createServerFn_handler, setAttachmentCodeOnly_createServerFn_handler };
