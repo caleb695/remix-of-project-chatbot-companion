@@ -1,5 +1,5 @@
 import { i as __toESM, t as __commonJSMin } from "../../_runtime.mjs";
-import { $ as withUserAgentSuffix, A as isAbortError, B as parseJsonEventStream, Ct as AISDKError, D as generateId, Dt as TypeValidationError, E as filterNullable, F as isNonNullable, G as resolve, I as isProviderReference, J as safeParseJSON, L as isUrlSupported, N as isExecutableTool, O as getRuntimeEnvironmentUserAgent, Ot as UnsupportedFunctionalityError, P as isFullMediaType, Q as validateTypes, R as lazySchema, S as detectMediaType, St as unknown, T as fetchWithValidatedRedirects, Tt as InvalidPromptError, W as readResponseWithSizeLimit, Y as safeValidateTypes, _ as convertUint8ArrayToBase64, _t as object$1, at as _instanceof, bt as string, c as DownloadError, ct as array$1, d as asSchema, dt as discriminatedUnion, f as cancelResponseBody, ft as lazy, gt as number, ht as never, it as _enum, j as isBuffer, kt as getErrorMessage, lt as boolean, m as convertBase64ToUint8Array, n as GatewayError, o as DEFAULT_MAX_DOWNLOAD_SIZE, ot as _null, pt as literal, q as retryWithExponentialBackoff, r as gateway, s as DelayedPromise, t as GatewayAuthenticationError, tt as zodSchema, u as asArray, ut as custom, vt as record, w as executeTool, wt as APICallError, xt as union, y as createIdGenerator, yt as strictObject, z as normalizeHeaders } from "./gateway+[...].mjs";
+import { A as getRuntimeEnvironmentUserAgent, At as UnsupportedFunctionalityError, B as isUrlSupported, Ct as union, D as fetchWithValidatedRedirects, Dt as InvalidPromptError, E as executeTool, Et as APICallError, H as normalizeHeaders, I as isExecutableTool, J as resolve, L as isFullMediaType, N as isAbortError, O as filterNullable, P as isBuffer, Q as safeValidateTypes, R as isNonNullable, St as string, Tt as AISDKError, U as parseJsonEventStream, V as lazySchema, X as retryWithExponentialBackoff, Z as safeParseJSON, _ as convertUint8ArrayToBase64, _t as looseObject, bt as object, c as DownloadError, ct as _instanceof, d as asSchema, dt as array, f as cancelResponseBody, ft as boolean, gt as literal, ht as lazy, it as zodSchema, j as getToolCaller, jt as getErrorMessage, k as generateId, kt as TypeValidationError, lt as _null, m as convertBase64ToUint8Array, mt as discriminatedUnion, n as GatewayError, nt as withUserAgentSuffix, o as DEFAULT_MAX_DOWNLOAD_SIZE, pt as custom, q as readResponseWithSizeLimit, r as gateway, s as DelayedPromise, st as _enum, t as GatewayAuthenticationError, tt as validateTypes, u as asArray, vt as never, w as detectMediaType, wt as unknown, xt as record, y as createIdGenerator, yt as number, z as isProviderReference } from "./gateway+[...].mjs";
 import processModule from "node:process";
 //#region node_modules/react/cjs/react.production.js
 /**
@@ -374,7 +374,7 @@ var require_react_production = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.useTransition = function() {
 		return ReactSharedInternals.H.useTransition();
 	};
-	exports.version = "19.2.7";
+	exports.version = "19.2.8";
 }));
 //#endregion
 //#region node_modules/react/index.js
@@ -425,8 +425,8 @@ var require_jsx_runtime = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 //#region node_modules/ai/dist/index.js
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
-	for (var name22 in all) __defProp(target, name22, {
-		get: all[name22],
+	for (var name23 in all) __defProp(target, name23, {
+		get: all[name23],
 		enumerable: true
 	});
 };
@@ -583,44 +583,44 @@ var NoOutputGeneratedError = class extends AISDKError {
 	}
 };
 _a10 = symbol10;
-var name14 = "AI_NoSuchToolError";
-var marker14 = `vercel.ai.error.${name14}`;
-var symbol14 = Symbol.for(marker14);
-var _a14;
-var NoSuchToolError = class extends AISDKError {
-	constructor({ toolName, availableTools = void 0, message = `Model tried to call unavailable tool '${toolName}'. ${availableTools === void 0 ? "No tools are available." : `Available tools: ${availableTools.join(", ")}.`}` }) {
-		super({
-			name: name14,
-			message
-		});
-		this[_a14] = true;
-		this.toolName = toolName;
-		this.availableTools = availableTools;
-	}
-	static isInstance(error) {
-		return AISDKError.hasMarker(error, marker14);
-	}
-};
-_a14 = symbol14;
-var name15 = "AI_ToolCallRepairError";
+var name15 = "AI_NoSuchToolError";
 var marker15 = `vercel.ai.error.${name15}`;
 var symbol15 = Symbol.for(marker15);
 var _a15;
-var ToolCallRepairError = class extends AISDKError {
-	constructor({ cause, originalError, message = `Error repairing tool call: ${getErrorMessage(cause)}` }) {
+var NoSuchToolError = class extends AISDKError {
+	constructor({ toolName, availableTools = void 0, message = `Model tried to call unavailable tool '${toolName}'. ${availableTools === void 0 ? "No tools are available." : `Available tools: ${availableTools.join(", ")}.`}` }) {
 		super({
 			name: name15,
-			message,
-			cause
+			message
 		});
 		this[_a15] = true;
-		this.originalError = originalError;
+		this.toolName = toolName;
+		this.availableTools = availableTools;
 	}
 	static isInstance(error) {
 		return AISDKError.hasMarker(error, marker15);
 	}
 };
 _a15 = symbol15;
+var name16 = "AI_ToolCallRepairError";
+var marker16 = `vercel.ai.error.${name16}`;
+var symbol16 = Symbol.for(marker16);
+var _a16;
+var ToolCallRepairError = class extends AISDKError {
+	constructor({ cause, originalError, message = `Error repairing tool call: ${getErrorMessage(cause)}` }) {
+		super({
+			name: name16,
+			message,
+			cause
+		});
+		this[_a16] = true;
+		this.originalError = originalError;
+	}
+	static isInstance(error) {
+		return AISDKError.hasMarker(error, marker16);
+	}
+};
+_a16 = symbol16;
 var UnsupportedModelVersionError = class extends AISDKError {
 	constructor(options) {
 		super({
@@ -632,100 +632,100 @@ var UnsupportedModelVersionError = class extends AISDKError {
 		this.modelId = options.modelId;
 	}
 };
-var name16 = "AI_UIMessageStreamError";
-var marker16 = `vercel.ai.error.${name16}`;
-var symbol16 = Symbol.for(marker16);
-var _a16;
-var UIMessageStreamError = class extends AISDKError {
-	constructor({ chunkType, chunkId, message }) {
-		super({
-			name: name16,
-			message
-		});
-		this[_a16] = true;
-		this.chunkType = chunkType;
-		this.chunkId = chunkId;
-	}
-	static isInstance(error) {
-		return AISDKError.hasMarker(error, marker16);
-	}
-};
-_a16 = symbol16;
-var name17 = "AI_InvalidDataContentError";
+var name17 = "AI_UIMessageStreamError";
 var marker17 = `vercel.ai.error.${name17}`;
 var symbol17 = Symbol.for(marker17);
 var _a17;
-var InvalidDataContentError = class extends AISDKError {
-	constructor({ content, cause, message = `Invalid data content. Expected a base64 string, Uint8Array, ArrayBuffer, or Buffer, but got ${typeof content}.` }) {
+var UIMessageStreamError = class extends AISDKError {
+	constructor({ chunkType, chunkId, message }) {
 		super({
 			name: name17,
-			message,
-			cause
+			message
 		});
 		this[_a17] = true;
-		this.content = content;
+		this.chunkType = chunkType;
+		this.chunkId = chunkId;
 	}
 	static isInstance(error) {
 		return AISDKError.hasMarker(error, marker17);
 	}
 };
 _a17 = symbol17;
-var name18 = "AI_InvalidMessageRoleError";
+var name18 = "AI_InvalidDataContentError";
 var marker18 = `vercel.ai.error.${name18}`;
 var symbol18 = Symbol.for(marker18);
 var _a18;
-var InvalidMessageRoleError = class extends AISDKError {
-	constructor({ role, message = `Invalid message role: '${role}'. Must be one of: "system", "user", "assistant", "tool".` }) {
+var InvalidDataContentError = class extends AISDKError {
+	constructor({ content, cause, message = `Invalid data content. Expected a base64 string, Uint8Array, ArrayBuffer, or Buffer, but got ${typeof content}.` }) {
 		super({
 			name: name18,
-			message
+			message,
+			cause
 		});
 		this[_a18] = true;
-		this.role = role;
+		this.content = content;
 	}
 	static isInstance(error) {
 		return AISDKError.hasMarker(error, marker18);
 	}
 };
 _a18 = symbol18;
-var name19 = "AI_MessageConversionError";
+var name19 = "AI_InvalidMessageRoleError";
 var marker19 = `vercel.ai.error.${name19}`;
 var symbol19 = Symbol.for(marker19);
 var _a19;
-var MessageConversionError = class extends AISDKError {
-	constructor({ originalMessage, message }) {
+var InvalidMessageRoleError = class extends AISDKError {
+	constructor({ role, message = `Invalid message role: '${role}'. Must be one of: "system", "user", "assistant", "tool".` }) {
 		super({
 			name: name19,
 			message
 		});
 		this[_a19] = true;
-		this.originalMessage = originalMessage;
+		this.role = role;
 	}
 	static isInstance(error) {
 		return AISDKError.hasMarker(error, marker19);
 	}
 };
 _a19 = symbol19;
-var name20 = "AI_RetryError";
+var name20 = "AI_MessageConversionError";
 var marker20 = `vercel.ai.error.${name20}`;
 var symbol20 = Symbol.for(marker20);
 var _a20;
-var RetryError = class extends AISDKError {
-	constructor({ message, reason, errors }) {
+var MessageConversionError = class extends AISDKError {
+	constructor({ originalMessage, message }) {
 		super({
 			name: name20,
 			message
 		});
 		this[_a20] = true;
-		this.reason = reason;
-		this.errors = errors;
-		this.lastError = errors[errors.length - 1];
+		this.originalMessage = originalMessage;
 	}
 	static isInstance(error) {
 		return AISDKError.hasMarker(error, marker20);
 	}
 };
 _a20 = symbol20;
+var name21 = "AI_RetryError";
+var marker21 = `vercel.ai.error.${name21}`;
+var symbol21 = Symbol.for(marker21);
+var _a21;
+var RetryError = class extends AISDKError {
+	constructor({ message, reason, errors }) {
+		super({
+			name: name21,
+			message
+		});
+		this[_a21] = true;
+		this.reason = reason;
+		this.errors = errors;
+		this.lastError = errors[errors.length - 1];
+	}
+	static isInstance(error) {
+		return AISDKError.hasMarker(error, marker21);
+	}
+};
+_a21 = symbol21;
 function formatWarning({ warning, provider, model }) {
 	const prefix = `AI SDK Warning${provider != null && model != null ? ` (${provider} / ${model})` : ""}:`;
 	switch (warning.type) {
@@ -746,6 +746,10 @@ function formatWarning({ warning, provider, model }) {
 }
 var FIRST_WARNING_INFO_MESSAGE = "AI SDK Warning System: To turn off warning logging, set the AI_SDK_LOG_WARNINGS global to false.";
 var hasLoggedBefore = false;
+function emitWarning({ message, type }) {
+	if (typeof processModule !== "undefined" && typeof processModule.emitWarning === "function") processModule.emitWarning(message, { type });
+	else console.warn(message);
+}
 var logWarnings = (options) => {
 	if (options.warnings.length === 0) return;
 	const logger = globalThis.AI_SDK_LOG_WARNINGS;
@@ -756,17 +760,19 @@ var logWarnings = (options) => {
 	}
 	if (!hasLoggedBefore) {
 		hasLoggedBefore = true;
-		console.info(FIRST_WARNING_INFO_MESSAGE);
+		emitWarning({
+			message: FIRST_WARNING_INFO_MESSAGE,
+			type: "Warning"
+		});
 	}
-	for (const warning of options.warnings) {
-		const message = formatWarning({
+	for (const warning of options.warnings) emitWarning({
+		message: formatWarning({
 			warning,
 			provider: options.provider,
 			model: options.model
-		});
-		if (typeof processModule !== "undefined" && typeof processModule.emitWarning === "function") processModule.emitWarning(message, { type: warning.type === "deprecated" ? "DeprecationWarning" : "Warning" });
-		else console.warn(message);
-	}
+		}),
+		type: warning.type === "deprecated" ? "DeprecationWarning" : "Warning"
+	});
 };
 function logV2CompatibilityWarning({ provider, modelId }) {
 	logWarnings({
@@ -855,9 +861,7 @@ function convertV2StreamToV3(stream) {
 					usage: convertV2UsageToV3(chunk.usage)
 				});
 				break;
-			default:
-				controller.enqueue(chunk);
-				break;
+			default: controller.enqueue(chunk);
 		}
 	} }));
 }
@@ -978,8 +982,8 @@ function resolveLanguageModel(model) {
 	return asLanguageModelV4(model);
 }
 function getGlobalProvider() {
-	var _a22;
-	return asProviderV4((_a22 = globalThis.AI_SDK_DEFAULT_PROVIDER) != null ? _a22 : gateway);
+	var _a23;
+	return asProviderV4((_a23 = globalThis.AI_SDK_DEFAULT_PROVIDER) != null ? _a23 : gateway);
 }
 function cloneModelMessages(messages) {
 	return messages.map((message) => cloneValue(message));
@@ -993,14 +997,15 @@ function cloneValue(value) {
 	if (value != null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, value2]) => [key, cloneValue(value2)]));
 	return value;
 }
-var VERSION = "7.0.19";
+var VERSION = "7.0.66";
 var download = async ({ url, maxBytes, abortSignal }) => {
-	var _a22;
+	var _a23;
 	const urlText = url.toString();
 	try {
+		const headers = withUserAgentSuffix({}, `ai-sdk/${VERSION}`, getRuntimeEnvironmentUserAgent());
 		const response = await fetchWithValidatedRedirects({
 			url: urlText,
-			headers: withUserAgentSuffix({}, `ai-sdk/${VERSION}`, getRuntimeEnvironmentUserAgent()),
+			headers,
 			abortSignal
 		});
 		if (!response.ok) {
@@ -1017,7 +1022,7 @@ var download = async ({ url, maxBytes, abortSignal }) => {
 				url: urlText,
 				maxBytes: maxBytes != null ? maxBytes : DEFAULT_MAX_DOWNLOAD_SIZE
 			}),
-			mediaType: (_a22 = response.headers.get("content-type")) != null ? _a22 : void 0
+			mediaType: (_a23 = response.headers.get("content-type")) != null ? _a23 : void 0
 		};
 	} catch (error) {
 		if (DownloadError.isInstance(error)) throw error;
@@ -1028,6 +1033,25 @@ var download = async ({ url, maxBytes, abortSignal }) => {
 	}
 };
 var createDefaultDownloadFunction = (download2 = download) => (requestedDownloads) => Promise.all(requestedDownloads.map(async (requestedDownload) => requestedDownload.isUrlSupportedByModel ? null : await download2(requestedDownload)));
+function mergeObjects(base, overrides) {
+	if (base === void 0 && overrides === void 0) return;
+	if (base === void 0) return overrides;
+	if (overrides === void 0) return base;
+	const result = { ...base };
+	for (const key in overrides) {
+		if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+		if (Object.prototype.hasOwnProperty.call(overrides, key)) {
+			const overridesValue = overrides[key];
+			if (overridesValue === void 0) continue;
+			const baseValue = key in base ? base[key] : void 0;
+			const isSourceObject = overridesValue !== null && typeof overridesValue === "object" && !Array.isArray(overridesValue) && !(overridesValue instanceof Date) && !(overridesValue instanceof RegExp);
+			const isTargetObject = baseValue !== null && baseValue !== void 0 && typeof baseValue === "object" && !Array.isArray(baseValue) && !(baseValue instanceof Date) && !(baseValue instanceof RegExp);
+			if (isSourceObject && isTargetObject) result[key] = mergeObjects(baseValue, overridesValue);
+			else result[key] = overridesValue;
+		}
+	}
+	return result;
+}
 function splitDataUrl(dataUrl) {
 	try {
 		const [header, base64Content] = dataUrl.split(",");
@@ -1171,8 +1195,12 @@ async function convertToLanguageModelPrompt({ prompt, supportedUrls, download: d
 			continue;
 		}
 		const lastCombinedMessage = combinedMessages.at(-1);
-		if ((lastCombinedMessage == null ? void 0 : lastCombinedMessage.role) === "tool") lastCombinedMessage.content.push(...message.content);
-		else combinedMessages.push(message);
+		if ((lastCombinedMessage == null ? void 0 : lastCombinedMessage.role) === "tool") {
+			const lastContentPart = lastCombinedMessage.content.at(-1);
+			if (lastContentPart != null && lastCombinedMessage.providerOptions != null) lastContentPart.providerOptions = mergeObjects(lastCombinedMessage.providerOptions, lastContentPart.providerOptions);
+			lastCombinedMessage.content.push(...message.content);
+			lastCombinedMessage.providerOptions = message.providerOptions;
+		} else combinedMessages.push(message);
 	}
 	const toolCallIds = /* @__PURE__ */ new Set();
 	for (const message of combinedMessages) switch (message.role) {
@@ -1186,7 +1214,6 @@ async function convertToLanguageModelPrompt({ prompt, supportedUrls, download: d
 		case "system":
 			for (const id of approvedToolCallIds) toolCallIds.delete(id);
 			if (toolCallIds.size > 0) throw new MissingToolResultsError({ toolCallIds: Array.from(toolCallIds) });
-			break;
 	}
 	for (const id of approvedToolCallIds) toolCallIds.delete(id);
 	if (toolCallIds.size > 0) throw new MissingToolResultsError({ toolCallIds: Array.from(toolCallIds) });
@@ -1335,12 +1362,12 @@ function convertToLanguageModelMessage({ message, downloadedAssets, provider }) 
 	}
 }
 function convertImagePartToFilePart(part) {
-	var _a22;
+	var _a23;
 	if (part.type !== "image") return part;
 	return {
 		type: "file",
 		data: part.image,
-		mediaType: (_a22 = part.mediaType) != null ? _a22 : "image",
+		mediaType: (_a23 = part.mediaType) != null ? _a23 : "image",
 		providerOptions: part.providerOptions
 	};
 }
@@ -1423,7 +1450,7 @@ function mapToolResultOutput({ output, provider, warnings = [], downloadedAssets
 	return {
 		type: "content",
 		value: output.value.map((item) => {
-			var _a22;
+			var _a23;
 			switch (item.type) {
 				case "file": {
 					const convertedPart = convertPartToLanguageModelPart(item, downloadedAssets);
@@ -1447,7 +1474,7 @@ function mapToolResultOutput({ output, provider, warnings = [], downloadedAssets
 						providerOptions: item.providerOptions
 					};
 				case "file-url": {
-					const mediaType = (_a22 = item.mediaType) != null ? _a22 : getMediaTypeFromUrl(item.url);
+					const mediaType = (_a23 = item.mediaType) != null ? _a23 : getMediaTypeFromUrl(item.url);
 					let message = `The "file-url" type for tool result content is deprecated. Use the "file" type with mediaType and { type: 'url', url } instead.`;
 					if (!item.mediaType) {
 						const inferenceSuffix = mediaType === "application/octet-stream" ? `Unable to infer media type from URL. Defaulting to 'application/octet-stream'.` : `Inferred media type '${mediaType}' from URL.`;
@@ -1594,9 +1621,9 @@ var URL_EXTENSION_TO_MEDIA_TYPE = {
 	ogg: "audio/ogg"
 };
 function getMediaTypeFromUrl(url, fallbackMediaType = "application/octet-stream") {
-	var _a22;
+	var _a23;
 	try {
-		const fileExtension = (_a22 = new URL(url).pathname.split(".").pop()) == null ? void 0 : _a22.toLowerCase();
+		const fileExtension = (_a23 = new URL(url).pathname.split(".").pop()) == null ? void 0 : _a23.toLowerCase();
 		if (fileExtension && Object.hasOwn(URL_EXTENSION_TO_MEDIA_TYPE, fileExtension)) return URL_EXTENSION_TO_MEDIA_TYPE[fileExtension];
 	} catch (e) {}
 	return fallbackMediaType;
@@ -1699,13 +1726,13 @@ function prepareToolChoice({ toolChoice }) {
 		toolName: toolChoice.toolName
 	};
 }
-function isNonEmptyObject(object2) {
-	return object2 != null && Object.keys(object2).length > 0;
+function isNonEmptyObject(object3) {
+	return object3 != null && Object.keys(object3).length > 0;
 }
 async function prepareTools({ tools, toolOrder, toolsContext = {}, experimental_sandbox: sandbox }) {
 	if (!isNonEmptyObject(tools)) return;
 	const languageModelTools = [];
-	for (const [name22, tool2] of orderToolEntries({
+	for (const [name23, tool2] of orderToolEntries({
 		tools,
 		toolOrder
 	})) {
@@ -1716,7 +1743,7 @@ async function prepareTools({ tools, toolOrder, toolsContext = {}, experimental_
 			case "function": {
 				const description = resolveToolDescription({
 					tool: tool2,
-					toolName: name22,
+					toolName: name23,
 					toolsContext,
 					experimental_sandbox: sandbox
 				});
@@ -1725,7 +1752,7 @@ async function prepareTools({ tools, toolOrder, toolsContext = {}, experimental_
 				const strict = tool2.strict;
 				languageModelTools.push({
 					type: "function",
-					name: name22,
+					name: name23,
 					inputSchema: await asSchema(tool2.inputSchema).jsonSchema,
 					...description != null ? { description } : {},
 					...inputExamples != null ? { inputExamples } : {},
@@ -1737,7 +1764,7 @@ async function prepareTools({ tools, toolOrder, toolsContext = {}, experimental_
 			case "provider":
 				languageModelTools.push({
 					type: "provider",
-					name: name22,
+					name: name23,
 					id: tool2.id,
 					args: tool2.args
 				});
@@ -1750,8 +1777,8 @@ async function prepareTools({ tools, toolOrder, toolsContext = {}, experimental_
 function orderToolEntries({ tools, toolOrder }) {
 	if (toolOrder == null) return Object.entries(tools);
 	const toolEntries = Object.entries(tools);
-	const orderedTools = toolEntries.filter(([name22]) => toolOrder.includes(name22)).sort(([nameA], [nameB]) => toolOrder.indexOf(nameA) - toolOrder.indexOf(nameB));
-	const unorderedTools = toolEntries.filter(([name22]) => !toolOrder.includes(name22)).sort(([nameA], [nameB]) => nameA < nameB ? -1 : nameA > nameB ? 1 : 0);
+	const orderedTools = toolEntries.filter(([name23]) => toolOrder.includes(name23)).sort(([nameA], [nameB]) => toolOrder.indexOf(nameA) - toolOrder.indexOf(nameB));
+	const unorderedTools = toolEntries.filter(([name23]) => !toolOrder.includes(name23)).sort(([nameA], [nameB]) => nameA < nameB ? -1 : nameA > nameB ? 1 : 0);
 	return [...orderedTools, ...unorderedTools];
 }
 function resolveToolDescription({ tool: tool2, toolName, toolsContext, experimental_sandbox: sandbox }) {
@@ -1769,255 +1796,282 @@ function getStepTimeoutMs(timeout) {
 	if (timeout == null || typeof timeout === "number") return;
 	return timeout.stepMs;
 }
+function getFirstChunkTimeoutMs(timeout) {
+	if (timeout == null || typeof timeout === "number") return;
+	return timeout.firstChunkMs;
+}
 function getChunkTimeoutMs(timeout) {
 	if (timeout == null || typeof timeout === "number") return;
 	return timeout.chunkMs;
 }
 function getToolTimeoutMs(timeout, toolName) {
-	var _a22, _b;
+	var _a23, _b;
 	if (timeout == null || typeof timeout === "number") return;
-	return (_b = (_a22 = timeout.tools) == null ? void 0 : _a22[`${toolName}Ms`]) != null ? _b : timeout.toolMs;
+	return (_b = (_a23 = timeout.tools) == null ? void 0 : _a23[`${toolName}Ms`]) != null ? _b : timeout.toolMs;
 }
-var jsonValueSchema = lazy(() => union([
-	_null(),
-	string(),
-	number(),
-	boolean(),
-	record(string(), jsonValueSchema.optional()),
-	array$1(jsonValueSchema)
+var z = {
+	array,
+	boolean,
+	custom,
+	discriminatedUnion,
+	enum: _enum,
+	instanceof: _instanceof,
+	lazy,
+	literal,
+	looseObject,
+	never,
+	null: _null,
+	number,
+	object,
+	record,
+	string,
+	union,
+	unknown
+};
+var jsonValueSchema = z.lazy(() => z.union([
+	z.null(),
+	z.string(),
+	z.number(),
+	z.boolean(),
+	z.record(z.string(), jsonValueSchema.optional()),
+	z.array(jsonValueSchema)
 ]));
-var providerMetadataSchema = record(string(), record(string(), jsonValueSchema.optional()));
-var fileInlineDataSchema = union([
-	string(),
-	_instanceof(Uint8Array),
-	_instanceof(ArrayBuffer),
-	custom(isBuffer, { message: "Must be a Buffer" })
+var providerMetadataSchema = z.record(z.string(), z.record(z.string(), jsonValueSchema.optional()));
+var fileInlineDataSchema = z.union([
+	z.string(),
+	z.instanceof(Uint8Array),
+	z.instanceof(ArrayBuffer),
+	z.custom(isBuffer, { message: "Must be a Buffer" })
 ]);
-var providerReferenceSchema = record(string(), string());
-var textPartSchema = object$1({
-	type: literal("text"),
-	text: string(),
+var providerReferenceSchema = z.record(z.string(), z.string());
+var textPartSchema = z.object({
+	type: z.literal("text"),
+	text: z.string(),
 	providerOptions: providerMetadataSchema.optional()
 });
-var imagePartSchema = object$1({
-	type: literal("image"),
-	image: union([
+var imagePartSchema = z.object({
+	type: z.literal("image"),
+	image: z.union([
 		fileInlineDataSchema,
-		_instanceof(URL),
+		z.instanceof(URL),
 		providerReferenceSchema
 	]),
-	mediaType: string().optional(),
+	mediaType: z.string().optional(),
 	providerOptions: providerMetadataSchema.optional()
 });
-var taggedFileDataSchema = discriminatedUnion("type", [
-	object$1({
-		type: literal("data"),
+var taggedFileDataSchema = z.discriminatedUnion("type", [
+	z.object({
+		type: z.literal("data"),
 		data: fileInlineDataSchema
 	}),
-	object$1({
-		type: literal("url"),
-		url: _instanceof(URL)
+	z.object({
+		type: z.literal("url"),
+		url: z.instanceof(URL)
 	}),
-	object$1({
-		type: literal("reference"),
+	z.object({
+		type: z.literal("reference"),
 		reference: providerReferenceSchema
 	}),
-	object$1({
-		type: literal("text"),
-		text: string()
+	z.object({
+		type: z.literal("text"),
+		text: z.string()
 	})
 ]);
-var taggedReasoningFileDataSchema = discriminatedUnion("type", [object$1({
-	type: literal("data"),
+var taggedReasoningFileDataSchema = z.discriminatedUnion("type", [z.object({
+	type: z.literal("data"),
 	data: fileInlineDataSchema
-}), object$1({
-	type: literal("url"),
-	url: _instanceof(URL)
+}), z.object({
+	type: z.literal("url"),
+	url: z.instanceof(URL)
 })]);
-var filePartSchema = object$1({
-	type: literal("file"),
-	data: union([
+var filePartSchema = z.object({
+	type: z.literal("file"),
+	data: z.union([
 		taggedFileDataSchema,
 		fileInlineDataSchema,
-		_instanceof(URL),
+		z.instanceof(URL),
 		providerReferenceSchema
 	]),
-	filename: string().optional(),
-	mediaType: string(),
+	filename: z.string().optional(),
+	mediaType: z.string(),
 	providerOptions: providerMetadataSchema.optional()
 });
-var reasoningPartSchema = object$1({
-	type: literal("reasoning"),
-	text: string(),
+var reasoningPartSchema = z.object({
+	type: z.literal("reasoning"),
+	text: z.string(),
 	providerOptions: providerMetadataSchema.optional()
 });
-var customPartSchema = object$1({
-	type: literal("custom"),
-	kind: string().transform((value) => value),
+var customPartSchema = z.object({
+	type: z.literal("custom"),
+	kind: z.string().transform((value) => value),
 	providerOptions: providerMetadataSchema.optional()
 });
-var reasoningFilePartSchema = object$1({
-	type: literal("reasoning-file"),
-	data: union([
+var reasoningFilePartSchema = z.object({
+	type: z.literal("reasoning-file"),
+	data: z.union([
 		taggedReasoningFileDataSchema,
 		fileInlineDataSchema,
-		_instanceof(URL)
+		z.instanceof(URL)
 	]),
-	mediaType: string(),
+	mediaType: z.string(),
 	providerOptions: providerMetadataSchema.optional()
 });
-var toolCallPartSchema = object$1({
-	type: literal("tool-call"),
-	toolCallId: string(),
-	toolName: string(),
-	input: unknown(),
+var toolCallPartSchema = z.object({
+	type: z.literal("tool-call"),
+	toolCallId: z.string(),
+	toolName: z.string(),
+	input: z.unknown(),
 	providerOptions: providerMetadataSchema.optional(),
-	providerExecuted: boolean().optional()
+	providerExecuted: z.boolean().optional()
 });
-var outputSchema = discriminatedUnion("type", [
-	object$1({
-		type: literal("text"),
-		value: string(),
+var outputSchema = z.discriminatedUnion("type", [
+	z.object({
+		type: z.literal("text"),
+		value: z.string(),
 		providerOptions: providerMetadataSchema.optional()
 	}),
-	object$1({
-		type: literal("json"),
+	z.object({
+		type: z.literal("json"),
 		value: jsonValueSchema,
 		providerOptions: providerMetadataSchema.optional()
 	}),
-	object$1({
-		type: literal("execution-denied"),
-		reason: string().optional(),
+	z.object({
+		type: z.literal("execution-denied"),
+		reason: z.string().optional(),
 		providerOptions: providerMetadataSchema.optional()
 	}),
-	object$1({
-		type: literal("error-text"),
-		value: string(),
+	z.object({
+		type: z.literal("error-text"),
+		value: z.string(),
 		providerOptions: providerMetadataSchema.optional()
 	}),
-	object$1({
-		type: literal("error-json"),
+	z.object({
+		type: z.literal("error-json"),
 		value: jsonValueSchema,
 		providerOptions: providerMetadataSchema.optional()
 	}),
-	object$1({
-		type: literal("content"),
-		value: array$1(union([
-			object$1({
-				type: literal("text"),
-				text: string(),
+	z.object({
+		type: z.literal("content"),
+		value: z.array(z.union([
+			z.object({
+				type: z.literal("text"),
+				text: z.string(),
 				providerOptions: providerMetadataSchema.optional()
 			}),
-			object$1({
-				type: literal("file"),
+			z.object({
+				type: z.literal("file"),
 				data: taggedFileDataSchema,
-				mediaType: string(),
-				filename: string().optional(),
+				mediaType: z.string(),
+				filename: z.string().optional(),
 				providerOptions: providerMetadataSchema.optional()
 			}),
-			object$1({
-				type: literal("file-data"),
-				data: string(),
-				mediaType: string(),
-				filename: string().optional(),
+			z.object({
+				type: z.literal("file-data"),
+				data: z.string(),
+				mediaType: z.string(),
+				filename: z.string().optional(),
 				providerOptions: providerMetadataSchema.optional()
 			}),
-			object$1({
-				type: literal("file-url"),
-				url: string(),
-				mediaType: string().optional(),
+			z.object({
+				type: z.literal("file-url"),
+				url: z.string(),
+				mediaType: z.string().optional(),
 				providerOptions: providerMetadataSchema.optional()
 			}),
-			object$1({
-				type: literal("file-id"),
-				fileId: union([string(), record(string(), string())]),
+			z.object({
+				type: z.literal("file-id"),
+				fileId: z.union([z.string(), z.record(z.string(), z.string())]),
 				providerOptions: providerMetadataSchema.optional()
 			}),
-			object$1({
-				type: literal("file-reference"),
-				providerReference: record(string(), string()),
+			z.object({
+				type: z.literal("file-reference"),
+				providerReference: z.record(z.string(), z.string()),
 				providerOptions: providerMetadataSchema.optional()
 			}),
-			object$1({
-				type: literal("image-data"),
-				data: string(),
-				mediaType: string(),
+			z.object({
+				type: z.literal("image-data"),
+				data: z.string(),
+				mediaType: z.string(),
 				providerOptions: providerMetadataSchema.optional()
 			}),
-			object$1({
-				type: literal("image-url"),
-				url: string(),
+			z.object({
+				type: z.literal("image-url"),
+				url: z.string(),
 				providerOptions: providerMetadataSchema.optional()
 			}),
-			object$1({
-				type: literal("image-file-id"),
-				fileId: union([string(), record(string(), string())]),
+			z.object({
+				type: z.literal("image-file-id"),
+				fileId: z.union([z.string(), z.record(z.string(), z.string())]),
 				providerOptions: providerMetadataSchema.optional()
 			}),
-			object$1({
-				type: literal("image-file-reference"),
-				providerReference: record(string(), string()),
+			z.object({
+				type: z.literal("image-file-reference"),
+				providerReference: z.record(z.string(), z.string()),
 				providerOptions: providerMetadataSchema.optional()
 			}),
-			object$1({
-				type: literal("custom"),
+			z.object({
+				type: z.literal("custom"),
 				providerOptions: providerMetadataSchema.optional()
 			})
 		]))
 	})
 ]);
-var toolResultPartSchema = object$1({
-	type: literal("tool-result"),
-	toolCallId: string(),
-	toolName: string(),
+var toolResultPartSchema = z.object({
+	type: z.literal("tool-result"),
+	toolCallId: z.string(),
+	toolName: z.string(),
 	output: outputSchema,
 	providerOptions: providerMetadataSchema.optional()
 });
-var toolApprovalRequestSchema = object$1({
-	type: literal("tool-approval-request"),
-	approvalId: string(),
-	toolCallId: string()
+var toolApprovalRequestSchema = z.object({
+	type: z.literal("tool-approval-request"),
+	approvalId: z.string(),
+	toolCallId: z.string()
 });
-var toolApprovalResponseSchema = object$1({
-	type: literal("tool-approval-response"),
-	approvalId: string(),
-	approved: boolean(),
-	reason: string().optional()
+var toolApprovalResponseSchema = z.object({
+	type: z.literal("tool-approval-response"),
+	approvalId: z.string(),
+	approved: z.boolean(),
+	reason: z.string().optional()
 });
-var modelMessageSchema = union([
-	object$1({
-		role: literal("system"),
-		content: string(),
-		providerOptions: providerMetadataSchema.optional()
-	}),
-	object$1({
-		role: literal("user"),
-		content: union([string(), array$1(union([
-			textPartSchema,
-			imagePartSchema,
-			filePartSchema
-		]))]),
-		providerOptions: providerMetadataSchema.optional()
-	}),
-	object$1({
-		role: literal("assistant"),
-		content: union([string(), array$1(union([
-			textPartSchema,
-			customPartSchema,
-			filePartSchema,
-			reasoningPartSchema,
-			reasoningFilePartSchema,
-			toolCallPartSchema,
-			toolResultPartSchema,
-			toolApprovalRequestSchema
-		]))]),
-		providerOptions: providerMetadataSchema.optional()
-	}),
-	object$1({
-		role: literal("tool"),
-		content: array$1(union([toolResultPartSchema, toolApprovalResponseSchema])),
-		providerOptions: providerMetadataSchema.optional()
-	})
+var systemModelMessageSchema = z.object({
+	role: z.literal("system"),
+	content: z.string(),
+	providerOptions: providerMetadataSchema.optional()
+});
+var userModelMessageSchema = z.object({
+	role: z.literal("user"),
+	content: z.union([z.string(), z.array(z.union([
+		textPartSchema,
+		imagePartSchema,
+		filePartSchema
+	]))]),
+	providerOptions: providerMetadataSchema.optional()
+});
+var assistantModelMessageSchema = z.object({
+	role: z.literal("assistant"),
+	content: z.union([z.string(), z.array(z.union([
+		textPartSchema,
+		customPartSchema,
+		filePartSchema,
+		reasoningPartSchema,
+		reasoningFilePartSchema,
+		toolCallPartSchema,
+		toolResultPartSchema,
+		toolApprovalRequestSchema
+	]))]),
+	providerOptions: providerMetadataSchema.optional()
+});
+var toolModelMessageSchema = z.object({
+	role: z.literal("tool"),
+	content: z.array(z.union([toolResultPartSchema, toolApprovalResponseSchema])),
+	providerOptions: providerMetadataSchema.optional()
+});
+var modelMessageSchema = z.union([
+	systemModelMessageSchema,
+	userModelMessageSchema,
+	assistantModelMessageSchema,
+	toolModelMessageSchema
 ]);
 async function standardizePrompt({ allowSystemInMessages = false, system, instructions = system, prompt, messages }) {
 	if (prompt == null && messages == null) throw new InvalidPromptError({
@@ -2051,7 +2105,7 @@ async function standardizePrompt({ allowSystemInMessages = false, system, instru
 	});
 	const validationResult = await safeValidateTypes({
 		value: messages,
-		schema: array$1(modelMessageSchema)
+		schema: z.array(modelMessageSchema)
 	});
 	if (!validationResult.success) throw new InvalidPromptError({
 		prompt,
@@ -2116,11 +2170,11 @@ function createNullLanguageModelUsage() {
 	};
 }
 function addLanguageModelUsage(usage1, usage2) {
-	var _a22, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+	var _a23, _b, _c, _d, _e, _f, _g, _h, _i, _j;
 	return {
 		inputTokens: addTokenCounts(usage1.inputTokens, usage2.inputTokens),
 		inputTokenDetails: {
-			noCacheTokens: addTokenCounts((_a22 = usage1.inputTokenDetails) == null ? void 0 : _a22.noCacheTokens, (_b = usage2.inputTokenDetails) == null ? void 0 : _b.noCacheTokens),
+			noCacheTokens: addTokenCounts((_a23 = usage1.inputTokenDetails) == null ? void 0 : _a23.noCacheTokens, (_b = usage2.inputTokenDetails) == null ? void 0 : _b.noCacheTokens),
 			cacheReadTokens: addTokenCounts((_c = usage1.inputTokenDetails) == null ? void 0 : _c.cacheReadTokens, (_d = usage2.inputTokenDetails) == null ? void 0 : _d.cacheReadTokens),
 			cacheWriteTokens: addTokenCounts((_e = usage1.inputTokenDetails) == null ? void 0 : _e.cacheWriteTokens, (_f = usage2.inputTokenDetails) == null ? void 0 : _f.cacheWriteTokens)
 		},
@@ -2142,28 +2196,9 @@ function mergeAbortSignals(...signals) {
 	const validSignals = filterNullable(...signals).map((signal) => signal instanceof AbortSignal ? signal : AbortSignal.timeout(signal));
 	return validSignals.length === 0 ? void 0 : validSignals.length === 1 ? validSignals[0] : AbortSignal.any(validSignals);
 }
-function mergeObjects(base, overrides) {
-	if (base === void 0 && overrides === void 0) return;
-	if (base === void 0) return overrides;
-	if (overrides === void 0) return base;
-	const result = { ...base };
-	for (const key in overrides) {
-		if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
-		if (Object.prototype.hasOwnProperty.call(overrides, key)) {
-			const overridesValue = overrides[key];
-			if (overridesValue === void 0) continue;
-			const baseValue = key in base ? base[key] : void 0;
-			const isSourceObject = overridesValue !== null && typeof overridesValue === "object" && !Array.isArray(overridesValue) && !(overridesValue instanceof Date) && !(overridesValue instanceof RegExp);
-			const isTargetObject = baseValue !== null && baseValue !== void 0 && typeof baseValue === "object" && !Array.isArray(baseValue) && !(baseValue instanceof Date) && !(baseValue instanceof RegExp);
-			if (isSourceObject && isTargetObject) result[key] = mergeObjects(baseValue, overridesValue);
-			else result[key] = overridesValue;
-		}
-	}
-	return result;
-}
 function now() {
-	var _a22, _b;
-	return (_b = (_a22 = globalThis == null ? void 0 : globalThis.performance) == null ? void 0 : _a22.now()) != null ? _b : Date.now();
+	var _a23, _b;
+	return (_b = (_a23 = globalThis == null ? void 0 : globalThis.performance) == null ? void 0 : _a23.now()) != null ? _b : Date.now();
 }
 async function notify(options) {
 	await Promise.all(asArray(options.callbacks).map(async (callback) => {
@@ -2187,7 +2222,7 @@ function getRetryDelayInMs({ error, exponentialBackoffDelay }) {
 		if (!Number.isNaN(timeoutSeconds)) ms = timeoutSeconds * 1e3;
 		else ms = Date.parse(retryAfter) - Date.now();
 	}
-	if (ms != null && !Number.isNaN(ms) && 0 <= ms && (ms < 60 * 1e3 || ms < exponentialBackoffDelay)) return ms;
+	if (ms != null && !Number.isNaN(ms) && 0 <= ms && (ms < 6e4 || ms < exponentialBackoffDelay)) return ms;
 	return exponentialBackoffDelay;
 }
 var retryWithExponentialBackoffRespectingRetryHeaders = ({ maxRetries = 2, initialDelayInMs = 2e3, backoffFactor = 2, abortSignal } = {}) => retryWithExponentialBackoff({
@@ -2260,7 +2295,8 @@ function collectToolApprovals({ messages }) {
 	for (const approvalResponse of approvalResponses) {
 		const approvalRequest = toolApprovalRequestsByApprovalId[approvalResponse.approvalId];
 		if (approvalRequest == null) throw new InvalidToolApprovalError({ approvalId: approvalResponse.approvalId });
-		if (toolResults[approvalRequest.toolCallId] != null) continue;
+		const existingToolResult = toolResults[approvalRequest.toolCallId];
+		if (existingToolResult != null && (approvalResponse.approved || existingToolResult.output.type !== "execution-denied")) continue;
 		const toolCall = toolCallsByToolCallId[approvalRequest.toolCallId];
 		if (toolCall == null) throw new ToolCallNotFoundForApprovalError({
 			toolCallId: approvalRequest.toolCallId,
@@ -2269,7 +2305,8 @@ function collectToolApprovals({ messages }) {
 		const approval = {
 			approvalRequest,
 			approvalResponse,
-			toolCall
+			toolCall,
+			...existingToolResult != null ? { existingToolResult } : {}
 		};
 		if (approvalResponse.approved) approvedToolApprovals.push(approval);
 		else deniedToolApprovals.push(approval);
@@ -2401,7 +2438,7 @@ async function executeToolCall({ toolCall, tools, toolsContext, callId, messages
 }
 function filterActiveTools({ tools, activeTools }) {
 	if (tools == null || activeTools == null) return tools;
-	return Object.fromEntries(Object.entries(tools).filter(([name22]) => activeTools.includes(name22)));
+	return Object.fromEntries(Object.entries(tools).filter(([name23]) => activeTools.includes(name23)));
 }
 var DefaultGeneratedFile = class {
 	constructor({ data, mediaType }) {
@@ -2426,10 +2463,10 @@ var DefaultGeneratedFileWithType = class extends DefaultGeneratedFile {
 	}
 };
 __export({}, {
-	array: () => array,
+	array: () => array2,
 	choice: () => choice,
 	json: () => json,
-	object: () => object,
+	object: () => object2,
 	text: () => text
 });
 function fixJson(input) {
@@ -2488,7 +2525,6 @@ function fixJson(input) {
 				stack.pop();
 				stack.push(swapState);
 				stack.push("INSIDE_ARRAY_START");
-				break;
 		}
 	}
 	function processAfterObjectValue(char, i) {
@@ -2500,7 +2536,6 @@ function fixJson(input) {
 			case "}":
 				lastValidIndex = i;
 				stack.pop();
-				break;
 		}
 	}
 	function processAfterArrayValue(char, i) {
@@ -2512,7 +2547,6 @@ function fixJson(input) {
 			case "]":
 				lastValidIndex = i;
 				stack.pop();
-				break;
 		}
 	}
 	for (let i = 0; i < input.length; i++) {
@@ -2530,7 +2564,6 @@ function fixJson(input) {
 					case "}":
 						lastValidIndex = i;
 						stack.pop();
-						break;
 				}
 				break;
 			case "INSIDE_OBJECT_AFTER_COMMA":
@@ -2538,7 +2571,6 @@ function fixJson(input) {
 					case "\"":
 						stack.pop();
 						stack.push("INSIDE_OBJECT_KEY");
-						break;
 				}
 				break;
 			case "INSIDE_OBJECT_KEY":
@@ -2546,7 +2578,6 @@ function fixJson(input) {
 					case "\"":
 						stack.pop();
 						stack.push("INSIDE_OBJECT_AFTER_KEY");
-						break;
 				}
 				break;
 			case "INSIDE_OBJECT_AFTER_KEY":
@@ -2554,7 +2585,6 @@ function fixJson(input) {
 					case ":":
 						stack.pop();
 						stack.push("INSIDE_OBJECT_BEFORE_VALUE");
-						break;
 				}
 				break;
 			case "INSIDE_OBJECT_BEFORE_VALUE":
@@ -2584,7 +2614,6 @@ function fixJson(input) {
 					default:
 						lastValidIndex = i;
 						processValueStart(char, i, "INSIDE_ARRAY_AFTER_VALUE");
-						break;
 				}
 				break;
 			case "INSIDE_ARRAY_AFTER_VALUE":
@@ -2597,9 +2626,7 @@ function fixJson(input) {
 						lastValidIndex = i;
 						stack.pop();
 						break;
-					default:
-						lastValidIndex = i;
-						break;
+					default: lastValidIndex = i;
 				}
 				break;
 			case "INSIDE_ARRAY_AFTER_COMMA":
@@ -2652,9 +2679,7 @@ function fixJson(input) {
 						stack.pop();
 						if (stack[stack.length - 1] === "INSIDE_ARRAY_AFTER_VALUE") processAfterArrayValue(char, i);
 						break;
-					default:
-						stack.pop();
-						break;
+					default: stack.pop();
 				}
 				break;
 			case "INSIDE_LITERAL": {
@@ -2726,14 +2751,14 @@ var text = () => ({
 	},
 	createElementStreamTransform() {}
 });
-var object = ({ schema: inputSchema, name: name22, description }) => {
+var object2 = ({ schema: inputSchema, name: name23, description }) => {
 	const schema = asSchema(inputSchema);
 	return {
 		name: "object",
 		responseFormat: resolve(schema.jsonSchema).then((jsonSchema2) => ({
 			type: "json",
 			schema: jsonSchema2,
-			...name22 != null && { name: name22 },
+			...name23 != null && { name: name23 },
 			...description != null && { description }
 		})),
 		async parseCompleteOutput({ text: text2 }, context) {
@@ -2772,16 +2797,18 @@ var object = ({ schema: inputSchema, name: name22, description }) => {
 		createElementStreamTransform() {}
 	};
 };
-var array = ({ element: inputElementSchema, name: name22, description }) => {
+var array2 = ({ element: inputElementSchema, name: name23, description }) => {
 	const elementSchema = asSchema(inputElementSchema);
 	return {
 		name: "array",
 		responseFormat: resolve(elementSchema.jsonSchema).then((jsonSchema2) => {
-			const { $schema: _$schema, ...itemSchema } = jsonSchema2;
+			const { $schema: _$schema, definitions, $defs, ...itemSchema } = jsonSchema2;
 			return {
 				type: "json",
 				schema: {
 					$schema: "http://json-schema.org/draft-07/schema#",
+					...definitions != null && { definitions },
+					...$defs != null && { $defs },
 					type: "object",
 					properties: { elements: {
 						type: "array",
@@ -2790,7 +2817,7 @@ var array = ({ element: inputElementSchema, name: name22, description }) => {
 					required: ["elements"],
 					additionalProperties: false
 				},
-				...name22 != null && { name: name22 },
+				...name23 != null && { name: name23 },
 				...description != null && { description }
 			};
 		}),
@@ -2864,7 +2891,7 @@ var array = ({ element: inputElementSchema, name: name22, description }) => {
 		}
 	};
 };
-var choice = ({ options: choiceOptions, name: name22, description }) => {
+var choice = ({ options: choiceOptions, name: name23, description }) => {
 	return {
 		name: "choice",
 		responseFormat: Promise.resolve({
@@ -2879,7 +2906,7 @@ var choice = ({ options: choiceOptions, name: name22, description }) => {
 				required: ["result"],
 				additionalProperties: false
 			},
-			...name22 != null && { name: name22 },
+			...name23 != null && { name: name23 },
 			...description != null && { description }
 		}),
 		async parseCompleteOutput({ text: text2 }, context) {
@@ -2924,12 +2951,12 @@ var choice = ({ options: choiceOptions, name: name22, description }) => {
 		createElementStreamTransform() {}
 	};
 };
-var json = ({ name: name22, description } = {}) => {
+var json = ({ name: name23, description } = {}) => {
 	return {
 		name: "json",
 		responseFormat: Promise.resolve({
 			type: "json",
-			...name22 != null && { name: name22 },
+			...name23 != null && { name: name23 },
 			...description != null && { description }
 		}),
 		async parseCompleteOutput({ text: text2 }, context) {
@@ -2981,8 +3008,9 @@ async function parseToolCall({ toolCall, tools, repairToolCall, refineToolInput,
 					toolCall,
 					tools,
 					inputSchema: async ({ toolName }) => {
-						var _a22;
-						return await asSchema((_a22 = getOwn(tools, toolName)) == null ? void 0 : _a22.inputSchema).jsonSchema;
+						var _a23;
+						const inputSchema = (_a23 = getOwn(tools, toolName)) == null ? void 0 : _a23.inputSchema;
+						return await asSchema(inputSchema).jsonSchema;
 					},
 					instructions,
 					system: instructions,
@@ -3095,6 +3123,20 @@ async function doParseToolCall({ toolCall, tools }) {
 		title: tool2.title
 	};
 }
+function prepareStepCallSettings({ callSettings, stepSettings }) {
+	var _a23, _b, _c, _d, _e, _f, _g, _h, _i;
+	return prepareLanguageModelCallOptions({
+		maxOutputTokens: (_a23 = stepSettings == null ? void 0 : stepSettings.maxOutputTokens) != null ? _a23 : callSettings.maxOutputTokens,
+		temperature: (_b = stepSettings == null ? void 0 : stepSettings.temperature) != null ? _b : callSettings.temperature,
+		topP: (_c = stepSettings == null ? void 0 : stepSettings.topP) != null ? _c : callSettings.topP,
+		topK: (_d = stepSettings == null ? void 0 : stepSettings.topK) != null ? _d : callSettings.topK,
+		presencePenalty: (_e = stepSettings == null ? void 0 : stepSettings.presencePenalty) != null ? _e : callSettings.presencePenalty,
+		frequencyPenalty: (_f = stepSettings == null ? void 0 : stepSettings.frequencyPenalty) != null ? _f : callSettings.frequencyPenalty,
+		stopSequences: (_g = stepSettings == null ? void 0 : stepSettings.stopSequences) != null ? _g : callSettings.stopSequences,
+		seed: (_h = stepSettings == null ? void 0 : stepSettings.seed) != null ? _h : callSettings.seed,
+		reasoning: (_i = stepSettings == null ? void 0 : stepSettings.reasoning) != null ? _i : callSettings.reasoning
+	});
+}
 function unwrapReasoningFileData(data) {
 	if (typeof data === "object" && data !== null && "type" in data) return data.type === "data" ? data.data : data.url;
 	return data;
@@ -3177,8 +3219,8 @@ function mergeCallbacks(...callbacks) {
 }
 var AI_SDK_TELEMETRY_TRACING_CHANNEL = "ai:telemetry";
 function isNodeRuntime() {
-	var _a22;
-	return typeof processModule !== "undefined" && ((_a22 = processModule.release) == null ? void 0 : _a22.name) === "node";
+	var _a23;
+	return typeof processModule !== "undefined" && ((_a23 = processModule.release) == null ? void 0 : _a23.name) === "node";
 }
 var diagnosticsChannelPromise;
 async function loadDiagnosticsChannel() {
@@ -3187,18 +3229,18 @@ async function loadDiagnosticsChannel() {
 	return diagnosticsChannelPromise;
 }
 function loadBuiltinModule(id) {
-	var _a22;
+	var _a23;
 	const processWithBuiltins = globalThis.process;
 	try {
-		return (_a22 = processWithBuiltins == null ? void 0 : processWithBuiltins.getBuiltinModule) == null ? void 0 : _a22.call(processWithBuiltins, id);
+		return (_a23 = processWithBuiltins == null ? void 0 : processWithBuiltins.getBuiltinModule) == null ? void 0 : _a23.call(processWithBuiltins, id);
 	} catch (e) {
 		return;
 	}
 }
 async function runWithTracingChannelSpan(message, execute) {
-	var _a22;
+	var _a23;
 	const diagnosticsChannel = await loadDiagnosticsChannel();
-	const tracingChannel = (_a22 = diagnosticsChannel == null ? void 0 : diagnosticsChannel.tracingChannel) == null ? void 0 : _a22.call(diagnosticsChannel, AI_SDK_TELEMETRY_TRACING_CHANNEL);
+	const tracingChannel = (_a23 = diagnosticsChannel == null ? void 0 : diagnosticsChannel.tracingChannel) == null ? void 0 : _a23.call(diagnosticsChannel, AI_SDK_TELEMETRY_TRACING_CHANNEL);
 	if (tracingChannel == null || tracingChannel.hasSubscribers === false) return await execute();
 	let executePromise;
 	let executionResult;
@@ -3232,11 +3274,11 @@ async function runWithTracingChannelSpan(message, execute) {
 	}
 }
 function openTelemetryChannelSpanContext({ message, completion }) {
-	var _a22;
+	var _a23;
 	if (!isNodeRuntime()) return;
 	const diagnosticsChannel = loadBuiltinModule("node:diagnostics_channel");
 	const asyncHooks = loadBuiltinModule("node:async_hooks");
-	const tracingChannel = (_a22 = diagnosticsChannel == null ? void 0 : diagnosticsChannel.tracingChannel) == null ? void 0 : _a22.call(diagnosticsChannel, AI_SDK_TELEMETRY_TRACING_CHANNEL);
+	const tracingChannel = (_a23 = diagnosticsChannel == null ? void 0 : diagnosticsChannel.tracingChannel) == null ? void 0 : _a23.call(diagnosticsChannel, AI_SDK_TELEMETRY_TRACING_CHANNEL);
 	if (tracingChannel == null || tracingChannel.hasSubscribers === false || asyncHooks == null) {
 		Promise.resolve(completion).catch(() => {});
 		return;
@@ -3269,8 +3311,8 @@ function openTelemetryChannelSpanContext({ message, completion }) {
 	return { run: (execute) => asyncResource == null ? execute() : asyncResource.runInAsyncScope(execute) };
 }
 function getGlobalTelemetryIntegrations() {
-	var _a22;
-	return (_a22 = globalThis.AI_SDK_TELEMETRY_INTEGRATIONS) != null ? _a22 : [];
+	var _a23;
+	return (_a23 = globalThis.AI_SDK_TELEMETRY_INTEGRATIONS) != null ? _a23 : [];
 }
 function augmentEvent(event, telemetry) {
 	return Object.assign(Object.create(Object.getPrototypeOf(event)), event, telemetry);
@@ -3286,20 +3328,20 @@ function createTelemetryDispatcher({ telemetry }) {
 	};
 	const mergeTelemetryCallback = (key) => {
 		const mergedIntegrationCallback = mergeCallbacks(...integrations.map((integration) => {
-			var _a22;
-			return (_a22 = integration[key]) == null ? void 0 : _a22.bind(integration);
+			var _a23;
+			return (_a23 = integration[key]) == null ? void 0 : _a23.bind(integration);
 		}).filter(Boolean).map((callback) => (event) => callback(augmentEvent(event, telemetryMetadata))));
 		return async (event) => {
 			await mergedIntegrationCallback(event);
 		};
 	};
 	const executeLanguageModelCallWrappers = integrations.map((integration) => {
-		var _a22;
-		return (_a22 = integration.executeLanguageModelCall) == null ? void 0 : _a22.bind(integration);
+		var _a23;
+		return (_a23 = integration.executeLanguageModelCall) == null ? void 0 : _a23.bind(integration);
 	}).filter(Boolean);
 	const executeToolWrappers = integrations.map((integration) => {
-		var _a22;
-		return (_a22 = integration.executeTool) == null ? void 0 : _a22.bind(integration);
+		var _a23;
+		return (_a23 = integration.executeTool) == null ? void 0 : _a23.bind(integration);
 	}).filter(Boolean);
 	return {
 		runInTracingChannelSpan: async ({ type, event, execute }) => await runWithTracingChannelSpan({
@@ -3474,8 +3516,8 @@ function createRestrictedTelemetryDispatcher({ telemetry, includeRuntimeContext,
 	return {
 		...telemetryDispatcher,
 		onStart: (event) => {
-			var _a22;
-			return (_a22 = telemetryDispatcher.onStart) == null ? void 0 : _a22.call(telemetryDispatcher, {
+			var _a23;
+			return (_a23 = telemetryDispatcher.onStart) == null ? void 0 : _a23.call(telemetryDispatcher, {
 				...event,
 				runtimeContext: filterIncludedContext({
 					context: event.runtimeContext,
@@ -3488,8 +3530,8 @@ function createRestrictedTelemetryDispatcher({ telemetry, includeRuntimeContext,
 			});
 		},
 		onStepStart: (event) => {
-			var _a22;
-			return (_a22 = telemetryDispatcher.onStepStart) == null ? void 0 : _a22.call(telemetryDispatcher, {
+			var _a23;
+			return (_a23 = telemetryDispatcher.onStepStart) == null ? void 0 : _a23.call(telemetryDispatcher, {
 				...event,
 				runtimeContext: filterIncludedContext({
 					context: event.runtimeContext,
@@ -3507,24 +3549,24 @@ function createRestrictedTelemetryDispatcher({ telemetry, includeRuntimeContext,
 			});
 		},
 		onStepEnd: (event) => {
-			var _a22;
-			return (_a22 = telemetryDispatcher.onStepEnd) == null ? void 0 : _a22.call(telemetryDispatcher, restrictStepResult({
+			var _a23;
+			return (_a23 = telemetryDispatcher.onStepEnd) == null ? void 0 : _a23.call(telemetryDispatcher, restrictStepResult({
 				step: event,
 				includeRuntimeContext,
 				includeToolsContext
 			}));
 		},
 		onStepFinish: (event) => {
-			var _a22;
-			return (_a22 = telemetryDispatcher.onStepEnd) == null ? void 0 : _a22.call(telemetryDispatcher, restrictStepResult({
+			var _a23;
+			return (_a23 = telemetryDispatcher.onStepEnd) == null ? void 0 : _a23.call(telemetryDispatcher, restrictStepResult({
 				step: event,
 				includeRuntimeContext,
 				includeToolsContext
 			}));
 		},
 		onEnd: (event) => {
-			var _a22;
-			return (_a22 = telemetryDispatcher.onEnd) == null ? void 0 : _a22.call(telemetryDispatcher, ((restrictedSteps) => {
+			var _a23;
+			return (_a23 = telemetryDispatcher.onEnd) == null ? void 0 : _a23.call(telemetryDispatcher, ((restrictedSteps) => {
 				return {
 					...event,
 					runtimeContext: filterIncludedContext({
@@ -3545,8 +3587,8 @@ function createRestrictedTelemetryDispatcher({ telemetry, includeRuntimeContext,
 			}))));
 		},
 		onAbort: (event) => {
-			var _a22;
-			return (_a22 = telemetryDispatcher.onAbort) == null ? void 0 : _a22.call(telemetryDispatcher, {
+			var _a23;
+			return (_a23 = telemetryDispatcher.onAbort) == null ? void 0 : _a23.call(telemetryDispatcher, {
 				...event,
 				steps: event.steps.map((step) => restrictStepResult({
 					step,
@@ -3556,8 +3598,8 @@ function createRestrictedTelemetryDispatcher({ telemetry, includeRuntimeContext,
 			});
 		},
 		onToolExecutionStart: (event) => {
-			var _a22;
-			return (_a22 = telemetryDispatcher.onToolExecutionStart) == null ? void 0 : _a22.call(telemetryDispatcher, {
+			var _a23;
+			return (_a23 = telemetryDispatcher.onToolExecutionStart) == null ? void 0 : _a23.call(telemetryDispatcher, {
 				...event,
 				toolContext: filterToolContext({
 					toolName: event.toolCall.toolName,
@@ -3567,8 +3609,8 @@ function createRestrictedTelemetryDispatcher({ telemetry, includeRuntimeContext,
 			});
 		},
 		onToolExecutionEnd: (event) => {
-			var _a22;
-			return (_a22 = telemetryDispatcher.onToolExecutionEnd) == null ? void 0 : _a22.call(telemetryDispatcher, {
+			var _a23;
+			return (_a23 = telemetryDispatcher.onToolExecutionEnd) == null ? void 0 : _a23.call(telemetryDispatcher, {
 				...event,
 				toolContext: filterToolContext({
 					toolName: event.toolCall.toolName,
@@ -3679,15 +3721,13 @@ async function toResponseMessages({ content: inputContent, tools }) {
 				});
 				break;
 			}
-			case "tool-approval-request":
-				content.push({
-					type: "tool-approval-request",
-					approvalId: part.approvalId,
-					toolCallId: part.toolCall.toolCallId,
-					isAutomatic: part.isAutomatic,
-					...part.signature != null ? { signature: part.signature } : {}
-				});
-				break;
+			case "tool-approval-request": content.push({
+				type: "tool-approval-request",
+				approvalId: part.approvalId,
+				toolCallId: part.toolCall.toolCallId,
+				isAutomatic: part.isAutomatic,
+				...part.signature != null ? { signature: part.signature } : {}
+			});
 		}
 	}
 	if (content.length > 0) responseMessages.push({
@@ -3756,6 +3796,83 @@ function sortToolResultContentByToolCallOrder({ toolResultContent, toolCallOrder
 	let toolResultIndex = 0;
 	return toolResultContent.map((part) => part.type === "tool-result" ? sortedToolResults[toolResultIndex++] : part);
 }
+var DIRECT_TOOL_CALL = "AI_SDK_DIRECT_TOOL_CALL";
+function resolveToolCallerConfiguration({ tools, toolCallers }) {
+	if (tools == null || toolCallers == null) return;
+	const resolved = {};
+	for (const [toolName, callers] of Object.entries(toolCallers)) {
+		if (!Object.prototype.hasOwnProperty.call(tools, toolName)) throw new InvalidArgumentError({
+			parameter: "experimental_toolCallers",
+			value: toolCallers,
+			message: `unknown tool "${toolName}".`
+		});
+		if (!Array.isArray(callers)) throw new InvalidArgumentError({
+			parameter: "experimental_toolCallers",
+			value: toolCallers,
+			message: `callers for tool "${toolName}" must be an array.`
+		});
+		resolved[toolName] = callers.map((caller) => {
+			if (caller === DIRECT_TOOL_CALL) return caller;
+			if (typeof caller !== "string" || !Object.prototype.hasOwnProperty.call(tools, caller) || getToolCaller(tools[caller]) == null) throw new InvalidArgumentError({
+				parameter: "experimental_toolCallers",
+				value: toolCallers,
+				message: `tool "${toolName}" contains an invalid caller.`
+			});
+			return caller;
+		});
+	}
+	return resolved;
+}
+function prepareToolsForToolCallers({ tools, toolCallers }) {
+	var _a23, _b;
+	if (tools == null || toolCallers == null) return {
+		executionTools: tools,
+		modelTools: tools
+	};
+	const executionTools = { ...tools };
+	const modelTools = { ...tools };
+	const localToolsByCaller = /* @__PURE__ */ new Map();
+	for (const [toolName, callerNames] of Object.entries(toolCallers)) {
+		const tool2 = executionTools[toolName];
+		if (tool2 == null) continue;
+		let availableDirectly = false;
+		let availableToProvider = false;
+		let preparedTool = tool2;
+		for (const callerName of callerNames) {
+			if (callerName === DIRECT_TOOL_CALL) {
+				availableDirectly = true;
+				continue;
+			}
+			const caller = getToolCaller(executionTools[callerName]);
+			if (caller == null) continue;
+			if (caller.type === "provider") {
+				availableToProvider = true;
+				preparedTool = {
+					...preparedTool,
+					providerOptions: caller.prepareProviderOptions(preparedTool.providerOptions)
+				};
+			} else {
+				const localTools = (_a23 = localToolsByCaller.get(callerName)) != null ? _a23 : {};
+				localTools[toolName] = preparedTool;
+				localToolsByCaller.set(callerName, localTools);
+			}
+		}
+		executionTools[toolName] = preparedTool;
+		if (availableDirectly || availableToProvider) modelTools[toolName] = preparedTool;
+		else delete modelTools[toolName];
+	}
+	for (const [callerName, callerTool] of Object.entries(executionTools)) {
+		const caller = getToolCaller(callerTool);
+		if ((caller == null ? void 0 : caller.type) !== "local") continue;
+		const boundCaller = caller.bind((_b = localToolsByCaller.get(callerName)) != null ? _b : {});
+		executionTools[callerName] = boundCaller;
+		if (Object.prototype.hasOwnProperty.call(modelTools, callerName)) modelTools[callerName] = boundCaller;
+	}
+	return {
+		executionTools,
+		modelTools
+	};
+}
 var encoder = new TextEncoder();
 function canonicalJSON(value) {
 	if (value === null || value === void 0) return JSON.stringify(value);
@@ -3782,6 +3899,15 @@ async function importKey(secret) {
 	}, false, ["sign", "verify"]);
 }
 function buildPayload(approvalId, toolCallId, toolName, inputDigest) {
+	return encoder2.encode(JSON.stringify([
+		"ai-sdk-tool-approval-v1",
+		approvalId,
+		toolCallId,
+		toolName,
+		inputDigest
+	]));
+}
+function buildLegacyPayload(approvalId, toolCallId, toolName, inputDigest) {
 	return encoder2.encode(`${approvalId}
 ${toolCallId}
 ${toolName}
@@ -3795,9 +3921,15 @@ async function signToolApproval({ secret, approvalId, toolCallId, toolName, inpu
 }
 async function verifyToolApprovalSignature({ secret, signature, approvalId, toolCallId, toolName, input }) {
 	const key = await importKey(secret);
-	const payload = buildPayload(approvalId, toolCallId, toolName, await hashCanonical(input));
+	const inputDigest = await hashCanonical(input);
 	const sigBytes = fromBase64url(signature);
-	return crypto.subtle.verify("HMAC", key, sigBytes, payload);
+	const payload = buildPayload(approvalId, toolCallId, toolName, inputDigest);
+	if (await crypto.subtle.verify("HMAC", key, sigBytes, payload)) return true;
+	if (!approvalId.includes("\n") && !toolCallId.includes("\n") && !toolName.includes("\n")) {
+		const legacyPayload = buildLegacyPayload(approvalId, toolCallId, toolName, inputDigest);
+		return crypto.subtle.verify("HMAC", key, sigBytes, legacyPayload);
+	}
+	return false;
 }
 async function maybeSignApproval({ secret, approvalId, toolCallId, toolName, input }) {
 	if (secret == null) return void 0;
@@ -3810,7 +3942,7 @@ async function maybeSignApproval({ secret, approvalId, toolCallId, toolName, inp
 	});
 }
 async function validateApprovedToolApprovals({ approvedToolApprovals, tools, toolApproval, messages, toolsContext, runtimeContext, toolApprovalSecret }) {
-	var _a22;
+	var _a23;
 	const approved = [];
 	const denied = [];
 	for (const approval of approvedToolApprovals) {
@@ -3859,7 +3991,7 @@ async function validateApprovedToolApprovals({ approvedToolApprovals, tools, too
 			approvalResponse: {
 				...approval.approvalResponse,
 				approved: false,
-				reason: (_a22 = approvalStatus.reason) != null ? _a22 : approval.approvalResponse.reason
+				reason: (_a23 = approvalStatus.reason) != null ? _a23 : approval.approvalResponse.reason
 			}
 		});
 		else approved.push(approval);
@@ -3899,7 +4031,10 @@ function writeToServerResponse({ response, status, statusText, headers, stream }
 			while (true) {
 				const { done, value } = await reader.read();
 				if (done) break;
-				if (!response.write(value)) await new Promise((resolve3) => {
+				const canContinue = response.write(value);
+				const flush = response.flush;
+				if (typeof flush === "function") flush.call(response);
+				if (!canContinue) await new Promise((resolve3) => {
 					response.once("drain", resolve3);
 				});
 			}
@@ -3909,10 +4044,10 @@ function writeToServerResponse({ response, status, statusText, headers, stream }
 			response.end();
 		}
 	};
-	read();
+	return read();
 }
 function pipeTextStreamToResponse({ response, status, statusText, headers, stream }) {
-	writeToServerResponse({
+	return writeToServerResponse({
 		response,
 		status,
 		statusText,
@@ -3966,7 +4101,7 @@ function pipeUIMessageStreamToResponse({ response, status, statusText, headers, 
 		sseStream = stream1;
 		consumeSseStream({ stream: stream2 });
 	}
-	writeToServerResponse({
+	return writeToServerResponse({
 		response,
 		status,
 		statusText,
@@ -3979,168 +4114,168 @@ function getResponseUIMessageId({ originalMessages, responseMessageId }) {
 	const lastMessage = originalMessages[originalMessages.length - 1];
 	return (lastMessage == null ? void 0 : lastMessage.role) === "assistant" ? lastMessage.id : typeof responseMessageId === "function" ? responseMessageId() : responseMessageId;
 }
-var toolMetadataSchema = record(string(), jsonValueSchema.optional());
-var uiMessageChunkSchema = lazySchema(() => zodSchema(union([
-	strictObject({
-		type: literal("text-start"),
-		id: string(),
+var toolMetadataSchema = z.record(z.string(), jsonValueSchema.optional());
+var uiMessageChunkSchema = lazySchema(() => zodSchema(z.union([
+	z.looseObject({
+		type: z.literal("text-start"),
+		id: z.string(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("text-delta"),
-		id: string(),
-		delta: string(),
+	z.looseObject({
+		type: z.literal("text-delta"),
+		id: z.string(),
+		delta: z.string(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("text-end"),
-		id: string(),
+	z.looseObject({
+		type: z.literal("text-end"),
+		id: z.string(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("error"),
-		errorText: string()
+	z.looseObject({
+		type: z.literal("error"),
+		errorText: z.string()
 	}),
-	strictObject({
-		type: literal("tool-input-start"),
-		toolCallId: string(),
-		toolName: string(),
-		providerExecuted: boolean().optional(),
+	z.looseObject({
+		type: z.literal("tool-input-start"),
+		toolCallId: z.string(),
+		toolName: z.string(),
+		providerExecuted: z.boolean().optional(),
 		providerMetadata: providerMetadataSchema.optional(),
 		toolMetadata: toolMetadataSchema.optional(),
-		dynamic: boolean().optional(),
-		title: string().optional()
+		dynamic: z.boolean().optional(),
+		title: z.string().optional()
 	}),
-	strictObject({
-		type: literal("tool-input-delta"),
-		toolCallId: string(),
-		inputTextDelta: string()
+	z.looseObject({
+		type: z.literal("tool-input-delta"),
+		toolCallId: z.string(),
+		inputTextDelta: z.string()
 	}),
-	strictObject({
-		type: literal("tool-input-available"),
-		toolCallId: string(),
-		toolName: string(),
-		input: unknown(),
-		providerExecuted: boolean().optional(),
+	z.looseObject({
+		type: z.literal("tool-input-available"),
+		toolCallId: z.string(),
+		toolName: z.string(),
+		input: z.unknown(),
+		providerExecuted: z.boolean().optional(),
 		providerMetadata: providerMetadataSchema.optional(),
 		toolMetadata: toolMetadataSchema.optional(),
-		dynamic: boolean().optional(),
-		title: string().optional()
+		dynamic: z.boolean().optional(),
+		title: z.string().optional()
 	}),
-	strictObject({
-		type: literal("tool-input-error"),
-		toolCallId: string(),
-		toolName: string(),
-		input: unknown(),
-		providerExecuted: boolean().optional(),
+	z.looseObject({
+		type: z.literal("tool-input-error"),
+		toolCallId: z.string(),
+		toolName: z.string(),
+		input: z.unknown(),
+		providerExecuted: z.boolean().optional(),
 		providerMetadata: providerMetadataSchema.optional(),
 		toolMetadata: toolMetadataSchema.optional(),
-		dynamic: boolean().optional(),
-		errorText: string(),
-		title: string().optional()
+		dynamic: z.boolean().optional(),
+		errorText: z.string(),
+		title: z.string().optional()
 	}),
-	strictObject({
-		type: literal("tool-approval-request"),
-		approvalId: string(),
-		toolCallId: string(),
-		isAutomatic: boolean().optional(),
-		signature: string().optional()
+	z.looseObject({
+		type: z.literal("tool-approval-request"),
+		approvalId: z.string(),
+		toolCallId: z.string(),
+		isAutomatic: z.boolean().optional(),
+		signature: z.string().optional()
 	}),
-	strictObject({
-		type: literal("tool-approval-response"),
-		approvalId: string(),
-		approved: boolean(),
-		reason: string().optional(),
-		providerExecuted: boolean().optional(),
+	z.looseObject({
+		type: z.literal("tool-approval-response"),
+		approvalId: z.string(),
+		approved: z.boolean(),
+		reason: z.string().optional(),
+		providerExecuted: z.boolean().optional(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("tool-output-available"),
-		toolCallId: string(),
-		output: unknown(),
-		providerExecuted: boolean().optional(),
+	z.looseObject({
+		type: z.literal("tool-output-available"),
+		toolCallId: z.string(),
+		output: z.unknown(),
+		providerExecuted: z.boolean().optional(),
 		providerMetadata: providerMetadataSchema.optional(),
 		toolMetadata: toolMetadataSchema.optional(),
-		dynamic: boolean().optional(),
-		preliminary: boolean().optional()
+		dynamic: z.boolean().optional(),
+		preliminary: z.boolean().optional()
 	}),
-	strictObject({
-		type: literal("tool-output-error"),
-		toolCallId: string(),
-		errorText: string(),
-		providerExecuted: boolean().optional(),
+	z.looseObject({
+		type: z.literal("tool-output-error"),
+		toolCallId: z.string(),
+		errorText: z.string(),
+		providerExecuted: z.boolean().optional(),
 		providerMetadata: providerMetadataSchema.optional(),
 		toolMetadata: toolMetadataSchema.optional(),
-		dynamic: boolean().optional()
+		dynamic: z.boolean().optional()
 	}),
-	strictObject({
-		type: literal("tool-output-denied"),
-		toolCallId: string()
+	z.looseObject({
+		type: z.literal("tool-output-denied"),
+		toolCallId: z.string()
 	}),
-	strictObject({
-		type: literal("reasoning-start"),
-		id: string(),
+	z.looseObject({
+		type: z.literal("reasoning-start"),
+		id: z.string(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("reasoning-delta"),
-		id: string(),
-		delta: string(),
+	z.looseObject({
+		type: z.literal("reasoning-delta"),
+		id: z.string(),
+		delta: z.string(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("reasoning-end"),
-		id: string(),
+	z.looseObject({
+		type: z.literal("reasoning-end"),
+		id: z.string(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("custom"),
-		kind: string().transform((value) => value),
+	z.looseObject({
+		type: z.literal("custom"),
+		kind: z.string().transform((value) => value),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("source-url"),
-		sourceId: string(),
-		url: string(),
-		title: string().optional(),
+	z.looseObject({
+		type: z.literal("source-url"),
+		sourceId: z.string(),
+		url: z.string(),
+		title: z.string().optional(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("source-document"),
-		sourceId: string(),
-		mediaType: string(),
-		title: string(),
-		filename: string().optional(),
+	z.looseObject({
+		type: z.literal("source-document"),
+		sourceId: z.string(),
+		mediaType: z.string(),
+		title: z.string(),
+		filename: z.string().optional(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("file"),
-		url: string(),
-		mediaType: string(),
+	z.looseObject({
+		type: z.literal("file"),
+		url: z.string(),
+		mediaType: z.string(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: literal("reasoning-file"),
-		url: string(),
-		mediaType: string(),
+	z.looseObject({
+		type: z.literal("reasoning-file"),
+		url: z.string(),
+		mediaType: z.string(),
 		providerMetadata: providerMetadataSchema.optional()
 	}),
-	strictObject({
-		type: custom((value) => typeof value === "string" && value.startsWith("data-"), { message: "Type must start with \"data-\"" }),
-		id: string().optional(),
-		data: unknown(),
-		transient: boolean().optional()
+	z.looseObject({
+		type: z.custom((value) => typeof value === "string" && value.startsWith("data-"), { message: "Type must start with \"data-\"" }),
+		id: z.string().optional(),
+		data: z.unknown(),
+		transient: z.boolean().optional()
 	}),
-	strictObject({ type: literal("start-step") }),
-	strictObject({ type: literal("finish-step") }),
-	strictObject({
-		type: literal("start"),
-		messageId: string().optional(),
-		messageMetadata: unknown().optional()
+	z.looseObject({ type: z.literal("start-step") }),
+	z.looseObject({ type: z.literal("finish-step") }),
+	z.looseObject({
+		type: z.literal("start"),
+		messageId: z.string().optional(),
+		messageMetadata: z.unknown().optional()
 	}),
-	strictObject({
-		type: literal("finish"),
-		finishReason: _enum([
+	z.looseObject({
+		type: z.literal("finish"),
+		finishReason: z.enum([
 			"stop",
 			"length",
 			"content-filter",
@@ -4148,15 +4283,15 @@ var uiMessageChunkSchema = lazySchema(() => zodSchema(union([
 			"error",
 			"other"
 		]).optional(),
-		messageMetadata: unknown().optional()
+		messageMetadata: z.unknown().optional()
 	}),
-	strictObject({
-		type: literal("abort"),
-		reason: string().optional()
+	z.looseObject({
+		type: z.literal("abort"),
+		reason: z.string().optional()
 	}),
-	strictObject({
-		type: literal("message-metadata"),
-		messageMetadata: unknown()
+	z.looseObject({
+		type: z.literal("message-metadata"),
+		messageMetadata: z.unknown()
 	})
 ])));
 function isDataUIMessageChunk(chunk) {
@@ -4214,9 +4349,28 @@ function createStreamingUIMessageState({ lastMessage, messageId }) {
 function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas, runUpdateMessageJob, onError, onToolCall, onData }) {
 	return stream.pipeThrough(new TransformStream({ async transform(chunk, controller) {
 		await runUpdateMessageJob(async ({ state, write }) => {
-			var _a22, _b, _c, _d;
+			var _a23, _b, _c, _d;
+			function getCurrentStepParts() {
+				const parts = state.message.parts;
+				let currentStepStartIndex = parts.length - 1;
+				while (currentStepStartIndex >= 0 && parts[currentStepStartIndex].type !== "step-start") currentStepStartIndex--;
+				return parts.slice(currentStepStartIndex + 1);
+			}
+			function getCurrentStepToolInvocations() {
+				return getCurrentStepParts().filter(isToolUIPart);
+			}
 			function getToolInvocation(toolCallId) {
-				const toolInvocation = state.message.parts.filter(isToolUIPart).find((invocation) => invocation.toolCallId === toolCallId);
+				let toolInvocation = getCurrentStepToolInvocations().find((invocation) => invocation.toolCallId === toolCallId);
+				if (toolInvocation == null) {
+					const parts = state.message.parts;
+					for (let i = parts.length - 1; i >= 0; i--) {
+						const part = parts[i];
+						if (isToolUIPart(part) && part.toolCallId === toolCallId) {
+							toolInvocation = part;
+							break;
+						}
+					}
+				}
 				if (toolInvocation == null) throw new UIMessageStreamError({
 					chunkType: "tool-invocation",
 					chunkId: toolCallId,
@@ -4226,8 +4380,8 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 			}
 			function getToolInvocationByApprovalId(approvalId) {
 				const toolInvocation = state.message.parts.filter(isToolUIPart).find((invocation) => {
-					var _a23;
-					return ((_a23 = invocation.approval) == null ? void 0 : _a23.id) === approvalId;
+					var _a24;
+					return ((_a24 = invocation.approval) == null ? void 0 : _a24.id) === approvalId;
 				});
 				if (toolInvocation == null) throw new UIMessageStreamError({
 					chunkType: "tool-approval-response",
@@ -4236,9 +4390,9 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 				});
 				return toolInvocation;
 			}
-			function updateToolPart(options) {
-				var _a23;
-				const part = state.message.parts.find((part2) => isStaticToolUIPart(part2) && part2.toolCallId === options.toolCallId);
+			function updateToolPart(options, existingPart) {
+				var _a24;
+				const part = existingPart != null ? existingPart : getCurrentStepParts().find((part2) => isStaticToolUIPart(part2) && part2.toolCallId === options.toolCallId);
 				const anyOptions = options;
 				const anyPart = part;
 				if (part != null) {
@@ -4250,12 +4404,14 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 					anyPart.preliminary = anyOptions.preliminary;
 					if (options.title !== void 0) anyPart.title = options.title;
 					if (options.toolMetadata !== void 0) anyPart.toolMetadata = options.toolMetadata;
-					anyPart.providerExecuted = (_a23 = anyOptions.providerExecuted) != null ? _a23 : part.providerExecuted;
+					anyPart.providerExecuted = (_a24 = anyOptions.providerExecuted) != null ? _a24 : part.providerExecuted;
 					const providerMetadata = anyOptions.providerMetadata;
-					if (providerMetadata != null) if (options.state === "output-available" || options.state === "output-error") {
-						const resultPart = part;
-						resultPart.resultProviderMetadata = providerMetadata;
-					} else part.callProviderMetadata = providerMetadata;
+					if (providerMetadata != null) {
+						if (options.state === "output-available" || options.state === "output-error") {
+							const resultPart = part;
+							resultPart.resultProviderMetadata = providerMetadata;
+						} else part.callProviderMetadata = providerMetadata;
+					}
 				} else state.message.parts.push({
 					type: `tool-${options.toolName}`,
 					toolCallId: options.toolCallId,
@@ -4272,9 +4428,9 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 					...anyOptions.providerMetadata != null && !(options.state === "output-available" || options.state === "output-error") ? { callProviderMetadata: anyOptions.providerMetadata } : {}
 				});
 			}
-			function updateDynamicToolPart(options) {
-				var _a23, _b2;
-				const part = state.message.parts.find((part2) => part2.type === "dynamic-tool" && part2.toolCallId === options.toolCallId);
+			function updateDynamicToolPart(options, existingPart) {
+				var _a24, _b2;
+				const part = existingPart != null ? existingPart : getCurrentStepParts().find((part2) => part2.type === "dynamic-tool" && part2.toolCallId === options.toolCallId);
 				const anyOptions = options;
 				const anyPart = part;
 				if (part != null) {
@@ -4283,16 +4439,18 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 					anyPart.input = anyOptions.input;
 					anyPart.output = anyOptions.output;
 					anyPart.errorText = anyOptions.errorText;
-					anyPart.rawInput = (_a23 = anyOptions.rawInput) != null ? _a23 : anyPart.rawInput;
+					anyPart.rawInput = (_a24 = anyOptions.rawInput) != null ? _a24 : anyPart.rawInput;
 					anyPart.preliminary = anyOptions.preliminary;
 					if (options.title !== void 0) anyPart.title = options.title;
 					if (options.toolMetadata !== void 0) anyPart.toolMetadata = options.toolMetadata;
 					anyPart.providerExecuted = (_b2 = anyOptions.providerExecuted) != null ? _b2 : part.providerExecuted;
 					const providerMetadata = anyOptions.providerMetadata;
-					if (providerMetadata != null) if (options.state === "output-available" || options.state === "output-error") {
-						const resultPart = part;
-						resultPart.resultProviderMetadata = providerMetadata;
-					} else part.callProviderMetadata = providerMetadata;
+					if (providerMetadata != null) {
+						if (options.state === "output-available" || options.state === "output-error") {
+							const resultPart = part;
+							resultPart.resultProviderMetadata = providerMetadata;
+						} else part.callProviderMetadata = providerMetadata;
+					}
 				} else state.message.parts.push({
 					type: "dynamic-tool",
 					toolName: options.toolName,
@@ -4344,7 +4502,7 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 						message: `Received text-delta for missing text part with ID "${chunk.id}". Ensure a "text-start" chunk is sent before any "text-delta" chunks.`
 					});
 					textPart.text += chunk.delta;
-					textPart.providerMetadata = (_a22 = chunk.providerMetadata) != null ? _a22 : textPart.providerMetadata;
+					textPart.providerMetadata = (_a23 = chunk.providerMetadata) != null ? _a23 : textPart.providerMetadata;
 					write();
 					break;
 				}
@@ -4374,6 +4532,7 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 				case "reasoning-start": {
 					const reasoningPart = {
 						type: "reasoning",
+						id: chunk.id,
 						text: "",
 						providerMetadata: chunk.providerMetadata,
 						state: "streaming"
@@ -4440,7 +4599,7 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 					write();
 					break;
 				case "tool-input-start": {
-					const toolInvocations = state.message.parts.filter(isStaticToolUIPart);
+					const toolInvocations = getCurrentStepParts().filter(isStaticToolUIPart);
 					state.partialToolCalls[chunk.toolCallId] = {
 						text: "",
 						toolName: chunk.toolName,
@@ -4525,7 +4684,7 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 					if (onToolCall && !chunk.providerExecuted) await onToolCall({ toolCall: chunk });
 					break;
 				case "tool-input-error": {
-					const existingPart = state.message.parts.filter(isToolUIPart).find((p) => p.toolCallId === chunk.toolCallId);
+					const existingPart = getCurrentStepParts().filter(isToolUIPart).find((p) => p.toolCallId === chunk.toolCallId);
 					if (existingPart != null ? existingPart.type === "dynamic-tool" : !!chunk.dynamic) updateDynamicToolPart({
 						toolCallId: chunk.toolCallId,
 						toolName: chunk.toolName,
@@ -4596,7 +4755,7 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 						providerMetadata: chunk.providerMetadata,
 						title: toolInvocation.title,
 						toolMetadata: toolInvocation.toolMetadata
-					});
+					}, toolInvocation);
 					else updateToolPart({
 						toolCallId: chunk.toolCallId,
 						toolName: getStaticToolName(toolInvocation),
@@ -4608,7 +4767,7 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 						providerMetadata: chunk.providerMetadata,
 						title: toolInvocation.title,
 						toolMetadata: toolInvocation.toolMetadata
-					});
+					}, toolInvocation);
 					write();
 					break;
 				}
@@ -4624,7 +4783,7 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 						providerMetadata: chunk.providerMetadata,
 						title: toolInvocation.title,
 						toolMetadata: toolInvocation.toolMetadata
-					});
+					}, toolInvocation);
 					else updateToolPart({
 						toolCallId: chunk.toolCallId,
 						toolName: getStaticToolName(toolInvocation),
@@ -4636,7 +4795,7 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 						providerMetadata: chunk.providerMetadata,
 						title: toolInvocation.title,
 						toolMetadata: toolInvocation.toolMetadata
-					});
+					}, toolInvocation);
 					write();
 					break;
 				}
@@ -4650,7 +4809,7 @@ function processUIMessageStream({ stream, messageMetadataSchema, dataPartSchemas
 				case "start":
 					if (chunk.messageId != null) state.message.id = chunk.messageId;
 					await updateMessageMetadata(chunk.messageMetadata);
-					if (chunk.messageId != null || chunk.messageMetadata != null) write();
+					if (chunk.messageId != null || chunk.messageMetadata != null) write({ updateStatus: false });
 					break;
 				case "finish":
 					if (chunk.finishReason != null) state.finishReason = chunk.finishReason;
@@ -4986,11 +5145,11 @@ function asAsyncIterableStream(stream) {
 		const reader = this.getReader();
 		let finished = false;
 		async function cleanup(cancelStream) {
-			var _a22;
+			var _a23;
 			if (finished) return;
 			finished = true;
 			try {
-				if (cancelStream) await ((_a22 = reader.cancel) == null ? void 0 : _a22.call(reader));
+				if (cancelStream) await ((_a23 = reader.cancel) == null ? void 0 : _a23.call(reader));
 			} finally {
 				try {
 					reader.releaseLock();
@@ -5007,7 +5166,14 @@ function asAsyncIterableStream(stream) {
 					done: true,
 					value: void 0
 				};
-				const { done, value } = await reader.read();
+				let result;
+				try {
+					result = await reader.read();
+				} catch (error) {
+					await cleanup(false);
+					throw error;
+				}
+				const { done, value } = result;
 				if (done) {
 					await cleanup(true);
 					return {
@@ -5046,8 +5212,13 @@ function asAsyncIterableStream(stream) {
 	};
 	return stream;
 }
-async function consumeStream({ stream, onError }) {
+async function consumeStream({ stream, onError, abortSignal }) {
 	const reader = stream.getReader();
+	const cancelOnAbort = () => {
+		reader.cancel().catch(() => {});
+	};
+	if (abortSignal == null ? void 0 : abortSignal.aborted) cancelOnAbort();
+	else abortSignal?.addEventListener("abort", cancelOnAbort, { once: true });
 	try {
 		while (true) {
 			const { done } = await reader.read();
@@ -5056,6 +5227,7 @@ async function consumeStream({ stream, onError }) {
 	} catch (error) {
 		onError?.(error);
 	} finally {
+		abortSignal?.removeEventListener("abort", cancelOnAbort);
 		reader.releaseLock();
 	}
 }
@@ -5072,37 +5244,43 @@ function createResolvablePromise() {
 	};
 }
 function createStitchableStream() {
-	let innerStreamReaders = [];
+	let innerStreams = [];
 	let controller = null;
 	let isClosed = false;
 	let waitForNewStream = createResolvablePromise();
 	const terminate = () => {
 		isClosed = true;
 		waitForNewStream.resolve();
-		innerStreamReaders.forEach((reader) => reader.cancel());
-		innerStreamReaders = [];
+		innerStreams.forEach(({ reader, onCancel }) => {
+			onCancel?.();
+			reader.cancel();
+		});
+		innerStreams = [];
 		controller?.close();
 	};
 	const processPull = async () => {
-		if (isClosed && innerStreamReaders.length === 0) {
+		var _a23;
+		if (isClosed && innerStreams.length === 0) {
 			controller?.close();
 			return;
 		}
-		if (innerStreamReaders.length === 0) {
+		if (innerStreams.length === 0) {
 			waitForNewStream = createResolvablePromise();
 			await waitForNewStream.promise;
 			return await processPull();
 		}
+		const currentStream = innerStreams[0];
 		try {
-			const { value, done } = await innerStreamReaders[0].read();
+			const { value, done } = await currentStream.reader.read();
 			if (done) {
-				innerStreamReaders.shift();
-				if (innerStreamReaders.length === 0 && isClosed) controller?.close();
+				innerStreams.shift();
+				if (innerStreams.length === 0 && isClosed) controller?.close();
 				else await processPull();
 			} else controller?.enqueue(value);
 		} catch (error) {
+			(_a23 = currentStream.onError) == null || _a23.call(currentStream, error);
 			controller?.error(error);
-			innerStreamReaders.shift();
+			innerStreams.shift();
 			terminate();
 		}
 	};
@@ -5113,14 +5291,20 @@ function createStitchableStream() {
 			},
 			pull: processPull,
 			async cancel() {
-				for (const reader of innerStreamReaders) await reader.cancel();
-				innerStreamReaders = [];
+				for (const { reader, onCancel } of innerStreams) {
+					onCancel?.();
+					await reader.cancel();
+				}
+				innerStreams = [];
 				isClosed = true;
 			}
 		}),
-		addStream: (innerStream) => {
+		addStream: (innerStream, callbacks) => {
 			if (isClosed) throw new Error("Cannot add inner stream: outer stream is closed");
-			innerStreamReaders.push(innerStream.getReader());
+			innerStreams.push({
+				reader: innerStream.getReader(),
+				...callbacks
+			});
 			waitForNewStream.resolve();
 		},
 		/**
@@ -5130,7 +5314,7 @@ function createStitchableStream() {
 		close: () => {
 			isClosed = true;
 			waitForNewStream.resolve();
-			if (innerStreamReaders.length === 0) controller?.close();
+			if (innerStreams.length === 0) controller?.close();
 		},
 		/**
 		* Immediately close the outer stream. This will cancel all inner streams
@@ -5139,7 +5323,7 @@ function createStitchableStream() {
 		terminate
 	};
 }
-function executeToolsFromStream({ stream, tools, callId, messages, abortSignal, timeout, experimental_sandbox: sandbox, toolsContext, toolApproval, runtimeContext, toolApprovalSecret, generateId: generateId2, onToolExecutionStart, onToolExecutionEnd, executeToolInTelemetryContext, runInTracingChannelSpan }) {
+function executeToolsFromStream({ stream, tools, callId, messages, abortSignal, timeout, experimental_sandbox: sandbox, toolsContext, toolApproval, runtimeContext, toolApprovalSecret, generateId: generateId3, onToolExecutionStart, onToolExecutionEnd, executeToolInTelemetryContext, runInTracingChannelSpan }) {
 	const toolCallsToExecute = [];
 	return stream.pipeThrough(new TransformStream({ async transform(chunk, controller) {
 		controller.enqueue(chunk);
@@ -5160,7 +5344,7 @@ function executeToolsFromStream({ stream, tools, callId, messages, abortSignal, 
 					if (tool2.execute != null && chunk.providerExecuted !== true) toolCallsToExecute.push(chunk);
 					return;
 				}
-				const approvalId = generateId2();
+				const approvalId = generateId3();
 				const signature = await maybeSignApproval({
 					secret: toolApprovalSecret,
 					approvalId,
@@ -5210,7 +5394,6 @@ function executeToolsFromStream({ stream, tools, callId, messages, abortSignal, 
 							reason: toolApprovalStatus.reason,
 							providerExecuted: chunk.providerExecuted
 						});
-						break;
 				}
 				if (tool2.execute != null && chunk.providerExecuted !== true) toolCallsToExecute.push(chunk);
 				return;
@@ -5306,7 +5489,7 @@ var originalGenerateCallId2 = createIdGenerator({
 	prefix: "call",
 	size: 24
 });
-async function streamLanguageModelCall({ model, tools, toolOrder, output, toolChoice, prompt, system, instructions, messages, allowSystemInMessages, download: download2, abortSignal, headers, includeRawChunks, providerOptions, repairToolCall, refineToolInput, executeLanguageModelCallInTelemetryContext = async ({ execute }) => await execute(), callId, toolsContext, experimental_sandbox: sandbox, _internal: { generateId: generateId2 = originalGenerateId2, generateCallId = originalGenerateCallId2, now: now2 = now } = {}, onStart, onLanguageModelCallStart, onLanguageModelCallEnd, ...callSettings }) {
+async function streamLanguageModelCall({ model, tools, toolOrder, output, toolChoice, prompt, system, instructions, messages, allowSystemInMessages, download: download2, abortSignal, headers, includeRawChunks, providerOptions, repairToolCall, refineToolInput, executeLanguageModelCallInTelemetryContext = async ({ execute }) => await execute(), callId, toolsContext, experimental_sandbox: sandbox, _internal: { generateId: generateId3 = originalGenerateId2, generateCallId = originalGenerateCallId2, now: now2 = now } = {}, onStart, onLanguageModelCallStart, onLanguageModelCallEnd, ...callSettings }) {
 	const resolvedModel = resolveLanguageModel(model);
 	const effectiveCallId = callId != null ? callId : generateCallId();
 	const standardizedPrompt = await standardizePrompt({
@@ -5374,7 +5557,7 @@ async function streamLanguageModelCall({ model, tools, toolOrder, output, toolCh
 			callId: effectiveCallId,
 			provider: resolvedModel.provider,
 			modelId: resolvedModel.modelId,
-			generateId: generateId2,
+			generateId: generateId3,
 			now: now2,
 			callStartTimestampMs,
 			onLanguageModelCallEnd
@@ -5383,17 +5566,18 @@ async function streamLanguageModelCall({ model, tools, toolOrder, output, toolCh
 		request
 	};
 }
-function createLanguageModelV4StreamPartToLanguageModelStreamPartTransform({ tools, instructions, messages, repairToolCall, refineToolInput, callId, provider, modelId, generateId: generateId2, now: now2, callStartTimestampMs, onLanguageModelCallEnd }) {
+function createLanguageModelV4StreamPartToLanguageModelStreamPartTransform({ tools, instructions, messages, repairToolCall, refineToolInput, callId, provider, modelId, generateId: generateId3, now: now2, callStartTimestampMs, onLanguageModelCallEnd }) {
 	const toolCallsByToolCallId = /* @__PURE__ */ new Map();
 	const modelCallContent = [];
 	const textPartIndexes = /* @__PURE__ */ new Map();
 	const reasoningPartIndexes = /* @__PURE__ */ new Map();
-	let responseId = generateId2();
+	let responseId = generateId3();
+	let responseModelId = modelId;
 	let timeToFirstOutputMs;
 	let previousOutputChunkTimestampMs;
 	const timeBetweenOutputChunksMs = [];
 	return new TransformStream({ async transform(chunk, controller) {
-		var _a22, _b;
+		var _a23, _b, _c;
 		if (isOutputChunk(chunk)) {
 			const outputChunkTimestampMs = now2();
 			if (timeToFirstOutputMs == null) timeToFirstOutputMs = outputChunkTimestampMs - callStartTimestampMs;
@@ -5521,11 +5705,12 @@ function createLanguageModelV4StreamPartToLanguageModelStreamPartTransform({ too
 					event: {
 						callId,
 						provider,
-						modelId,
+						modelId: responseModelId,
 						finishReason: chunk.finishReason.unified,
 						usage,
 						content: modelCallContent,
 						responseId,
+						...chunk.providerMetadata != null ? { providerMetadata: chunk.providerMetadata } : {},
 						performance
 					},
 					callbacks: onLanguageModelCallEnd
@@ -5554,7 +5739,7 @@ function createLanguageModelV4StreamPartToLanguageModelStreamPartTransform({ too
 					controller.enqueue(toolCall);
 					modelCallContent.push(toolCall);
 					if (toolCall.invalid) {
-						controller.enqueue({
+						if (!toolCall.providerExecuted) controller.enqueue({
 							type: "tool-error",
 							toolCallId: toolCall.toolCallId,
 							toolName: toolCall.toolName,
@@ -5626,7 +5811,7 @@ function createLanguageModelV4StreamPartToLanguageModelStreamPartTransform({ too
 				const tool2 = getOwn(tools, chunk.toolName);
 				controller.enqueue({
 					...chunk,
-					dynamic: (_a22 = chunk.dynamic) != null ? _a22 : (tool2 == null ? void 0 : tool2.type) === "dynamic",
+					dynamic: (_a23 = chunk.dynamic) != null ? _a23 : (tool2 == null ? void 0 : tool2.type) === "dynamic",
 					title: tool2 == null ? void 0 : tool2.title,
 					...(tool2 == null ? void 0 : tool2.metadata) != null ? { toolMetadata: tool2.metadata } : {}
 				});
@@ -5640,6 +5825,7 @@ function createLanguageModelV4StreamPartToLanguageModelStreamPartTransform({ too
 				break;
 			case "response-metadata":
 				responseId = (_b = chunk.id) != null ? _b : responseId;
+				responseModelId = (_c = chunk.modelId) != null ? _c : responseModelId;
 				controller.enqueue({
 					type: "model-call-response-metadata",
 					id: chunk.id,
@@ -5650,7 +5836,6 @@ function createLanguageModelV4StreamPartToLanguageModelStreamPartTransform({ too
 			default:
 				if (chunk.type === "custom" || chunk.type === "source") modelCallContent.push(chunk);
 				controller.enqueue(chunk);
-				break;
 		}
 	} });
 }
@@ -5696,23 +5881,23 @@ var originalGenerateCallId3 = createIdGenerator({
 });
 var isOutputChunkType = {
 	file: true,
-	custom: true,
-	source: true,
-	"text-start": true,
-	"text-end": true,
+	custom: false,
+	source: false,
+	"text-start": false,
+	"text-end": false,
 	"text-delta": true,
-	"reasoning-start": true,
-	"reasoning-end": true,
+	"reasoning-start": false,
+	"reasoning-end": false,
 	"reasoning-delta": true,
 	"reasoning-file": true,
-	"tool-input-start": true,
-	"tool-input-end": true,
+	"tool-input-start": false,
+	"tool-input-end": false,
 	"tool-input-delta": true,
-	"tool-approval-request": true,
-	"tool-approval-response": true,
+	"tool-approval-request": false,
+	"tool-approval-response": false,
 	"tool-call": true,
-	"tool-result": true,
-	"tool-error": true,
+	"tool-result": false,
+	"tool-error": false,
 	"tool-execution-end": false,
 	"model-call-start": false,
 	"model-call-response-metadata": false,
@@ -5720,14 +5905,28 @@ var isOutputChunkType = {
 	error: false,
 	raw: false
 };
-function streamText({ model, tools, toolChoice, instructions, system, prompt, messages, allowSystemInMessages, maxRetries, abortSignal, timeout, headers, stopWhen = isStepCount(1), experimental_sandbox: sandbox, output, toolApproval, experimental_toolApprovalSecret, experimental_telemetry, telemetry = experimental_telemetry, prepareStep, providerOptions, activeTools, toolOrder, experimental_repairToolCall: repairToolCall, experimental_refineToolInput: refineToolInput, experimental_transform: transform, experimental_download: download2, includeRawChunks, onChunk, onError = ({ error }) => {
+function isOutputChunk2(chunk) {
+	if (!isOutputChunkType[chunk.type]) return false;
+	switch (chunk.type) {
+		case "text-delta":
+		case "reasoning-delta": return chunk.text.length > 0;
+		case "tool-input-delta": return chunk.delta.length > 0;
+		case "file":
+		case "reasoning-file":
+		case "tool-call": return true;
+		default: return false;
+	}
+}
+function streamText({ model, tools, toolChoice, instructions, system, prompt, messages, allowSystemInMessages, maxRetries, abortSignal, timeout, headers, stopWhen = isStepCount(1), experimental_sandbox: sandbox, output, toolApproval, experimental_toolCallers, experimental_toolApprovalSecret, experimental_telemetry, telemetry = experimental_telemetry, prepareStep, providerOptions, activeTools, toolOrder, experimental_repairToolCall, repairToolCall = experimental_repairToolCall, experimental_refineToolInput: refineToolInput, experimental_transform: transform, experimental_download: download2, includeRawChunks, onChunk, onError = ({ error }) => {
 	console.error(error);
-}, onFinish, onEnd = onFinish, onAbort, onStepEnd, onStepFinish, onStart, experimental_onStart, onStepStart, experimental_onStepStart, onLanguageModelCallStart, experimental_onLanguageModelCallStart, onLanguageModelCallEnd, experimental_onLanguageModelCallEnd, onToolExecutionStart, onToolExecutionEnd, experimental_onToolCallStart, experimental_onToolCallFinish, runtimeContext = {}, toolsContext = {}, experimental_include, include = experimental_include, _internal: { now: now2 = now, generateId: generateId2 = originalGenerateId3, generateCallId = originalGenerateCallId3 } = {}, ...settings }) {
-	var _a22, _b, _c, _d;
+}, onFinish, onEnd = onFinish, onAbort, onStepEnd, onStepFinish, onStart, experimental_onStart, onStepStart, experimental_onStepStart, onLanguageModelCallStart, experimental_onLanguageModelCallStart, onLanguageModelCallEnd, experimental_onLanguageModelCallEnd, onToolExecutionStart, onToolExecutionEnd, experimental_onToolCallStart, experimental_onToolCallFinish, runtimeContext = {}, toolsContext = {}, experimental_include, include = experimental_include, _internal: { now: now2 = now, generateId: generateId3 = originalGenerateId3, generateCallId = originalGenerateCallId3 } = {}, ...settings }) {
+	var _a23, _b, _c, _d;
 	const totalTimeoutMs = getTotalTimeoutMs(timeout);
 	const stepTimeoutMs = getStepTimeoutMs(timeout);
+	const firstChunkTimeoutMs = getFirstChunkTimeoutMs(timeout);
 	const chunkTimeoutMs = getChunkTimeoutMs(timeout);
 	const stepAbortController = stepTimeoutMs != null ? new AbortController() : void 0;
+	const firstChunkAbortController = firstChunkTimeoutMs != null ? new AbortController() : void 0;
 	const chunkAbortController = chunkTimeoutMs != null ? new AbortController() : void 0;
 	const resolvedOnStart = onStart != null ? onStart : experimental_onStart;
 	const resolvedOnStepStart = onStepStart != null ? onStepStart : experimental_onStepStart;
@@ -5742,9 +5941,11 @@ function streamText({ model, tools, toolChoice, instructions, system, prompt, me
 		headers,
 		settings,
 		maxRetries,
-		abortSignal: mergeAbortSignals(abortSignal, totalTimeoutMs, stepAbortController == null ? void 0 : stepAbortController.signal, chunkAbortController == null ? void 0 : chunkAbortController.signal),
+		abortSignal: mergeAbortSignals(abortSignal, totalTimeoutMs, stepAbortController == null ? void 0 : stepAbortController.signal, firstChunkAbortController == null ? void 0 : firstChunkAbortController.signal, chunkAbortController == null ? void 0 : chunkAbortController.signal),
 		stepTimeoutMs,
 		stepAbortController,
+		firstChunkTimeoutMs,
+		firstChunkAbortController,
 		chunkTimeoutMs,
 		chunkAbortController,
 		instructions,
@@ -5765,6 +5966,7 @@ function streamText({ model, tools, toolChoice, instructions, system, prompt, me
 		stopConditions: asArray(stopWhen),
 		output,
 		toolApproval,
+		experimental_toolCallers,
 		experimental_toolApprovalSecret,
 		providerOptions,
 		prepareStep,
@@ -5781,11 +5983,11 @@ function streamText({ model, tools, toolChoice, instructions, system, prompt, me
 		onToolExecutionStart: resolvedOnToolExecutionStart,
 		onToolExecutionEnd: resolvedOnToolExecutionEnd,
 		now: now2,
-		generateId: generateId2,
+		generateId: generateId3,
 		generateCallId,
 		download: download2,
 		include: {
-			requestBody: (_a22 = include == null ? void 0 : include.requestBody) != null ? _a22 : false,
+			requestBody: (_a23 = include == null ? void 0 : include.requestBody) != null ? _a23 : false,
 			requestMessages: (_b = include == null ? void 0 : include.requestMessages) != null ? _b : false,
 			rawChunks: (_d = (_c = include == null ? void 0 : include.rawChunks) != null ? _c : includeRawChunks) != null ? _d : false
 		}
@@ -5815,7 +6017,7 @@ function createOutputTransformStream(output) {
 		textChunk = "";
 	}
 	return new TransformStream({ async transform(chunk, controller) {
-		var _a22;
+		var _a23;
 		if (chunk.type === "finish-step" && textChunk.length > 0) publishTextChunk({ controller });
 		if (chunk.type !== "text-delta" && chunk.type !== "text-start" && chunk.type !== "text-end") {
 			controller.enqueue({
@@ -5849,7 +6051,14 @@ function createOutputTransformStream(output) {
 		}
 		text2 += chunk.text;
 		textChunk += chunk.text;
-		textProviderMetadata = (_a22 = chunk.providerMetadata) != null ? _a22 : textProviderMetadata;
+		textProviderMetadata = (_a23 = chunk.providerMetadata) != null ? _a23 : textProviderMetadata;
+		if (chunk.text.length === 0 && chunk.providerMetadata != null) {
+			controller.enqueue({
+				part: chunk,
+				partialOutput: void 0
+			});
+			return;
+		}
 		const result = await output.parsePartialOutput({ text: text2 });
 		if (result !== void 0) {
 			const currentValue = typeof result.partial === "string" ? result.partial : JSON.stringify(result.partial);
@@ -5864,7 +6073,7 @@ function createOutputTransformStream(output) {
 	} });
 }
 var DefaultStreamTextResult = class {
-	constructor({ model, telemetry, headers, settings, maxRetries: maxRetriesArg, abortSignal, stepTimeoutMs, stepAbortController, chunkTimeoutMs, chunkAbortController, instructions, system, prompt, messages, allowSystemInMessages, experimental_sandbox: sandbox, tools, toolChoice, transforms, activeTools, toolOrder, repairToolCall, refineToolInput, stopConditions, output, toolApproval, experimental_toolApprovalSecret, providerOptions, prepareStep, now: now2, generateId: generateId2, generateCallId, timeout, onChunk, onError, onEnd, onAbort, onStepFinish, onStart, onStepStart, onLanguageModelCallStart, onLanguageModelCallEnd, onToolExecutionStart, onToolExecutionEnd, runtimeContext, toolsContext, download: download2, include }) {
+	constructor({ model, telemetry, headers, settings, maxRetries: maxRetriesArg, abortSignal, stepTimeoutMs, stepAbortController, firstChunkTimeoutMs, firstChunkAbortController, chunkTimeoutMs, chunkAbortController, instructions, system, prompt, messages, allowSystemInMessages, experimental_sandbox: sandbox, tools, toolChoice, transforms, activeTools, toolOrder, repairToolCall, refineToolInput, stopConditions, output, toolApproval, experimental_toolCallers, experimental_toolApprovalSecret, providerOptions, prepareStep, now: now2, generateId: generateId3, generateCallId, timeout, onChunk, onError, onEnd, onAbort, onStepFinish, onStart, onStepStart, onLanguageModelCallStart, onLanguageModelCallEnd, onToolExecutionStart, onToolExecutionEnd, runtimeContext, toolsContext, download: download2, include }) {
 		this._totalUsage = new DelayedPromise();
 		this._finishReason = new DelayedPromise();
 		this._rawFinishReason = new DelayedPromise();
@@ -5872,6 +6081,10 @@ var DefaultStreamTextResult = class {
 		this._initialResponseMessages = new DelayedPromise();
 		this.outputSpecification = output;
 		this.tools = tools;
+		const resolvedToolCallers = resolveToolCallerConfiguration({
+			tools,
+			toolCallers: experimental_toolCallers
+		});
 		const telemetryDispatcher = createRestrictedTelemetryDispatcher({
 			telemetry,
 			includeRuntimeContext: telemetry == null ? void 0 : telemetry.includeRuntimeContext,
@@ -5895,7 +6108,7 @@ var DefaultStreamTextResult = class {
 		let recordedNoOutputError;
 		const eventProcessor = new TransformStream({
 			async transform(chunk, controller) {
-				var _a22, _b, _c, _d;
+				var _a23, _b, _c, _d;
 				controller.enqueue(chunk);
 				const { part } = chunk;
 				await (onChunk == null ? void 0 : onChunk({ chunk: part }));
@@ -5926,7 +6139,7 @@ var DefaultStreamTextResult = class {
 						return;
 					}
 					activeText.text += part.text;
-					activeText.providerMetadata = (_a22 = part.providerMetadata) != null ? _a22 : activeText.providerMetadata;
+					activeText.providerMetadata = (_a23 = part.providerMetadata) != null ? _a23 : activeText.providerMetadata;
 				}
 				if (part.type === "text-end") {
 					const activeText = activeTextContent[part.id];
@@ -6065,8 +6278,8 @@ var DefaultStreamTextResult = class {
 					const staticToolResults = recordedSteps.flatMap((step) => step.staticToolResults);
 					const dynamicToolResults = recordedSteps.flatMap((step) => step.dynamicToolResults);
 					const warnings = recordedSteps.flatMap((step) => {
-						var _a22;
-						return (_a22 = step.warnings) != null ? _a22 : [];
+						var _a23;
+						return (_a23 = step.warnings) != null ? _a23 : [];
 					});
 					await notify({
 						event: {
@@ -6170,7 +6383,7 @@ var DefaultStreamTextResult = class {
 		const self = this;
 		const callId = generateCallId();
 		(async () => {
-			var _a22;
+			var _a23;
 			const initialPrompt = await standardizePrompt({
 				instructions,
 				system,
@@ -6206,15 +6419,16 @@ var DefaultStreamTextResult = class {
 				runtimeContext,
 				toolsContext
 			};
-			const streamTextTracingChannelContext = (_a22 = telemetryDispatcher.startTracingChannelContext) == null ? void 0 : _a22.call(telemetryDispatcher, {
+			const streamTextTracingChannelContext = (_a23 = telemetryDispatcher.startTracingChannelContext) == null ? void 0 : _a23.call(telemetryDispatcher, {
 				type: "streamText",
 				event: startEvent,
 				completion: self._totalUsage.promise.then(() => void 0)
 			});
 			const runInStreamTextTracingChannelContext = (execute) => {
-				var _a23;
-				return (_a23 = streamTextTracingChannelContext == null ? void 0 : streamTextTracingChannelContext.run(execute)) != null ? _a23 : execute();
+				var _a24;
+				return (_a24 = streamTextTracingChannelContext == null ? void 0 : streamTextTracingChannelContext.run(execute)) != null ? _a24 : execute();
 			};
+			const runInTracingChannelSpanInStreamText = telemetryDispatcher.runInTracingChannelSpan == null ? void 0 : (options) => runInStreamTextTracingChannelContext(() => telemetryDispatcher.runInTracingChannelSpan(options));
 			await notify({
 				event: startEvent,
 				callbacks: [onStart, telemetryDispatcher.onStart]
@@ -6233,6 +6447,7 @@ var DefaultStreamTextResult = class {
 					toolApprovalSecret: experimental_toolApprovalSecret
 				});
 				const localDeniedToolApprovals = [...deniedToolApprovals.filter((toolApproval2) => !toolApproval2.toolCall.providerExecuted), ...revalidationDeniedToolApprovals];
+				const localDeniedToolApprovalsWithoutResults = localDeniedToolApprovals.filter((toolApproval2) => toolApproval2.existingToolResult == null);
 				const deniedProviderExecutedToolApprovals = deniedToolApprovals.filter((toolApproval2) => toolApproval2.toolCall.providerExecuted);
 				let toolExecutionStepStreamController;
 				const toolExecutionStepStream = new ReadableStream({ start(controller) {
@@ -6259,7 +6474,7 @@ var DefaultStreamTextResult = class {
 							onToolExecutionStart: filterNullable(onToolExecutionStart, telemetryDispatcher.onToolExecutionStart),
 							onToolExecutionEnd: filterNullable(onToolExecutionEnd, telemetryDispatcher.onToolExecutionEnd),
 							executeToolInTelemetryContext: telemetryDispatcher.executeTool,
-							runInTracingChannelSpan: telemetryDispatcher.runInTracingChannelSpan,
+							runInTracingChannelSpan: runInTracingChannelSpanInStreamText,
 							onPreliminaryToolResult: (result2) => {
 								toolExecutionStepStreamController?.enqueue(result2);
 							}
@@ -6269,7 +6484,7 @@ var DefaultStreamTextResult = class {
 							toolOutputs.push(result.output);
 						}
 					}));
-					if (toolOutputs.length > 0 || localDeniedToolApprovals.length > 0) {
+					if (toolOutputs.length > 0 || localDeniedToolApprovalsWithoutResults.length > 0) {
 						const localToolContent = [];
 						for (const output2 of toolOutputs) localToolContent.push({
 							type: "tool-result",
@@ -6283,7 +6498,7 @@ var DefaultStreamTextResult = class {
 								errorMode: output2.type === "tool-error" ? "text" : "none"
 							})
 						});
-						for (const toolApproval2 of localDeniedToolApprovals) localToolContent.push({
+						for (const toolApproval2 of localDeniedToolApprovalsWithoutResults) localToolContent.push({
 							type: "tool-result",
 							toolCallId: toolApproval2.toolCall.toolCallId,
 							toolName: toolApproval2.toolCall.toolName,
@@ -6303,12 +6518,27 @@ var DefaultStreamTextResult = class {
 			}
 			self._initialResponseMessages.resolve(initialResponseMessages);
 			async function streamStep({ currentStep, usage }) {
-				var _a23, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+				var _a24, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
 				const stepTimeoutId = setAbortTimeout({
 					abortController: stepAbortController,
 					label: "Step",
 					timeoutMs: stepTimeoutMs
 				});
+				let firstChunkTimeoutId = void 0;
+				function startFirstChunkTimeout() {
+					if (abortSignal == null ? void 0 : abortSignal.aborted) return;
+					firstChunkTimeoutId = setAbortTimeout({
+						abortController: firstChunkAbortController,
+						label: "First chunk",
+						timeoutMs: firstChunkTimeoutMs
+					});
+				}
+				function clearFirstChunkTimeout() {
+					if (firstChunkTimeoutId != null) {
+						clearTimeout(firstChunkTimeoutId);
+						firstChunkTimeoutId = void 0;
+					}
+				}
 				let chunkTimeoutId = void 0;
 				function resetChunkTimeout() {
 					if (chunkTimeoutId != null) clearTimeout(chunkTimeoutId);
@@ -6327,11 +6557,19 @@ var DefaultStreamTextResult = class {
 				function clearStepTimeout() {
 					if (stepTimeoutId != null) clearTimeout(stepTimeoutId);
 				}
-				abortSignal?.addEventListener("abort", clearStepTimeout);
-				abortSignal?.addEventListener("abort", clearChunkTimeout);
+				function clearStepTimeouts() {
+					clearStepTimeout();
+					clearFirstChunkTimeout();
+					clearChunkTimeout();
+				}
+				function cleanupStepTimeouts() {
+					abortSignal?.removeEventListener("abort", cleanupStepTimeouts);
+					clearStepTimeouts();
+				}
+				abortSignal?.addEventListener("abort", cleanupStepTimeouts, { once: true });
 				try {
 					stepFinish = new DelayedPromise();
-					const stepTracingChannelContext = (_a23 = telemetryDispatcher.startTracingChannelContext) == null ? void 0 : _a23.call(telemetryDispatcher, {
+					const stepTracingChannelContext = (_a24 = telemetryDispatcher.startTracingChannelContext) == null ? void 0 : _a24.call(telemetryDispatcher, {
 						type: "step",
 						event: {
 							callId,
@@ -6340,8 +6578,8 @@ var DefaultStreamTextResult = class {
 						completion: stepFinish.promise
 					});
 					const runInStepTracingChannelContext = (execute) => {
-						var _a24;
-						return (_a24 = stepTracingChannelContext == null ? void 0 : stepTracingChannelContext.run(execute)) != null ? _a24 : execute();
+						var _a25;
+						return (_a25 = stepTracingChannelContext == null ? void 0 : stepTracingChannelContext.run(execute)) != null ? _a25 : execute();
 					};
 					const responseMessagesFromPreviousSteps = recordedSteps.flatMap((step) => step.response.messages);
 					const accumulatedResponseMessages = [...initialResponseMessages, ...responseMessagesFromPreviousSteps];
@@ -6363,13 +6601,16 @@ var DefaultStreamTextResult = class {
 					runtimeContext = (_c = prepareStepResult == null ? void 0 : prepareStepResult.runtimeContext) != null ? _c : runtimeContext;
 					toolsContext = (_d = prepareStepResult == null ? void 0 : prepareStepResult.toolsContext) != null ? _d : toolsContext;
 					const stepModel = resolveLanguageModel((_e = prepareStepResult == null ? void 0 : prepareStepResult.model) != null ? _e : model);
-					const stepActiveTools = filterActiveTools({
-						tools,
-						activeTools: (_f = prepareStepResult == null ? void 0 : prepareStepResult.activeTools) != null ? _f : activeTools
+					const { executionTools: stepExecutionTools, modelTools: stepModelTools } = prepareToolsForToolCallers({
+						tools: filterActiveTools({
+							tools,
+							activeTools: (_f = prepareStepResult == null ? void 0 : prepareStepResult.activeTools) != null ? _f : activeTools
+						}),
+						toolCallers: resolvedToolCallers
 					});
 					const stepToolOrder = (_g = prepareStepResult == null ? void 0 : prepareStepResult.toolOrder) != null ? _g : toolOrder;
 					const stepTools = await prepareTools({
-						tools: stepActiveTools,
+						tools: stepModelTools,
 						toolOrder: stepToolOrder,
 						toolsContext,
 						experimental_sandbox: stepSandbox
@@ -6380,16 +6621,20 @@ var DefaultStreamTextResult = class {
 					const stepInstructions = (_k = (_j = prepareStepResult == null ? void 0 : prepareStepResult.instructions) != null ? _j : prepareStepResult == null ? void 0 : prepareStepResult.system) != null ? _k : instructionsForNextStep;
 					instructionsForNextStep = stepInstructions;
 					const stepProviderOptions = mergeObjects(providerOptions, prepareStepResult == null ? void 0 : prepareStepResult.providerOptions);
+					const stepCallSettings = prepareStepCallSettings({
+						callSettings,
+						stepSettings: prepareStepResult
+					});
 					const stepStartTimestampMs = now2();
 					const { retry } = prepareRetries({
 						maxRetries,
 						abortSignal
 					});
 					const { stream: languageModelStream, request, response } = await runInStepTracingChannelContext(() => retry(async () => {
-						var _a24, _b2;
+						var _a25, _b2;
 						return streamLanguageModelCall({
-							model: (_a24 = prepareStepResult == null ? void 0 : prepareStepResult.model) != null ? _a24 : model,
-							tools: stepActiveTools,
+							model: (_a25 = prepareStepResult == null ? void 0 : prepareStepResult.model) != null ? _a25 : model,
+							tools: stepModelTools,
 							toolOrder: stepToolOrder,
 							toolChoice: (_b2 = prepareStepResult == null ? void 0 : prepareStepResult.toolChoice) != null ? _b2 : toolChoice,
 							instructions: stepInstructions,
@@ -6410,7 +6655,7 @@ var DefaultStreamTextResult = class {
 							onLanguageModelCallStart: filterNullable(onLanguageModelCallStart, telemetryDispatcher.onLanguageModelCallStart),
 							onLanguageModelCallEnd: filterNullable(onLanguageModelCallEnd, telemetryDispatcher.onLanguageModelCallEnd),
 							onStart: async ({ promptMessages }) => {
-								var _a25, _b3;
+								var _a26, _b3;
 								await notify({
 									event: {
 										callId,
@@ -6420,7 +6665,7 @@ var DefaultStreamTextResult = class {
 										instructions: stepInstructions,
 										messages: stepMessages,
 										tools,
-										toolChoice: (_a25 = prepareStepResult == null ? void 0 : prepareStepResult.toolChoice) != null ? _a25 : toolChoice,
+										toolChoice: (_a26 = prepareStepResult == null ? void 0 : prepareStepResult.toolChoice) != null ? _a26 : toolChoice,
 										activeTools: (_b3 = prepareStepResult == null ? void 0 : prepareStepResult.activeTools) != null ? _b3 : activeTools,
 										toolOrder: stepToolOrder,
 										steps: [...recordedSteps],
@@ -6436,12 +6681,13 @@ var DefaultStreamTextResult = class {
 								});
 							},
 							_internal: { now: now2 },
-							...callSettings
+							...stepCallSettings
 						});
 					}));
+					startFirstChunkTimeout();
 					const streamAfterToolCallbackInvocation = invokeToolCallbacksFromStream({
 						stream: languageModelStream,
-						tools,
+						tools: stepExecutionTools,
 						stepInputMessages: stepMessages,
 						abortSignal,
 						runtimeContext
@@ -6449,7 +6695,7 @@ var DefaultStreamTextResult = class {
 					const runInTracingChannelSpanInStep = telemetryDispatcher.runInTracingChannelSpan == null ? void 0 : (options) => runInStepTracingChannelContext(() => telemetryDispatcher.runInTracingChannelSpan(options));
 					const streamWithToolResults = executeToolsFromStream({
 						stream: streamAfterToolCallbackInvocation,
-						tools,
+						tools: stepExecutionTools,
 						callId,
 						messages: stepMessages,
 						abortSignal,
@@ -6459,7 +6705,7 @@ var DefaultStreamTextResult = class {
 						toolApproval,
 						runtimeContext,
 						toolApprovalSecret: experimental_toolApprovalSecret,
-						generateId: generateId2,
+						generateId: generateId3,
 						onToolExecutionStart: filterNullable(onToolExecutionStart, telemetryDispatcher.onToolExecutionStart),
 						onToolExecutionEnd: filterNullable(onToolExecutionEnd, telemetryDispatcher.onToolExecutionEnd),
 						executeToolInTelemetryContext: telemetryDispatcher.executeTool,
@@ -6493,14 +6739,13 @@ var DefaultStreamTextResult = class {
 					};
 					const toolExecutionMs = {};
 					let stepResponse = {
-						id: generateId2(),
+						id: generateId3(),
 						timestamp: /* @__PURE__ */ new Date(),
 						modelId: model.modelId
 					};
 					self.addStream(streamWithToolResults.pipeThrough(new TransformStream({
 						async transform(chunk, controller) {
-							var _a24, _b2, _c2;
-							resetChunkTimeout();
+							var _a25, _b2, _c2;
 							if (chunk.type === "model-call-start") {
 								warnings = chunk.warnings;
 								return;
@@ -6514,7 +6759,11 @@ var DefaultStreamTextResult = class {
 								});
 							}
 							const chunkType = chunk.type;
-							if (isOutputChunkType[chunkType]) hasReceivedOutputChunk = true;
+							if (isOutputChunk2(chunk)) {
+								if (!hasReceivedOutputChunk) clearFirstChunkTimeout();
+								hasReceivedOutputChunk = true;
+								resetChunkTimeout();
+							}
 							switch (chunkType) {
 								case "file":
 								case "custom":
@@ -6532,7 +6781,7 @@ var DefaultStreamTextResult = class {
 									controller.enqueue(chunk);
 									break;
 								case "text-delta":
-									if (chunk.text.length > 0) controller.enqueue(chunk);
+									if (chunk.text.length > 0 || chunk.providerMetadata != null) controller.enqueue(chunk);
 									break;
 								case "tool-call":
 									controller.enqueue(chunk);
@@ -6555,7 +6804,7 @@ var DefaultStreamTextResult = class {
 									break;
 								case "model-call-response-metadata":
 									stepResponse = {
-										id: (_a24 = chunk.id) != null ? _a24 : stepResponse.id,
+										id: (_a25 = chunk.id) != null ? _a25 : stepResponse.id,
 										timestamp: (_b2 = chunk.timestamp) != null ? _b2 : stepResponse.timestamp,
 										modelId: (_c2 = chunk.modelId) != null ? _c2 : stepResponse.modelId
 									};
@@ -6585,8 +6834,7 @@ var DefaultStreamTextResult = class {
 									type: "error",
 									error: new NoOutputGeneratedError({ message: "No output generated. The model stream ended without a finish chunk." })
 								});
-								clearStepTimeout();
-								clearChunkTimeout();
+								cleanupStepTimeouts();
 								self.closeStream();
 								return;
 							}
@@ -6615,14 +6863,13 @@ var DefaultStreamTextResult = class {
 							const deniedToolApprovalResponses = stepToolApprovalResponses.filter((toolApprovalResponse) => toolApprovalResponse.approved === false);
 							for (const toolCall of stepToolCalls) {
 								if (toolCall.providerExecuted !== true) continue;
-								const tool2 = getOwn(tools, toolCall.toolName);
+								const tool2 = getOwn(stepExecutionTools, toolCall.toolName);
 								if ((tool2 == null ? void 0 : tool2.type) === "provider" && tool2.supportsDeferredResults) {
 									if (!stepToolOutputs.some((output2) => (output2.type === "tool-result" || output2.type === "tool-error") && output2.toolCallId === toolCall.toolCallId)) pendingDeferredToolCalls.set(toolCall.toolCallId, { toolName: toolCall.toolName });
 								}
 							}
 							for (const output2 of stepToolOutputs) if (output2.type === "tool-result" || output2.type === "tool-error") pendingDeferredToolCalls.delete(output2.toolCallId);
-							clearStepTimeout();
-							clearChunkTimeout();
+							cleanupStepTimeouts();
 							if ((clientToolCalls.length > 0 && clientToolCalls.length === clientToolOutputs.length + deniedToolApprovalResponses.length || pendingDeferredToolCalls.size > 0) && !await isStopConditionMet({
 								stopConditions,
 								steps: recordedSteps
@@ -6648,10 +6895,12 @@ var DefaultStreamTextResult = class {
 								self.closeStream();
 							}
 						}
-					})));
+					})), {
+						onError: cleanupStepTimeouts,
+						onCancel: cleanupStepTimeouts
+					});
 				} catch (error) {
-					clearStepTimeout();
-					clearChunkTimeout();
+					cleanupStepTimeouts();
 					throw error;
 				}
 			}
@@ -6660,8 +6909,8 @@ var DefaultStreamTextResult = class {
 				usage: createNullLanguageModelUsage()
 			}));
 		})().catch(async (error) => {
-			var _a22;
-			await ((_a22 = telemetryDispatcher.onError) == null ? void 0 : _a22.call(telemetryDispatcher, {
+			var _a23;
+			await ((_a23 = telemetryDispatcher.onError) == null ? void 0 : _a23.call(telemetryDispatcher, {
 				callId,
 				error
 			}));
@@ -6689,8 +6938,8 @@ var DefaultStreamTextResult = class {
 	}
 	get warnings() {
 		return this.steps.then((steps) => steps.flatMap((step) => {
-			var _a22;
-			return (_a22 = step.warnings) != null ? _a22 : [];
+			var _a23;
+			return (_a23 = step.warnings) != null ? _a23 : [];
 		}));
 	}
 	get providerMetadata() {
@@ -6806,19 +7055,19 @@ var DefaultStreamTextResult = class {
 		}
 	}
 	async consumeStream(options) {
-		var _a22;
+		var _a23;
 		try {
 			await consumeStream({
 				stream: this.stream,
 				onError: (error) => {
-					var _a23;
+					var _a24;
 					this.rejectResultPromises(error);
-					(_a23 = options == null ? void 0 : options.onError) == null || _a23.call(options, error);
+					(_a24 = options == null ? void 0 : options.onError) == null || _a24.call(options, error);
 				}
 			});
 		} catch (error) {
 			this.rejectResultPromises(error);
-			(_a22 = options == null ? void 0 : options.onError) == null || _a22.call(options, error);
+			(_a23 = options == null ? void 0 : options.onError) == null || _a23.call(options, error);
 		}
 	}
 	get experimental_partialOutputStream() {
@@ -6830,15 +7079,15 @@ var DefaultStreamTextResult = class {
 		} })));
 	}
 	get elementStream() {
-		var _a22, _b, _c;
-		const transform = (_a22 = this.outputSpecification) == null ? void 0 : _a22.createElementStreamTransform();
+		var _a23, _b, _c;
+		const transform = (_a23 = this.outputSpecification) == null ? void 0 : _a23.createElementStreamTransform();
 		if (transform == null) throw new UnsupportedFunctionalityError({ functionality: `element streams in ${(_c = (_b = this.outputSpecification) == null ? void 0 : _b.name) != null ? _c : "text"} mode` });
 		return createAsyncIterableStream(this.teeStream().pipeThrough(transform));
 	}
 	get output() {
 		return this.finalStep.then((step) => {
-			var _a22;
-			return ((_a22 = this.outputSpecification) != null ? _a22 : text()).parseCompleteOutput({ text: step.text }, {
+			var _a23;
+			return ((_a23 = this.outputSpecification) != null ? _a23 : text()).parseCompleteOutput({ text: step.text }, {
 				response: step.response,
 				usage: step.usage,
 				finishReason: step.finishReason
@@ -6861,7 +7110,7 @@ var DefaultStreamTextResult = class {
 		}));
 	}
 	pipeUIMessageStreamToResponse(response, { originalMessages, generateMessageId, onEnd, onFinish, messageMetadata, sendReasoning, sendSources, sendFinish, sendStart, onError, ...init } = {}) {
-		pipeUIMessageStreamToResponse({
+		return pipeUIMessageStreamToResponse({
 			response,
 			stream: this.toUIMessageStream({
 				originalMessages,
@@ -6878,7 +7127,7 @@ var DefaultStreamTextResult = class {
 		});
 	}
 	pipeTextStreamToResponse(response, init) {
-		pipeTextStreamToResponse({
+		return pipeTextStreamToResponse({
 			response,
 			stream: this.textStream,
 			...init
@@ -6911,7 +7160,7 @@ async function convertToModelMessages(messages, options) {
 	const modelMessages = [];
 	if (options == null ? void 0 : options.ignoreIncompleteToolCalls) messages = messages.map((message) => ({
 		...message,
-		parts: message.parts.filter((part) => !isToolUIPart(part) || part.state !== "input-streaming" && part.state !== "input-available")
+		parts: message.parts.filter((part) => !isToolUIPart(part) || part.state === "approval-responded" || part.state === "output-available" || part.state === "output-error" || part.state === "output-denied")
 	}));
 	for (const message of messages) switch (message.role) {
 		case "system": {
@@ -6934,7 +7183,7 @@ async function convertToModelMessages(messages, options) {
 			modelMessages.push({
 				role: "user",
 				content: message.parts.map((part) => {
-					var _a22;
+					var _a23;
 					if (isTextUIPart(part)) return {
 						type: "text",
 						text: part.text,
@@ -6953,7 +7202,7 @@ async function convertToModelMessages(messages, options) {
 						},
 						...part.providerMetadata != null ? { providerOptions: part.providerMetadata } : {}
 					};
-					if (isDataUIPart(part)) return (_a22 = options == null ? void 0 : options.convertDataPart) == null ? void 0 : _a22.call(options, part);
+					if (isDataUIPart(part)) return (_a23 = options == null ? void 0 : options.convertDataPart) == null ? void 0 : _a23.call(options, part);
 				}).filter(isNonNullable)
 			});
 			break;
@@ -6961,7 +7210,7 @@ async function convertToModelMessages(messages, options) {
 			if (message.parts != null) {
 				let block = [];
 				async function processBlock() {
-					var _a22, _b, _c, _d, _e, _f, _g;
+					var _a23, _b, _c, _d, _e, _f, _g;
 					if (block.length === 0) return;
 					const content = [];
 					for (const part of block) if (isTextUIPart(part)) content.push({
@@ -7008,7 +7257,7 @@ async function convertToModelMessages(messages, options) {
 								type: "tool-call",
 								toolCallId: part.toolCallId,
 								toolName,
-								input: part.state === "output-error" ? (_a22 = part.input) != null ? _a22 : "rawInput" in part ? part.rawInput : void 0 : part.input,
+								input: part.state === "output-error" ? (_a23 = part.input) != null ? _a23 : "rawInput" in part ? part.rawInput : void 0 : part.input,
 								providerExecuted: part.providerExecuted,
 								...part.callProviderMetadata != null ? { providerOptions: part.callProviderMetadata } : {}
 							});
@@ -7045,8 +7294,8 @@ async function convertToModelMessages(messages, options) {
 						content
 					});
 					const toolParts = block.filter((part) => {
-						var _a23;
-						return isToolUIPart(part) && (part.providerExecuted !== true || ((_a23 = part.approval) == null ? void 0 : _a23.approved) != null);
+						var _a24;
+						return isToolUIPart(part) && (part.providerExecuted !== true || ((_a24 = part.approval) == null ? void 0 : _a24.approved) != null);
 					});
 					if (toolParts.length > 0) {
 						const content2 = [];
@@ -7125,313 +7374,324 @@ async function convertToModelMessages(messages, options) {
 	}
 	return modelMessages;
 }
-var toolMetadataSchema2 = record(string(), jsonValueSchema.optional());
-var providerReferenceSchema2 = record(string(), string());
-lazySchema(() => zodSchema(array$1(object$1({
-	id: string(),
-	role: _enum([
+var toolMetadataSchema2 = z.record(z.string(), jsonValueSchema.optional());
+var providerReferenceSchema2 = z.record(z.string(), z.string());
+lazySchema(() => zodSchema(z.array(z.object({
+	id: z.string(),
+	role: z.enum([
 		"system",
 		"user",
 		"assistant"
 	]),
-	metadata: unknown().optional(),
-	parts: array$1(union([
-		object$1({
-			type: literal("text"),
-			text: string(),
-			state: _enum(["streaming", "done"]).optional(),
+	metadata: z.unknown().optional(),
+	parts: z.array(z.union([
+		z.object({
+			type: z.literal("text"),
+			text: z.string(),
+			state: z.enum(["streaming", "done"]).optional(),
 			providerMetadata: providerMetadataSchema.optional()
 		}),
-		object$1({
-			type: literal("reasoning"),
-			text: string(),
-			state: _enum(["streaming", "done"]).optional(),
+		z.object({
+			type: z.literal("reasoning"),
+			id: z.string().optional(),
+			text: z.string(),
+			state: z.enum(["streaming", "done"]).optional(),
 			providerMetadata: providerMetadataSchema.optional()
 		}),
-		object$1({
-			type: literal("custom"),
-			kind: string(),
+		z.object({
+			type: z.literal("custom"),
+			kind: z.string(),
 			providerMetadata: providerMetadataSchema.optional()
 		}),
-		object$1({
-			type: literal("source-url"),
-			sourceId: string(),
-			url: string(),
-			title: string().optional(),
+		z.object({
+			type: z.literal("source-url"),
+			sourceId: z.string(),
+			url: z.string(),
+			title: z.string().optional(),
 			providerMetadata: providerMetadataSchema.optional()
 		}),
-		object$1({
-			type: literal("source-document"),
-			sourceId: string(),
-			mediaType: string(),
-			title: string(),
-			filename: string().optional(),
+		z.object({
+			type: z.literal("source-document"),
+			sourceId: z.string(),
+			mediaType: z.string(),
+			title: z.string(),
+			filename: z.string().optional(),
 			providerMetadata: providerMetadataSchema.optional()
 		}),
-		object$1({
-			type: literal("file"),
-			mediaType: string(),
-			filename: string().optional(),
-			url: string(),
+		z.object({
+			type: z.literal("file"),
+			mediaType: z.string(),
+			filename: z.string().optional(),
+			url: z.string(),
 			providerReference: providerReferenceSchema2.optional(),
 			providerMetadata: providerMetadataSchema.optional()
 		}),
-		object$1({
-			type: literal("reasoning-file"),
-			mediaType: string(),
-			url: string(),
+		z.object({
+			type: z.literal("reasoning-file"),
+			mediaType: z.string(),
+			url: z.string(),
 			providerMetadata: providerMetadataSchema.optional()
 		}),
-		object$1({ type: literal("step-start") }),
-		object$1({
-			type: string().startsWith("data-"),
-			id: string().optional(),
-			data: unknown()
+		z.object({ type: z.literal("step-start") }),
+		z.object({
+			type: z.string().startsWith("data-"),
+			id: z.string().optional(),
+			data: z.unknown()
 		}),
-		object$1({
-			type: literal("dynamic-tool"),
-			toolName: string(),
-			toolCallId: string(),
+		z.object({
+			type: z.literal("dynamic-tool"),
+			toolName: z.string(),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("input-streaming"),
-			input: unknown().optional(),
-			providerExecuted: boolean().optional(),
+			state: z.literal("input-streaming"),
+			input: z.unknown().optional(),
+			providerExecuted: z.boolean().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
-			output: never().optional(),
-			errorText: never().optional(),
-			approval: never().optional()
+			output: z.never().optional(),
+			errorText: z.never().optional(),
+			approval: z.never().optional()
 		}),
-		object$1({
-			type: literal("dynamic-tool"),
-			toolName: string(),
-			toolCallId: string(),
+		z.object({
+			type: z.literal("dynamic-tool"),
+			toolName: z.string(),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("input-available"),
-			input: unknown(),
-			providerExecuted: boolean().optional(),
-			output: never().optional(),
-			errorText: never().optional(),
+			state: z.literal("input-available"),
+			input: z.unknown(),
+			providerExecuted: z.boolean().optional(),
+			output: z.never().optional(),
+			errorText: z.never().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
-			approval: never().optional()
+			approval: z.never().optional()
 		}),
-		object$1({
-			type: literal("dynamic-tool"),
-			toolName: string(),
-			toolCallId: string(),
+		z.object({
+			type: z.literal("dynamic-tool"),
+			toolName: z.string(),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("approval-requested"),
-			input: unknown(),
-			providerExecuted: boolean().optional(),
-			output: never().optional(),
-			errorText: never().optional(),
+			state: z.literal("approval-requested"),
+			input: z.unknown(),
+			providerExecuted: z.boolean().optional(),
+			output: z.never().optional(),
+			errorText: z.never().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
-			approval: object$1({
-				id: string(),
-				approved: never().optional(),
-				reason: never().optional(),
-				isAutomatic: boolean().optional(),
-				signature: string().optional()
+			approval: z.object({
+				id: z.string(),
+				approved: z.never().optional(),
+				reason: z.never().optional(),
+				isAutomatic: z.boolean().optional(),
+				signature: z.string().optional()
 			})
 		}),
-		object$1({
-			type: literal("dynamic-tool"),
-			toolName: string(),
-			toolCallId: string(),
+		z.object({
+			type: z.literal("dynamic-tool"),
+			toolName: z.string(),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("approval-responded"),
-			input: unknown(),
-			providerExecuted: boolean().optional(),
-			output: never().optional(),
-			errorText: never().optional(),
+			state: z.literal("approval-responded"),
+			input: z.unknown(),
+			providerExecuted: z.boolean().optional(),
+			output: z.never().optional(),
+			errorText: z.never().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
-			approval: object$1({
-				id: string(),
-				approved: boolean(),
-				reason: string().optional(),
-				isAutomatic: boolean().optional(),
-				signature: string().optional()
+			approval: z.object({
+				id: z.string(),
+				approved: z.boolean(),
+				reason: z.string().optional(),
+				isAutomatic: z.boolean().optional(),
+				signature: z.string().optional()
 			})
 		}),
-		object$1({
-			type: literal("dynamic-tool"),
-			toolName: string(),
-			toolCallId: string(),
+		z.object({
+			type: z.literal("dynamic-tool"),
+			toolName: z.string(),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("output-available"),
-			input: unknown(),
-			providerExecuted: boolean().optional(),
-			output: unknown(),
-			errorText: never().optional(),
+			state: z.literal("output-available"),
+			input: z.unknown(),
+			providerExecuted: z.boolean().optional(),
+			output: z.unknown(),
+			errorText: z.never().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
 			resultProviderMetadata: providerMetadataSchema.optional(),
-			preliminary: boolean().optional(),
-			approval: object$1({
-				id: string(),
-				approved: literal(true),
-				reason: string().optional(),
-				isAutomatic: boolean().optional(),
-				signature: string().optional()
+			preliminary: z.boolean().optional(),
+			approval: z.object({
+				id: z.string(),
+				approved: z.literal(true),
+				reason: z.string().optional(),
+				isAutomatic: z.boolean().optional(),
+				signature: z.string().optional()
 			}).optional()
 		}),
-		object$1({
-			type: literal("dynamic-tool"),
-			toolName: string(),
-			toolCallId: string(),
+		z.object({
+			type: z.literal("dynamic-tool"),
+			toolName: z.string(),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("output-error"),
-			input: unknown().optional(),
-			rawInput: unknown().optional(),
-			providerExecuted: boolean().optional(),
-			output: never().optional(),
-			errorText: string(),
+			state: z.literal("output-error"),
+			input: z.unknown().optional(),
+			rawInput: z.unknown().optional(),
+			providerExecuted: z.boolean().optional(),
+			output: z.never().optional(),
+			errorText: z.string(),
 			callProviderMetadata: providerMetadataSchema.optional(),
 			resultProviderMetadata: providerMetadataSchema.optional(),
-			approval: object$1({
-				id: string(),
-				approved: literal(true),
-				reason: string().optional(),
-				isAutomatic: boolean().optional(),
-				signature: string().optional()
+			approval: z.object({
+				id: z.string(),
+				approved: z.literal(true),
+				reason: z.string().optional(),
+				isAutomatic: z.boolean().optional(),
+				signature: z.string().optional()
 			}).optional()
 		}),
-		object$1({
-			type: literal("dynamic-tool"),
-			toolName: string(),
-			toolCallId: string(),
+		z.object({
+			type: z.literal("dynamic-tool"),
+			toolName: z.string(),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("output-denied"),
-			input: unknown(),
-			providerExecuted: boolean().optional(),
-			output: never().optional(),
-			errorText: never().optional(),
+			state: z.literal("output-denied"),
+			input: z.unknown(),
+			providerExecuted: z.boolean().optional(),
+			output: z.never().optional(),
+			errorText: z.never().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
-			approval: object$1({
-				id: string(),
-				approved: literal(false),
-				reason: string().optional(),
-				isAutomatic: boolean().optional(),
-				signature: string().optional()
+			approval: z.object({
+				id: z.string(),
+				approved: z.literal(false),
+				reason: z.string().optional(),
+				isAutomatic: z.boolean().optional(),
+				signature: z.string().optional()
 			})
 		}),
-		object$1({
-			type: string().startsWith("tool-"),
-			toolCallId: string(),
+		z.object({
+			type: z.string().startsWith("tool-"),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("input-streaming"),
-			providerExecuted: boolean().optional(),
+			state: z.literal("input-streaming"),
+			providerExecuted: z.boolean().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
-			input: unknown().optional(),
-			output: never().optional(),
-			errorText: never().optional(),
-			approval: never().optional()
+			input: z.unknown().optional(),
+			output: z.never().optional(),
+			errorText: z.never().optional(),
+			approval: z.never().optional()
 		}),
-		object$1({
-			type: string().startsWith("tool-"),
-			toolCallId: string(),
+		z.object({
+			type: z.string().startsWith("tool-"),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("input-available"),
-			providerExecuted: boolean().optional(),
-			input: unknown(),
-			output: never().optional(),
-			errorText: never().optional(),
+			state: z.literal("input-available"),
+			providerExecuted: z.boolean().optional(),
+			input: z.unknown(),
+			output: z.never().optional(),
+			errorText: z.never().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
-			approval: never().optional()
+			approval: z.never().optional()
 		}),
-		object$1({
-			type: string().startsWith("tool-"),
-			toolCallId: string(),
+		z.object({
+			type: z.string().startsWith("tool-"),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("approval-requested"),
-			input: unknown(),
-			providerExecuted: boolean().optional(),
-			output: never().optional(),
-			errorText: never().optional(),
+			state: z.literal("approval-requested"),
+			input: z.unknown(),
+			providerExecuted: z.boolean().optional(),
+			output: z.never().optional(),
+			errorText: z.never().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
-			approval: object$1({
-				id: string(),
-				approved: never().optional(),
-				reason: never().optional(),
-				isAutomatic: boolean().optional(),
-				signature: string().optional()
+			approval: z.object({
+				id: z.string(),
+				approved: z.never().optional(),
+				reason: z.never().optional(),
+				isAutomatic: z.boolean().optional(),
+				signature: z.string().optional()
 			})
 		}),
-		object$1({
-			type: string().startsWith("tool-"),
-			toolCallId: string(),
+		z.object({
+			type: z.string().startsWith("tool-"),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("approval-responded"),
-			input: unknown(),
-			providerExecuted: boolean().optional(),
-			output: never().optional(),
-			errorText: never().optional(),
+			state: z.literal("approval-responded"),
+			input: z.unknown(),
+			providerExecuted: z.boolean().optional(),
+			output: z.never().optional(),
+			errorText: z.never().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
-			approval: object$1({
-				id: string(),
-				approved: boolean(),
-				reason: string().optional(),
-				isAutomatic: boolean().optional(),
-				signature: string().optional()
+			approval: z.object({
+				id: z.string(),
+				approved: z.boolean(),
+				reason: z.string().optional(),
+				isAutomatic: z.boolean().optional(),
+				signature: z.string().optional()
 			})
 		}),
-		object$1({
-			type: string().startsWith("tool-"),
-			toolCallId: string(),
+		z.object({
+			type: z.string().startsWith("tool-"),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("output-available"),
-			providerExecuted: boolean().optional(),
-			input: unknown(),
-			output: unknown(),
-			errorText: never().optional(),
+			state: z.literal("output-available"),
+			providerExecuted: z.boolean().optional(),
+			input: z.unknown(),
+			output: z.unknown(),
+			errorText: z.never().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
 			resultProviderMetadata: providerMetadataSchema.optional(),
-			preliminary: boolean().optional(),
-			approval: object$1({
-				id: string(),
-				approved: literal(true),
-				reason: string().optional(),
-				isAutomatic: boolean().optional(),
-				signature: string().optional()
+			preliminary: z.boolean().optional(),
+			approval: z.object({
+				id: z.string(),
+				approved: z.literal(true),
+				reason: z.string().optional(),
+				isAutomatic: z.boolean().optional(),
+				signature: z.string().optional()
 			}).optional()
 		}),
-		object$1({
-			type: string().startsWith("tool-"),
-			toolCallId: string(),
+		z.object({
+			type: z.string().startsWith("tool-"),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("output-error"),
-			providerExecuted: boolean().optional(),
-			input: unknown().optional(),
-			rawInput: unknown().optional(),
-			output: never().optional(),
-			errorText: string(),
+			state: z.literal("output-error"),
+			providerExecuted: z.boolean().optional(),
+			input: z.unknown().optional(),
+			rawInput: z.unknown().optional(),
+			output: z.never().optional(),
+			errorText: z.string(),
 			callProviderMetadata: providerMetadataSchema.optional(),
 			resultProviderMetadata: providerMetadataSchema.optional(),
-			approval: object$1({
-				id: string(),
-				approved: literal(true),
-				reason: string().optional(),
-				isAutomatic: boolean().optional(),
-				signature: string().optional()
+			approval: z.object({
+				id: z.string(),
+				approved: z.literal(true),
+				reason: z.string().optional(),
+				isAutomatic: z.boolean().optional(),
+				signature: z.string().optional()
 			}).optional()
 		}),
-		object$1({
-			type: string().startsWith("tool-"),
-			toolCallId: string(),
+		z.object({
+			type: z.string().startsWith("tool-"),
+			toolCallId: z.string(),
 			toolMetadata: toolMetadataSchema2.optional(),
-			state: literal("output-denied"),
-			providerExecuted: boolean().optional(),
-			input: unknown(),
-			output: never().optional(),
-			errorText: never().optional(),
+			state: z.literal("output-denied"),
+			providerExecuted: z.boolean().optional(),
+			input: z.unknown(),
+			output: z.never().optional(),
+			errorText: z.never().optional(),
 			callProviderMetadata: providerMetadataSchema.optional(),
-			approval: object$1({
-				id: string(),
-				approved: literal(false),
-				reason: string().optional(),
-				isAutomatic: boolean().optional(),
-				signature: string().optional()
+			approval: z.object({
+				id: z.string(),
+				approved: z.literal(false),
+				reason: z.string().optional(),
+				isAutomatic: z.boolean().optional(),
+				signature: z.string().optional()
 			})
 		})
-	])).nonempty("Message must contain at least one part")
+	]))
+}).superRefine((message, context) => {
+	if (message.role !== "assistant" && message.parts.length === 0) context.addIssue({
+		origin: "array",
+		code: "too_small",
+		minimum: 1,
+		inclusive: true,
+		input: message.parts,
+		path: ["parts"],
+		message: "Message must contain at least one part"
+	});
 })).nonempty("Messages array must not be empty")));
 createIdGenerator({
 	prefix: "call",
@@ -7485,16 +7745,16 @@ async function convertFileListToFileUIParts(files) {
 	if (files == null) return [];
 	if (!globalThis.FileList || !(files instanceof globalThis.FileList)) throw new Error("FileList is not supported in the current environment");
 	return Promise.all(Array.from(files).map(async (file) => {
-		const { name: name22, type } = file;
+		const { name: name23, type } = file;
 		return {
 			type: "file",
 			mediaType: type,
-			filename: name22,
+			filename: name23,
 			url: await new Promise((resolve3, reject) => {
 				const reader = new FileReader();
 				reader.onload = (readerEvent) => {
-					var _a22;
-					resolve3((_a22 = readerEvent.target) == null ? void 0 : _a22.result);
+					var _a23;
+					resolve3((_a23 = readerEvent.target) == null ? void 0 : _a23.result);
 				};
 				reader.onerror = (error) => reject(error);
 				reader.readAsDataURL(file);
@@ -7513,7 +7773,7 @@ var HttpChatTransport = class {
 		this.prepareReconnectToStreamRequest = prepareReconnectToStreamRequest;
 	}
 	async sendMessages({ abortSignal, ...options }) {
-		var _a22, _b, _c, _d, _e;
+		var _a23, _b, _c, _d, _e;
 		const resolvedBody = await resolve(this.body);
 		const resolvedHeaders = await resolve(this.headers);
 		const resolvedCredentials = await resolve(this.credentials);
@@ -7521,7 +7781,7 @@ var HttpChatTransport = class {
 			...normalizeHeaders(resolvedHeaders),
 			...normalizeHeaders(options.headers)
 		};
-		const preparedRequest = await ((_a22 = this.prepareSendMessagesRequest) == null ? void 0 : _a22.call(this, {
+		const preparedRequest = await ((_a23 = this.prepareSendMessagesRequest) == null ? void 0 : _a23.call(this, {
 			api: this.api,
 			id: options.chatId,
 			messages: options.messages,
@@ -7561,7 +7821,7 @@ var HttpChatTransport = class {
 		return this.processResponseStream(response.body);
 	}
 	async reconnectToStream(options) {
-		var _a22, _b, _c, _d, _e;
+		var _a23, _b, _c, _d, _e;
 		const resolvedBody = await resolve(this.body);
 		const resolvedHeaders = await resolve(this.headers);
 		const resolvedCredentials = await resolve(this.credentials);
@@ -7569,7 +7829,7 @@ var HttpChatTransport = class {
 			...normalizeHeaders(resolvedHeaders),
 			...normalizeHeaders(options.headers)
 		};
-		const preparedRequest = await ((_a22 = this.prepareReconnectToStreamRequest) == null ? void 0 : _a22.call(this, {
+		const preparedRequest = await ((_a23 = this.prepareReconnectToStreamRequest) == null ? void 0 : _a23.call(this, {
 			api: this.api,
 			id: options.chatId,
 			body: {
@@ -7586,7 +7846,8 @@ var HttpChatTransport = class {
 		const response = await ((_d = this.fetch) != null ? _d : globalThis.fetch)(api, {
 			method: "GET",
 			headers,
-			credentials
+			credentials,
+			signal: options.abortSignal
 		});
 		if (response.status === 204) return null;
 		if (!response.ok) throw new Error((_e = await response.text()) != null ? _e : "Failed to fetch the chat response.");
@@ -7609,8 +7870,10 @@ var DefaultChatTransport = class extends HttpChatTransport {
 	}
 };
 var AbstractChat = class {
-	constructor({ generateId: generateId2 = generateId, id = generateId2(), transport = new DefaultChatTransport(), messageMetadataSchema, dataPartSchemas, state, onError, onToolCall, onFinish, onData, sendAutomaticallyWhen }) {
+	constructor({ generateId: generateId3 = generateId, id = generateId3(), transport = new DefaultChatTransport(), messageMetadataSchema, dataPartSchemas, state, onError, onToolCall, onFinish, onData, sendAutomaticallyWhen }) {
+		this.pendingMessagePreparations = /* @__PURE__ */ new Set();
 		this.activeResponse = void 0;
+		this.activeResumeRequest = void 0;
 		this.jobExecutor = new SerialJobExecutor();
 		/**
 		* Appends or replaces a user message to the chat list. This triggers the API call to fetch
@@ -7619,21 +7882,31 @@ var AbstractChat = class {
 		* If a messageId is provided, the message will be replaced.
 		*/
 		this.sendMessage = async (message, options) => {
-			var _a22, _b, _c, _d;
+			var _a23, _b, _c, _d;
 			if (message == null) {
 				await this.makeRequest({
 					trigger: "submit-message",
-					messageId: (_a22 = this.lastMessage) == null ? void 0 : _a22.id,
+					messageId: (_a23 = this.lastMessage) == null ? void 0 : _a23.id,
 					...options
 				});
 				return;
 			}
 			let uiMessage;
-			if ("text" in message || "files" in message) uiMessage = { parts: [...Array.isArray(message.files) ? message.files : await convertFileListToFileUIParts(message.files), ..."text" in message && message.text != null ? [{
-				type: "text",
-				text: message.text
-			}] : []] };
-			else uiMessage = message;
+			if ("text" in message || "files" in message) {
+				const abortController = new AbortController();
+				this.pendingMessagePreparations.add(abortController);
+				let fileParts;
+				try {
+					fileParts = Array.isArray(message.files) ? message.files : await convertFileListToFileUIParts(message.files);
+				} finally {
+					this.pendingMessagePreparations.delete(abortController);
+				}
+				if (abortController.signal.aborted) return;
+				uiMessage = { parts: [...fileParts, ..."text" in message && message.text != null ? [{
+					type: "text",
+					text: message.text
+				}] : []] };
+			} else uiMessage = message;
 			if (message.messageId != null) {
 				const messageIndex = this.state.messages.findIndex((m) => m.id === message.messageId);
 				if (messageIndex === -1) throw new Error(`message with id ${message.messageId} not found`);
@@ -7708,10 +7981,10 @@ var AbstractChat = class {
 			});
 			if (this.activeResponse) this.activeResponse.state.message.parts = this.activeResponse.state.message.parts.map(updatePart);
 			if (this.status !== "streaming" && this.status !== "submitted" && this.sendAutomaticallyWhen) this.shouldSendAutomatically().then((shouldSend) => {
-				var _a22;
+				var _a23;
 				if (shouldSend) this.makeRequest({
 					trigger: "submit-message",
-					messageId: (_a22 = this.lastMessage) == null ? void 0 : _a22.id,
+					messageId: (_a23 = this.lastMessage) == null ? void 0 : _a23.id,
 					...options
 				});
 			});
@@ -7731,10 +8004,10 @@ var AbstractChat = class {
 			});
 			if (this.activeResponse) this.activeResponse.state.message.parts = this.activeResponse.state.message.parts.map(updatePart);
 			if (this.status !== "streaming" && this.status !== "submitted" && this.sendAutomaticallyWhen) this.shouldSendAutomatically().then((shouldSend) => {
-				var _a22;
+				var _a23;
 				if (shouldSend) this.makeRequest({
 					trigger: "submit-message",
-					messageId: (_a22 = this.lastMessage) == null ? void 0 : _a22.id,
+					messageId: (_a23 = this.lastMessage) == null ? void 0 : _a23.id,
 					...options
 				});
 			});
@@ -7745,13 +8018,14 @@ var AbstractChat = class {
 		* Abort the current request immediately, keep the generated tokens if any.
 		*/
 		this.stop = async () => {
-			var _a22;
-			if (this.status !== "streaming" && this.status !== "submitted") return;
-			if ((_a22 = this.activeResponse) == null ? void 0 : _a22.abortController) this.activeResponse.abortController.abort();
+			var _a23, _b;
+			for (const controller of this.pendingMessagePreparations) controller.abort();
+			(_a23 = this.activeResumeRequest) == null || _a23.abortController.abort();
+			(_b = this.activeResponse) == null || _b.abortController.abort();
 		};
 		this.id = id;
 		this.transport = transport;
-		this.generateId = generateId2;
+		this.generateId = generateId3;
 		this.messageMetadataSchema = messageMetadataSchema;
 		this.dataPartSchemas = dataPartSchemas;
 		this.state = state;
@@ -7796,23 +8070,51 @@ var AbstractChat = class {
 		return result;
 	}
 	async makeRequest({ trigger, metadata, headers, body, messageId }) {
-		var _a22, _b, _c;
+		var _a23, _b, _c;
+		const abortController = new AbortController();
+		const activeResumeRequest = trigger === "resume-stream" ? { abortController } : void 0;
+		if (activeResumeRequest) {
+			(_a23 = this.activeResumeRequest) == null || _a23.abortController.abort();
+			this.activeResumeRequest = activeResumeRequest;
+		}
+		const isCurrentRequest = () => activeResumeRequest == null || this.activeResumeRequest === activeResumeRequest;
+		const clearActiveResumeRequest = () => {
+			if (this.activeResumeRequest === activeResumeRequest) this.activeResumeRequest = void 0;
+		};
 		let resumeStream;
 		if (trigger === "resume-stream") try {
 			const reconnect = await this.transport.reconnectToStream({
 				chatId: this.id,
+				abortSignal: abortController.signal,
 				metadata,
 				headers,
 				body
 			});
-			if (reconnect == null) return;
+			if (abortController.signal.aborted || !isCurrentRequest()) {
+				await (reconnect == null ? void 0 : reconnect.cancel().catch(() => {}));
+				if (isCurrentRequest()) this.setStatus({ status: "ready" });
+				clearActiveResumeRequest();
+				return;
+			}
+			if (reconnect == null) {
+				this.setStatus({ status: "ready" });
+				clearActiveResumeRequest();
+				return;
+			}
 			resumeStream = reconnect;
 		} catch (err) {
+			if (abortController.signal.aborted || err.name === "AbortError") {
+				if (isCurrentRequest()) this.setStatus({ status: "ready" });
+				clearActiveResumeRequest();
+				return;
+			}
+			if (!isCurrentRequest()) return;
 			if (this.onError && err instanceof Error) this.onError(err);
 			this.setStatus({
 				status: "error",
 				error: err
 			});
+			clearActiveResumeRequest();
 			return;
 		}
 		this.setStatus({
@@ -7823,39 +8125,45 @@ var AbstractChat = class {
 		let isAbort = false;
 		let isDisconnect = false;
 		let isError = false;
+		let activeResponse;
 		try {
-			const activeResponse = {
+			const response = {
 				state: createStreamingUIMessageState({
-					lastMessage: this.state.snapshot(lastMessage),
+					lastMessage: trigger === "resume-stream" || trigger === "regenerate-message" ? void 0 : this.state.snapshot(lastMessage),
 					messageId: this.generateId()
 				}),
-				abortController: new AbortController()
+				abortController
 			};
-			activeResponse.abortController.signal.addEventListener("abort", () => {
+			activeResponse = response;
+			response.abortController.signal.addEventListener("abort", () => {
 				isAbort = true;
 			});
-			this.activeResponse = activeResponse;
+			this.activeResponse = response;
 			let stream;
 			if (trigger === "resume-stream") stream = resumeStream;
 			else stream = await this.transport.sendMessages({
 				chatId: this.id,
 				messages: this.state.messages,
-				abortSignal: activeResponse.abortController.signal,
+				abortSignal: response.abortController.signal,
 				metadata,
 				headers,
 				body,
 				trigger,
 				messageId
 			});
-			const runUpdateMessageJob = (job) => this.jobExecutor.run(() => job({
-				state: activeResponse.state,
-				write: () => {
-					var _a23;
-					this.setStatus({ status: "streaming" });
-					if (activeResponse.state.message.id === ((_a23 = this.lastMessage) == null ? void 0 : _a23.id)) this.state.replaceMessage(this.state.messages.length - 1, activeResponse.state.message);
-					else this.state.pushMessage(activeResponse.state.message);
-				}
-			}));
+			const runUpdateMessageJob = (job) => this.jobExecutor.run(() => {
+				if (response.abortController.signal.aborted) return Promise.resolve();
+				return job({
+					state: response.state,
+					write: ({ updateStatus = true } = {}) => {
+						var _a24;
+						if (response.abortController.signal.aborted) return;
+						if (updateStatus) this.setStatus({ status: "streaming" });
+						if (response.state.message.id === ((_a24 = this.lastMessage) == null ? void 0 : _a24.id)) this.state.replaceMessage(this.state.messages.length - 1, response.state.message);
+						else this.state.pushMessage(response.state.message);
+					}
+				});
+			});
 			await consumeStream({
 				stream: processUIMessageStream({
 					stream,
@@ -7868,17 +8176,23 @@ var AbstractChat = class {
 						throw error;
 					}
 				}),
+				abortSignal: response.abortController.signal,
 				onError: (error) => {
 					throw error;
 				}
 			});
-			this.setStatus({ status: "ready" });
+			if (isAbort) {
+				if (isCurrentRequest()) this.setStatus({ status: "ready" });
+				return null;
+			}
+			if (isCurrentRequest()) this.setStatus({ status: "ready" });
 		} catch (err) {
 			if (isAbort || err.name === "AbortError") {
 				isAbort = true;
-				this.setStatus({ status: "ready" });
+				if (isCurrentRequest()) this.setStatus({ status: "ready" });
 				return null;
 			}
+			if (!isCurrentRequest()) return null;
 			isError = true;
 			if (err instanceof TypeError && (err.message.toLowerCase().includes("fetch") || err.message.toLowerCase().includes("network"))) isDisconnect = true;
 			if (this.onError && err instanceof Error) this.onError(err);
@@ -7888,18 +8202,18 @@ var AbstractChat = class {
 			});
 		} finally {
 			try {
-				(_b = this.onFinish) == null || _b.call(this, {
-					message: this.activeResponse.state.message,
+				if (activeResponse) (_b = this.onFinish) == null || _b.call(this, {
+					message: activeResponse.state.message,
 					messages: this.state.messages,
 					isAbort,
 					isDisconnect,
 					isError,
-					finishReason: (_a22 = this.activeResponse) == null ? void 0 : _a22.state.finishReason
+					finishReason: activeResponse.state.finishReason
 				});
-			} catch (err) {
-				console.error(err);
+			} finally {
+				if (this.activeResponse === activeResponse) this.activeResponse = void 0;
+				clearActiveResumeRequest();
 			}
-			this.activeResponse = void 0;
 		}
 		if (!isError && await this.shouldSendAutomatically()) await this.makeRequest({
 			trigger: "submit-message",
@@ -7956,6 +8270,11 @@ var __privateSet = (obj, member, value, setter) => {
 function throttle(fn, waitMs) {
 	return waitMs != null ? (0, import_throttleit.default)(fn, waitMs) : fn;
 }
+function cloneMetadata(metadata) {
+	if (Array.isArray(metadata)) return [...metadata];
+	if (metadata != null && typeof metadata === "object" && (Object.getPrototypeOf(metadata) === Object.prototype || Object.getPrototypeOf(metadata) === null)) return { ...metadata };
+	return metadata;
+}
 var _messages;
 var _status;
 var _error;
@@ -7989,7 +8308,16 @@ var ReactChatState = class {
 			]);
 			__privateGet(this, _callMessagesCallbacks).call(this);
 		};
-		this.snapshot = (value) => structuredClone(value);
+		this.snapshot = (value) => {
+			if (value == null || typeof value !== "object" || !("parts" in value) || !Array.isArray(value.parts)) return value;
+			const message = value;
+			const snapshot = {
+				...message,
+				parts: message.parts.map((part) => ({ ...part }))
+			};
+			if ("metadata" in message) snapshot.metadata = cloneMetadata(message.metadata);
+			return snapshot;
+		};
 		this["~registerMessagesCallback"] = (onChange, throttleWaitMs) => {
 			const callback = throttleWaitMs ? throttle(onChange, throttleWaitMs) : onChange;
 			__privateGet(this, _messagesCallbacks).add(callback);
@@ -8112,8 +8440,47 @@ function useChat({ throttle: throttle2, experimental_throttle, resume = false, .
 	};
 	const chatRef = (0, import_react.useRef)("chat" in options ? options.chat : new Chat(chatOptions));
 	if ("chat" in options && options.chat !== chatRef.current || "id" in options && options.id != null && chatRef.current.id !== options.id) chatRef.current = "chat" in options ? options.chat : new Chat(chatOptions);
-	const messages = (0, import_react.useSyncExternalStore)((0, import_react.useCallback)((update) => chatRef.current["~registerMessagesCallback"](update, throttleWaitMs), [throttleWaitMs, chatRef.current.id]), () => chatRef.current.messages, () => chatRef.current.messages);
-	const status = (0, import_react.useSyncExternalStore)(chatRef.current["~registerStatusCallback"], () => chatRef.current.status, () => chatRef.current.status);
+	const chat = chatRef.current;
+	const messagesSnapshotRef = (0, import_react.useRef)({
+		chat,
+		messages: chat.messages
+	});
+	if (messagesSnapshotRef.current.chat !== chat) messagesSnapshotRef.current = {
+		chat,
+		messages: chat.messages
+	};
+	const subscribeToMessages = (0, import_react.useCallback)((update) => {
+		let isSubscribed = true;
+		const updateMessages = () => {
+			if (!isSubscribed || messagesSnapshotRef.current.chat !== chat) return;
+			messagesSnapshotRef.current = {
+				chat,
+				messages: chat.messages
+			};
+			update();
+		};
+		const unsubscribe = chat["~registerMessagesCallback"](updateMessages, throttleWaitMs);
+		messagesSnapshotRef.current = {
+			chat,
+			messages: chat.messages
+		};
+		return () => {
+			isSubscribed = false;
+			unsubscribe();
+		};
+	}, [chat, throttleWaitMs]);
+	const getMessagesSnapshot = (0, import_react.useCallback)(() => messagesSnapshotRef.current.messages, []);
+	const messages = (0, import_react.useSyncExternalStore)(subscribeToMessages, getMessagesSnapshot, getMessagesSnapshot);
+	const subscribeToStatus = (0, import_react.useCallback)((update) => chat["~registerStatusCallback"](() => {
+		if (messagesSnapshotRef.current.chat !== chat) return;
+		if (chat.status === "ready" || chat.status === "error") messagesSnapshotRef.current = {
+			chat,
+			messages: chat.messages
+		};
+		update();
+	}), [chat]);
+	const getStatusSnapshot = (0, import_react.useCallback)(() => chat.status, [chat]);
+	const status = (0, import_react.useSyncExternalStore)(subscribeToStatus, getStatusSnapshot, getStatusSnapshot);
 	const error = (0, import_react.useSyncExternalStore)(chatRef.current["~registerErrorCallback"], () => chatRef.current.error, () => chatRef.current.error);
 	const setMessages = (0, import_react.useCallback)((messagesParam) => {
 		if (typeof messagesParam === "function") messagesParam = messagesParam(chatRef.current.messages);

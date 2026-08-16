@@ -1,6 +1,6 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { c as require_react, s as require_jsx_runtime } from "../_libs/@ai-sdk/react+[...].mjs";
-import { i as Slot } from "../_libs/@radix-ui/react-arrow+[...].mjs";
+import { r as Slot } from "../_libs/@radix-ui/react-collection+[...].mjs";
 import { n as clsx, t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/button-DRsC1qZi.js

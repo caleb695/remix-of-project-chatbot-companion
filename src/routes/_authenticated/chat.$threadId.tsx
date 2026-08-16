@@ -129,7 +129,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   // Server-side runs append their turns in the database; mirror them in here.
   useEffect(() => {
     if (initial.length > messages.length) setMessages(initial);
-  }, [initial, messages.length, setMessages]);
+  }, [initial.length, messages.length, setMessages]);
 
   const [input, setInput] = useState("");
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -137,14 +137,14 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerH, setComposerH] = useState(120);
 
-  // For durable runs (GitHub Actions), don't block user input while the job is running
-  // since the user can send follow-up messages that will be queued for the next run.
-  // For in-page streaming (Kaggle, plan mode), still block to avoid concurrent requests.
-  const busy = (status === "submitted" || status === "streaming") && !durable;
   // Build/Debug/Improve runs happen on GitHub Actions so they survive closing
   // the tab. Plan mode stays as a live in-page conversation.
   // Kaggle notebooks have no GitHub Actions runner, so they always stream in-page.
   const durable = !isKaggle && mode !== "plan" && Boolean(thread.repo_selections?.workflow_installed_at);
+  // For durable runs (GitHub Actions), don't block user input while the job is running
+  // since the user can send follow-up messages that will be queued for the next run.
+  // For in-page streaming (Kaggle, plan mode), still block to avoid concurrent requests.
+  const busy = (status === "submitted" || status === "streaming") && !durable;
 
   useLayoutEffect(() => {
     if (!composerRef.current) return;

@@ -1,5 +1,5 @@
 import { s as require_jsx_runtime } from "../_libs/@ai-sdk/react+[...].mjs";
-import { f as Outlet, g as Link, l as useRouterState } from "../_libs/@tanstack/react-router+[...].mjs";
+import { d as useRouterState, m as Outlet, v as Link } from "../_libs/@tanstack/react-router+[...].mjs";
 import { i as User, p as MessageSquare } from "../_libs/lucide-react.mjs";
 import { t as useKeyboardInset } from "./use-keyboard-inset-DKwWDHSm.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/route-Db3-ertr.js

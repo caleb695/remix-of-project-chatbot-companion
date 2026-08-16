@@ -80,6 +80,57 @@ var PostgrestError = class extends Error {
 		};
 	}
 };
+function _typeof(o) {
+	"@babel/helpers - typeof";
+	return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o$1) {
+		return typeof o$1;
+	} : function(o$1) {
+		return o$1 && "function" == typeof Symbol && o$1.constructor === Symbol && o$1 !== Symbol.prototype ? "symbol" : typeof o$1;
+	}, _typeof(o);
+}
+function toPrimitive(t, r) {
+	if ("object" != _typeof(t) || !t) return t;
+	var e = t[Symbol.toPrimitive];
+	if (void 0 !== e) {
+		var i = e.call(t, r || "default");
+		if ("object" != _typeof(i)) return i;
+		throw new TypeError("@@toPrimitive must return a primitive value.");
+	}
+	return ("string" === r ? String : Number)(t);
+}
+function toPropertyKey(t) {
+	var i = toPrimitive(t, "string");
+	return "symbol" == _typeof(i) ? i : i + "";
+}
+function _defineProperty(e, r, t) {
+	return (r = toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
+		value: t,
+		enumerable: !0,
+		configurable: !0,
+		writable: !0
+	}) : e[r] = t, e;
+}
+function ownKeys(e, r) {
+	var t = Object.keys(e);
+	if (Object.getOwnPropertySymbols) {
+		var o = Object.getOwnPropertySymbols(e);
+		r && (o = o.filter(function(r$1) {
+			return Object.getOwnPropertyDescriptor(e, r$1).enumerable;
+		})), t.push.apply(t, o);
+	}
+	return t;
+}
+function _objectSpread2(e) {
+	for (var r = 1; r < arguments.length; r++) {
+		var t = null != arguments[r] ? arguments[r] : {};
+		r % 2 ? ownKeys(Object(t), !0).forEach(function(r$1) {
+			_defineProperty(e, r$1, t[r$1]);
+		}) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function(r$1) {
+			Object.defineProperty(e, r$1, Object.getOwnPropertyDescriptor(t, r$1));
+		});
+	}
+	return e;
+}
 /**
 * Sleep for a given number of milliseconds.
 * If an AbortSignal is provided, the sleep resolves early when the signal is aborted.
@@ -405,6 +456,10 @@ var PostgrestBuilder = class {
 				count = null;
 				status = 406;
 				statusText = "Not Acceptable";
+				if (_this2.shouldThrowOnError) {
+					var _error$hint;
+					throw new PostgrestError(_objectSpread2(_objectSpread2({}, error), {}, { hint: (_error$hint = error.hint) !== null && _error$hint !== void 0 ? _error$hint : "" }));
+				}
 			} else if (data.length === 1) data = data[0];
 			else data = null;
 		} else {
@@ -590,7 +645,7 @@ var PostgrestTransformBuilder = class extends PostgrestBuilder {
 	*     }
 	*   ],
 	*   "status": 201,
-	*   "statusText": "Created"
+	*   "statusText": ""
 	* }
 	* ```
 	*/
@@ -1027,8 +1082,8 @@ var PostgrestTransformBuilder = class extends PostgrestBuilder {
 	*       "hint": "",
 	*       "code": ""
 	*     },
-	*     "status": 400,
-	*     "statusText": "Bad Request"
+	*     "status": 0,
+	*     "statusText": ""
 	*   }
 	*
 	* ```
@@ -2046,7 +2101,7 @@ var PostgrestQueryBuilder = class {
 	*     "message": "permission denied for table characters"
 	*   },
 	*   "status": 401,
-	*   "statusText": "Unauthorized"
+	*   "statusText": ""
 	* }
 	* ```
 	*
@@ -2823,7 +2878,7 @@ var PostgrestQueryBuilder = class {
 	* ```json
 	* {
 	*   "status": 201,
-	*   "statusText": "Created"
+	*   "statusText": ""
 	* }
 	* ```
 	*
@@ -2860,7 +2915,7 @@ var PostgrestQueryBuilder = class {
 	*     }
 	*   ],
 	*   "status": 201,
-	*   "statusText": "Created"
+	*   "statusText": ""
 	* }
 	* ```
 	*
@@ -2894,7 +2949,7 @@ var PostgrestQueryBuilder = class {
 	*     "message": "duplicate key value violates unique constraint \"countries_pkey\""
 	*   },
 	*   "status": 409,
-	*   "statusText": "Conflict"
+	*   "statusText": ""
 	* }
 	* ```
 	*/
@@ -3041,7 +3096,7 @@ var PostgrestQueryBuilder = class {
 	*     }
 	*   ],
 	*   "status": 201,
-	*   "statusText": "Created"
+	*   "statusText": ""
 	* }
 	* ```
 	*
@@ -3090,7 +3145,7 @@ var PostgrestQueryBuilder = class {
 	*     }
 	*   ],
 	*   "status": 201,
-	*   "statusText": "Created"
+	*   "statusText": ""
 	* }
 	* ```
 	*
@@ -3135,7 +3190,7 @@ var PostgrestQueryBuilder = class {
 	*     "message": "duplicate key value violates unique constraint \"users_handle_key\""
 	*   },
 	*   "status": 409,
-	*   "statusText": "Conflict"
+	*   "statusText": ""
 	* }
 	* ```
 	*/
@@ -3214,7 +3269,7 @@ var PostgrestQueryBuilder = class {
 	* ```json
 	* {
 	*   "status": 204,
-	*   "statusText": "No Content"
+	*   "statusText": ""
 	* }
 	* ```
 	*
@@ -3382,7 +3437,7 @@ var PostgrestQueryBuilder = class {
 	* ```json
 	* {
 	*   "status": 204,
-	*   "statusText": "No Content"
+	*   "statusText": ""
 	* }
 	* ```
 	*
@@ -3452,7 +3507,7 @@ var PostgrestQueryBuilder = class {
 	* ```json
 	* {
 	*   "status": 204,
-	*   "statusText": "No Content"
+	*   "statusText": ""
 	* }
 	* ```
 	*/
@@ -3472,57 +3527,6 @@ var PostgrestQueryBuilder = class {
 		});
 	}
 };
-function _typeof(o) {
-	"@babel/helpers - typeof";
-	return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o$1) {
-		return typeof o$1;
-	} : function(o$1) {
-		return o$1 && "function" == typeof Symbol && o$1.constructor === Symbol && o$1 !== Symbol.prototype ? "symbol" : typeof o$1;
-	}, _typeof(o);
-}
-function toPrimitive(t, r) {
-	if ("object" != _typeof(t) || !t) return t;
-	var e = t[Symbol.toPrimitive];
-	if (void 0 !== e) {
-		var i = e.call(t, r || "default");
-		if ("object" != _typeof(i)) return i;
-		throw new TypeError("@@toPrimitive must return a primitive value.");
-	}
-	return ("string" === r ? String : Number)(t);
-}
-function toPropertyKey(t) {
-	var i = toPrimitive(t, "string");
-	return "symbol" == _typeof(i) ? i : i + "";
-}
-function _defineProperty(e, r, t) {
-	return (r = toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
-		value: t,
-		enumerable: !0,
-		configurable: !0,
-		writable: !0
-	}) : e[r] = t, e;
-}
-function ownKeys(e, r) {
-	var t = Object.keys(e);
-	if (Object.getOwnPropertySymbols) {
-		var o = Object.getOwnPropertySymbols(e);
-		r && (o = o.filter(function(r$1) {
-			return Object.getOwnPropertyDescriptor(e, r$1).enumerable;
-		})), t.push.apply(t, o);
-	}
-	return t;
-}
-function _objectSpread2(e) {
-	for (var r = 1; r < arguments.length; r++) {
-		var t = null != arguments[r] ? arguments[r] : {};
-		r % 2 ? ownKeys(Object(t), !0).forEach(function(r$1) {
-			_defineProperty(e, r$1, t[r$1]);
-		}) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function(r$1) {
-			Object.defineProperty(e, r$1, Object.getOwnPropertyDescriptor(t, r$1));
-		});
-	}
-	return e;
-}
 /**
 * PostgREST client.
 *

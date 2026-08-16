@@ -1,4 +1,4 @@
-import { $ as withUserAgentSuffix, C as downloadBlob, D as generateId, Et as TooManyEmbeddingValuesForCallError, H as postFormDataToApi, K as resolveFullMediaType, M as isCustomReasoning, Ot as UnsupportedFunctionalityError, Tt as InvalidPromptError, U as postJsonToApi, V as parseProviderOptions, X as serializeModelOptions, _t as object, b as createJsonErrorResponseHandler, bt as string, ct as array, et as withoutTrailingSlash, g as convertToFormData, gt as number, h as convertToBase64, it as _enum, k as getTopLevelMediaType, l as StreamingToolCallTracker, lt as boolean, m as convertBase64ToUint8Array, mt as looseObject, nt as WORKFLOW_DESERIALIZE, p as combineHeaders, pt as literal, rt as WORKFLOW_SERIALIZE, st as any, v as createEventSourceResponseHandler, vt as record, x as createJsonResponseHandler, xt as union } from "./@ai-sdk/gateway+[...].mjs";
+import { $ as serializeModelOptions, At as UnsupportedFunctionalityError, C as createNullLanguageModelUsage, Ct as union, Dt as InvalidPromptError, F as isCustomReasoning, G as postFormDataToApi, K as postJsonToApi, M as getTopLevelMediaType, Ot as TooManyEmbeddingValuesForCallError, S as createLanguageModelResponseMetadata, St as string, T as downloadBlob, W as parseProviderOptions, Y as resolveFullMediaType, _t as looseObject, at as WORKFLOW_DESERIALIZE, b as createJsonErrorResponseHandler, bt as object, dt as array, ft as boolean, g as convertToFormData, gt as literal, h as convertToBase64, k as generateId, l as StreamingToolCallTracker, m as convertBase64ToUint8Array, nt as withUserAgentSuffix, ot as WORKFLOW_SERIALIZE, p as combineHeaders, rt as withoutTrailingSlash, st as _enum, ut as any, v as createEventSourceResponseHandler, x as createJsonResponseHandler, xt as record, yt as number } from "./@ai-sdk/gateway+[...].mjs";
 //#region node_modules/@ai-sdk/openai-compatible/dist/index.js
 function toCamelCase(str) {
 	return str.replace(/[_-]([a-z])/g, (g) => g[1].toUpperCase());
@@ -27,20 +27,7 @@ var defaultOpenAICompatibleErrorStructure = {
 };
 function convertOpenAICompatibleChatUsage(usage) {
 	var _a, _b, _c, _d, _e, _f;
-	if (usage == null) return {
-		inputTokens: {
-			total: void 0,
-			noCache: void 0,
-			cacheRead: void 0,
-			cacheWrite: void 0
-		},
-		outputTokens: {
-			total: void 0,
-			text: void 0,
-			reasoning: void 0
-		},
-		raw: void 0
-	};
+	if (usage == null) return createNullLanguageModelUsage();
 	const promptTokens = (_a = usage.prompt_tokens) != null ? _a : 0;
 	const completionTokens = (_b = usage.completion_tokens) != null ? _b : 0;
 	const cacheReadTokens = (_d = (_c = usage.prompt_tokens_details) == null ? void 0 : _c.cached_tokens) != null ? _d : 0;
@@ -54,7 +41,7 @@ function convertOpenAICompatibleChatUsage(usage) {
 		},
 		outputTokens: {
 			total: completionTokens,
-			text: completionTokens - reasoningTokens,
+			text: Math.max(0, completionTokens - reasoningTokens),
 			reasoning: reasoningTokens
 		},
 		raw: usage
@@ -209,9 +196,7 @@ function convertToOpenAICompatibleChatMessages(prompt) {
 							break;
 						case "content":
 						case "json":
-						case "error-json":
-							contentValue = JSON.stringify(output.value);
-							break;
+						case "error-json": contentValue = JSON.stringify(output.value);
 					}
 					const toolResponseMetadata = getOpenAIMetadata(toolResponse);
 					messages.push({
@@ -226,13 +211,6 @@ function convertToOpenAICompatibleChatMessages(prompt) {
 		}
 	}
 	return messages;
-}
-function getResponseMetadata({ id, model, created }) {
-	return {
-		id: id != null ? id : void 0,
-		modelId: model != null ? model : void 0,
-		timestamp: created != null ? /* @__PURE__ */ new Date(created * 1e3) : void 0
-	};
 }
 function mapOpenAICompatibleFinishReason(finishReason) {
 	switch (finishReason) {
@@ -487,7 +465,7 @@ var OpenAICompatibleChatLanguageModel = class _OpenAICompatibleChatLanguageModel
 			providerMetadata,
 			request: { body },
 			response: {
-				...getResponseMetadata(responseBody),
+				...createLanguageModelResponseMetadata(responseBody),
 				headers: responseHeaders,
 				body: rawResponse
 			},
@@ -607,7 +585,7 @@ var OpenAICompatibleChatLanguageModel = class _OpenAICompatibleChatLanguageModel
 						};
 						controller.enqueue({
 							type: "error",
-							error: chunk.value.error.message
+							error: chunk.value.error
 						});
 						return;
 					}
@@ -616,7 +594,7 @@ var OpenAICompatibleChatLanguageModel = class _OpenAICompatibleChatLanguageModel
 						isFirstChunk = false;
 						controller.enqueue({
 							type: "response-metadata",
-							...getResponseMetadata(value)
+							...createLanguageModelResponseMetadata(value)
 						});
 					}
 					if (value.usage != null) usage = value.usage;
@@ -771,20 +749,7 @@ var chunkBaseSchema = looseObject({
 var createOpenAICompatibleChatChunkSchema = (errorSchema) => union([chunkBaseSchema, errorSchema]);
 function convertOpenAICompatibleCompletionUsage(usage) {
 	var _a, _b;
-	if (usage == null) return {
-		inputTokens: {
-			total: void 0,
-			noCache: void 0,
-			cacheRead: void 0,
-			cacheWrite: void 0
-		},
-		outputTokens: {
-			total: void 0,
-			text: void 0,
-			reasoning: void 0
-		},
-		raw: void 0
-	};
+	if (usage == null) return createNullLanguageModelUsage();
 	const promptTokens = (_a = usage.prompt_tokens) != null ? _a : 0;
 	const completionTokens = (_b = usage.completion_tokens) != null ? _b : 0;
 	return {
@@ -849,13 +814,6 @@ ${assistantMessage}
 		prompt: text,
 		stopSequences: [`
 ${user}:`]
-	};
-}
-function getResponseMetadata2({ id, model, created }) {
-	return {
-		id: id != null ? id : void 0,
-		modelId: model != null ? model : void 0,
-		timestamp: created != null ? /* @__PURE__ */ new Date(created * 1e3) : void 0
 	};
 }
 function mapOpenAICompatibleFinishReason2(finishReason) {
@@ -1006,7 +964,7 @@ var OpenAICompatibleCompletionLanguageModel = class _OpenAICompatibleCompletionL
 			},
 			request: { body: args },
 			response: {
-				...getResponseMetadata2(response),
+				...createLanguageModelResponseMetadata(response),
 				headers: responseHeaders,
 				body: rawResponse
 			},
@@ -1080,7 +1038,7 @@ var OpenAICompatibleCompletionLanguageModel = class _OpenAICompatibleCompletionL
 						isFirstChunk = false;
 						controller.enqueue({
 							type: "response-metadata",
-							...getResponseMetadata2(value)
+							...createLanguageModelResponseMetadata(value)
 						});
 						controller.enqueue({
 							type: "text-start",
@@ -1343,8 +1301,7 @@ var OpenAICompatibleImageModel = class _OpenAICompatibleImageModel {
 				prompt,
 				n,
 				size,
-				...args,
-				response_format: "b64_json"
+				...args
 			},
 			failedResponseHandler: createJsonErrorResponseHandler((_i = this.config.errorStructure) != null ? _i : defaultOpenAICompatibleErrorStructure),
 			successfulResponseHandler: createJsonResponseHandler(openaiCompatibleImageResponseSchema),
@@ -1368,7 +1325,7 @@ async function fileToBlob(file) {
 	const data = file.data instanceof Uint8Array ? file.data : convertBase64ToUint8Array(file.data);
 	return new Blob([data], { type: file.mediaType });
 }
-var VERSION = "3.0.7";
+var VERSION = "3.0.30";
 function createOpenAICompatible(options) {
 	const baseURL = withoutTrailingSlash(options.baseURL);
 	const providerName = options.name;

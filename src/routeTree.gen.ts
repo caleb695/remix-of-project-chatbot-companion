@@ -9,64 +9,59 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AuthRouteImport } from './routes/auth'
-import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiChatRouteImport } from './routes/api/chat'
-import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
+import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
+import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as AuthenticatedChatIndexRouteImport } from './routes/_authenticated/chat.index'
-import { Route as ApiGithubCallbackRouteImport } from './routes/api/github.callback'
 import { Route as AuthenticatedChatThreadIdRouteImport } from './routes/_authenticated/chat.$threadId'
-import { Route as ApiPublicJobsReferenceRouteImport } from './routes/api/public/jobs/reference'
-import { Route as ApiPublicJobsNewMessagesRouteImport } from './routes/api/public/jobs/new-messages'
-import { Route as ApiPublicJobsLogRouteImport } from './routes/api/public/jobs/log'
-import { Route as ApiPublicJobsIndexProgressRouteImport } from './routes/api/public/jobs/index-progress'
-import { Route as ApiPublicJobsIndexBatchRouteImport } from './routes/api/public/jobs/index-batch'
-import { Route as ApiPublicJobsEventRouteImport } from './routes/api/public/jobs/event'
-import { Route as ApiPublicJobsContinueRouteImport } from './routes/api/public/jobs/continue'
-import { Route as ApiPublicJobsCompleteRouteImport } from './routes/api/public/jobs/complete'
-import { Route as ApiPublicJobsClaimRouteImport } from './routes/api/public/jobs/claim'
+import { Route as ApiGithubCallbackRouteImport } from './routes/api/github.callback'
 import { Route as ApiPublicJobsCheckpointRouteImport } from './routes/api/public/jobs/checkpoint'
+import { Route as ApiPublicJobsClaimRouteImport } from './routes/api/public/jobs/claim'
+import { Route as ApiPublicJobsCompleteRouteImport } from './routes/api/public/jobs/complete'
+import { Route as ApiPublicJobsContinueRouteImport } from './routes/api/public/jobs/continue'
+import { Route as ApiPublicJobsEventRouteImport } from './routes/api/public/jobs/event'
+import { Route as ApiPublicJobsIndexBatchRouteImport } from './routes/api/public/jobs/index-batch'
+import { Route as ApiPublicJobsIndexProgressRouteImport } from './routes/api/public/jobs/index-progress'
+import { Route as ApiPublicJobsLogRouteImport } from './routes/api/public/jobs/log'
+import { Route as ApiPublicJobsNewMessagesRouteImport } from './routes/api/public/jobs/new-messages'
+import { Route as ApiPublicJobsReferenceRouteImport } from './routes/api/public/jobs/reference'
 
-const AuthRoute = AuthRouteImport.update({
-  id: '/auth',
-  path: '/auth',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
-} as any)
-const ApiChatRoute = ApiChatRouteImport.update({
-  id: '/api/chat',
-  path: '/api/chat',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthenticatedChatRoute = AuthenticatedChatRouteImport.update({
-  id: '/chat',
-  path: '/chat',
-  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAccountRoute = AuthenticatedAccountRouteImport.update({
   id: '/account',
   path: '/account',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedChatRoute = AuthenticatedChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const ApiChatRoute = ApiChatRouteImport.update({
+  id: '/api/chat',
+  path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedChatIndexRoute = AuthenticatedChatIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedChatRoute,
-} as any)
-const ApiGithubCallbackRoute = ApiGithubCallbackRouteImport.update({
-  id: '/api/github/callback',
-  path: '/api/github/callback',
-  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedChatThreadIdRoute =
   AuthenticatedChatThreadIdRouteImport.update({
@@ -74,20 +69,39 @@ const AuthenticatedChatThreadIdRoute =
     path: '/$threadId',
     getParentRoute: () => AuthenticatedChatRoute,
   } as any)
-const ApiPublicJobsReferenceRoute = ApiPublicJobsReferenceRouteImport.update({
-  id: '/api/public/jobs/reference',
-  path: '/api/public/jobs/reference',
+const ApiGithubCallbackRoute = ApiGithubCallbackRouteImport.update({
+  id: '/api/github/callback',
+  path: '/api/github/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicJobsNewMessagesRoute =
-  ApiPublicJobsNewMessagesRouteImport.update({
-    id: '/api/public/jobs/new-messages',
-    path: '/api/public/jobs/new-messages',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicJobsLogRoute = ApiPublicJobsLogRouteImport.update({
-  id: '/api/public/jobs/log',
-  path: '/api/public/jobs/log',
+const ApiPublicJobsCheckpointRoute = ApiPublicJobsCheckpointRouteImport.update({
+  id: '/api/public/jobs/checkpoint',
+  path: '/api/public/jobs/checkpoint',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicJobsClaimRoute = ApiPublicJobsClaimRouteImport.update({
+  id: '/api/public/jobs/claim',
+  path: '/api/public/jobs/claim',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicJobsCompleteRoute = ApiPublicJobsCompleteRouteImport.update({
+  id: '/api/public/jobs/complete',
+  path: '/api/public/jobs/complete',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicJobsContinueRoute = ApiPublicJobsContinueRouteImport.update({
+  id: '/api/public/jobs/continue',
+  path: '/api/public/jobs/continue',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicJobsEventRoute = ApiPublicJobsEventRouteImport.update({
+  id: '/api/public/jobs/event',
+  path: '/api/public/jobs/event',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicJobsIndexBatchRoute = ApiPublicJobsIndexBatchRouteImport.update({
+  id: '/api/public/jobs/index-batch',
+  path: '/api/public/jobs/index-batch',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicJobsIndexProgressRoute =
@@ -96,34 +110,20 @@ const ApiPublicJobsIndexProgressRoute =
     path: '/api/public/jobs/index-progress',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicJobsIndexBatchRoute = ApiPublicJobsIndexBatchRouteImport.update({
-  id: '/api/public/jobs/index-batch',
-  path: '/api/public/jobs/index-batch',
+const ApiPublicJobsLogRoute = ApiPublicJobsLogRouteImport.update({
+  id: '/api/public/jobs/log',
+  path: '/api/public/jobs/log',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicJobsEventRoute = ApiPublicJobsEventRouteImport.update({
-  id: '/api/public/jobs/event',
-  path: '/api/public/jobs/event',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicJobsContinueRoute = ApiPublicJobsContinueRouteImport.update({
-  id: '/api/public/jobs/continue',
-  path: '/api/public/jobs/continue',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicJobsCompleteRoute = ApiPublicJobsCompleteRouteImport.update({
-  id: '/api/public/jobs/complete',
-  path: '/api/public/jobs/complete',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicJobsClaimRoute = ApiPublicJobsClaimRouteImport.update({
-  id: '/api/public/jobs/claim',
-  path: '/api/public/jobs/claim',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicJobsCheckpointRoute = ApiPublicJobsCheckpointRouteImport.update({
-  id: '/api/public/jobs/checkpoint',
-  path: '/api/public/jobs/checkpoint',
+const ApiPublicJobsNewMessagesRoute =
+  ApiPublicJobsNewMessagesRouteImport.update({
+    id: '/api/public/jobs/new-messages',
+    path: '/api/public/jobs/new-messages',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicJobsReferenceRoute = ApiPublicJobsReferenceRouteImport.update({
+  id: '/api/public/jobs/reference',
+  path: '/api/public/jobs/reference',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -271,11 +271,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -285,26 +285,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/api/chat': {
-      id: '/api/chat'
-      path: '/api/chat'
-      fullPath: '/api/chat'
-      preLoaderRoute: typeof ApiChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_authenticated/chat': {
-      id: '/_authenticated/chat'
-      path: '/chat'
-      fullPath: '/chat'
-      preLoaderRoute: typeof AuthenticatedChatRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/account': {
       id: '/_authenticated/account'
@@ -313,11 +299,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/chat': {
+      id: '/_authenticated/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof AuthenticatedChatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/api/chat': {
+      id: '/api/chat'
+      path: '/api/chat'
+      fullPath: '/api/chat'
+      preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/chat/': {
       id: '/_authenticated/chat/'
       path: '/'
       fullPath: '/chat/'
       preLoaderRoute: typeof AuthenticatedChatIndexRouteImport
+      parentRoute: typeof AuthenticatedChatRoute
+    }
+    '/_authenticated/chat/$threadId': {
+      id: '/_authenticated/chat/$threadId'
+      path: '/$threadId'
+      fullPath: '/chat/$threadId'
+      preLoaderRoute: typeof AuthenticatedChatThreadIdRouteImport
       parentRoute: typeof AuthenticatedChatRoute
     }
     '/api/github/callback': {
@@ -327,67 +334,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGithubCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/chat/$threadId': {
-      id: '/_authenticated/chat/$threadId'
-      path: '/$threadId'
-      fullPath: '/chat/$threadId'
-      preLoaderRoute: typeof AuthenticatedChatThreadIdRouteImport
-      parentRoute: typeof AuthenticatedChatRoute
-    }
-    '/api/public/jobs/reference': {
-      id: '/api/public/jobs/reference'
-      path: '/api/public/jobs/reference'
-      fullPath: '/api/public/jobs/reference'
-      preLoaderRoute: typeof ApiPublicJobsReferenceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/jobs/new-messages': {
-      id: '/api/public/jobs/new-messages'
-      path: '/api/public/jobs/new-messages'
-      fullPath: '/api/public/jobs/new-messages'
-      preLoaderRoute: typeof ApiPublicJobsNewMessagesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/jobs/log': {
-      id: '/api/public/jobs/log'
-      path: '/api/public/jobs/log'
-      fullPath: '/api/public/jobs/log'
-      preLoaderRoute: typeof ApiPublicJobsLogRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/jobs/index-progress': {
-      id: '/api/public/jobs/index-progress'
-      path: '/api/public/jobs/index-progress'
-      fullPath: '/api/public/jobs/index-progress'
-      preLoaderRoute: typeof ApiPublicJobsIndexProgressRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/jobs/index-batch': {
-      id: '/api/public/jobs/index-batch'
-      path: '/api/public/jobs/index-batch'
-      fullPath: '/api/public/jobs/index-batch'
-      preLoaderRoute: typeof ApiPublicJobsIndexBatchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/jobs/event': {
-      id: '/api/public/jobs/event'
-      path: '/api/public/jobs/event'
-      fullPath: '/api/public/jobs/event'
-      preLoaderRoute: typeof ApiPublicJobsEventRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/jobs/continue': {
-      id: '/api/public/jobs/continue'
-      path: '/api/public/jobs/continue'
-      fullPath: '/api/public/jobs/continue'
-      preLoaderRoute: typeof ApiPublicJobsContinueRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/jobs/complete': {
-      id: '/api/public/jobs/complete'
-      path: '/api/public/jobs/complete'
-      fullPath: '/api/public/jobs/complete'
-      preLoaderRoute: typeof ApiPublicJobsCompleteRouteImport
+    '/api/public/jobs/checkpoint': {
+      id: '/api/public/jobs/checkpoint'
+      path: '/api/public/jobs/checkpoint'
+      fullPath: '/api/public/jobs/checkpoint'
+      preLoaderRoute: typeof ApiPublicJobsCheckpointRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/jobs/claim': {
@@ -397,11 +348,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicJobsClaimRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/jobs/checkpoint': {
-      id: '/api/public/jobs/checkpoint'
-      path: '/api/public/jobs/checkpoint'
-      fullPath: '/api/public/jobs/checkpoint'
-      preLoaderRoute: typeof ApiPublicJobsCheckpointRouteImport
+    '/api/public/jobs/complete': {
+      id: '/api/public/jobs/complete'
+      path: '/api/public/jobs/complete'
+      fullPath: '/api/public/jobs/complete'
+      preLoaderRoute: typeof ApiPublicJobsCompleteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/continue': {
+      id: '/api/public/jobs/continue'
+      path: '/api/public/jobs/continue'
+      fullPath: '/api/public/jobs/continue'
+      preLoaderRoute: typeof ApiPublicJobsContinueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/event': {
+      id: '/api/public/jobs/event'
+      path: '/api/public/jobs/event'
+      fullPath: '/api/public/jobs/event'
+      preLoaderRoute: typeof ApiPublicJobsEventRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/index-batch': {
+      id: '/api/public/jobs/index-batch'
+      path: '/api/public/jobs/index-batch'
+      fullPath: '/api/public/jobs/index-batch'
+      preLoaderRoute: typeof ApiPublicJobsIndexBatchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/index-progress': {
+      id: '/api/public/jobs/index-progress'
+      path: '/api/public/jobs/index-progress'
+      fullPath: '/api/public/jobs/index-progress'
+      preLoaderRoute: typeof ApiPublicJobsIndexProgressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/log': {
+      id: '/api/public/jobs/log'
+      path: '/api/public/jobs/log'
+      fullPath: '/api/public/jobs/log'
+      preLoaderRoute: typeof ApiPublicJobsLogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/new-messages': {
+      id: '/api/public/jobs/new-messages'
+      path: '/api/public/jobs/new-messages'
+      fullPath: '/api/public/jobs/new-messages'
+      preLoaderRoute: typeof ApiPublicJobsNewMessagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/reference': {
+      id: '/api/public/jobs/reference'
+      path: '/api/public/jobs/reference'
+      fullPath: '/api/public/jobs/reference'
+      preLoaderRoute: typeof ApiPublicJobsReferenceRouteImport
       parentRoute: typeof rootRouteImport
     }
   }

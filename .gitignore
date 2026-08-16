@@ -1,20 +1,8 @@
 ```
-# Compiled and build artifacts
-*.pyc
-__pycache__/
-*.o
-*.obj
-*.out
-*.class
-*.so
-*.dll
-*.exe
-*.a
-
 # Dependencies
 node_modules/
-venv/
-.venv/
+
+# Environment variables
 .env
 .env.local
 .env.*
@@ -22,84 +10,70 @@ venv/
 # Build outputs
 dist/
 build/
-target/
+.next/
+.nuxt/
 .output/
+.vercel/
+.svelte-kit/
+target/
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
-
-# Editors
+# IDE and editor files
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # System files
 .DS_Store
 Thumbs.db
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Python specific
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Node.js specific
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# MyPy
-.mypy_cache/
-.pytest_cache/
+# Coverage
+coverage/
+.htmlcov/
 
-# Gradle
-.gradle/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Compiled JavaScript
+*.js.map
+*.d.ts
+
+# Temporary files
+*.tmp
+*.temp
 
 # Compressed files
 *.zip
+*.tar.gz
 *.gz
-*.tar
-*.tgz
+*.rar
+*.7z
 *.bz2
 *.xz
-*.7z
-*.rar
 *.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OS generated files
+.DS_Store?
+ehthumbs.db
+Icon?
+Thumbs.db
 ```

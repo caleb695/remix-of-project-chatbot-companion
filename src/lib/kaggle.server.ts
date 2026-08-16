@@ -44,6 +44,103 @@ async function fetchUrl(url: string): Promise<string> {
   }
 }
 
+/* ---- Web search helpers (DuckDuckGo HTML with Bing fallback, no API key) ---- */
+function stripHtml(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#x2F;|&#47;/g, "/")
+    .replace(/&#x3D;/g, "=")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseDuckResults(html: string, limit: number): string[] {
+  const out: string[] = [];
+  const linkRe = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const snipRe = /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+  const links: Array<{ url: string; title: string }> = [];
+  const snips: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = linkRe.exec(html))) {
+    let url = m[1] || "";
+    url = url.replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, "").split("&rut=")[0];
+    try { url = decodeURIComponent(url); } catch { /* keep raw */ }
+    links.push({ url, title: stripHtml(m[2]) });
+  }
+  while ((m = snipRe.exec(html))) snips.push(stripHtml(m[1]));
+  for (let i = 0; i < links.length && out.length < limit; i++) {
+    if (!links[i].title) continue;
+    out.push(`${i + 1}. ${links[i].title}\n   ${links[i].url}${snips[i] ? `\n   ${snips[i]}` : ""}`);
+  }
+  return out;
+}
+
+function parseBingResults(html: string, limit: number): string[] {
+  const out: string[] = [];
+  const cardRe = /<li class="b_algo"[\s\S]*?(?:<\/li>|<li class=")/g;
+  const cards: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = cardRe.exec(html))) cards.push(m[0]);
+  if (!cards.length) {
+    const blockRe = /<h2[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h2>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/g;
+    while ((m = blockRe.exec(html))) {
+      out.push(`${out.length + 1}. ${stripHtml(m[2])}\n   ${m[1]}${m[3] ? `\n   ${stripHtml(m[3])}` : ""}`);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+  for (const c of cards) {
+    const a = /<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i.exec(c);
+    const p = /<p[^>]*>([\s\S]*?)<\/p>/i.exec(c);
+    if (!a || !stripHtml(a[2])) continue;
+    out.push(`${out.length + 1}. ${stripHtml(a[2])}\n   ${a[1]}${p ? `\n   ${stripHtml(p[1])}` : ""}`);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function parseBingRssResults(html: string, limit: number): string[] {
+  const items: string[] = [];
+  const itemRe = /<item>[\s\S]*?<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>[\s\S]*?(?:<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>)?[\s\S]*?<\/item>/g;
+  let m: RegExpExecArray | null;
+  while ((m = itemRe.exec(html))) {
+    items.push(`${items.length + 1}. ${stripHtml(m[1])}\n   ${m[2]}${m[3] ? `\n   ${stripHtml(m[3])}` : ""}`);
+    if (items.length >= limit) break;
+  }
+  return items;
+}
+
+export async function webSearch(query: string, maxResults: number): Promise<string> {
+  const q = String(query || "").trim();
+  if (!q) return "search_web requires a ?query=";
+  const limit = Math.min(Math.max(Math.floor(maxResults || 6), 1), 12);
+  const agent = "Mozilla/5.0 (compatible; Coderbot/1.0)";
+  for (const provider of ["duck", "bing"] as const) {
+    try {
+      const url = provider === "duck"
+        ? "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(q)
+        : "https://www.bing.com/search?q=" + encodeURIComponent(q) + "&format=rss";
+      const res = await fetch(url, { headers: { "User-Agent": agent }, signal: AbortSignal.timeout(15000) });
+      if (!res.ok) continue;
+      const html = (await res.text()).replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
+      const results = provider === "duck"
+        ? parseDuckResults(html, limit)
+        : /<item>/i.test(html)
+          ? parseBingRssResults(html, limit)
+          : parseBingResults(html, limit);
+      if (results.length) return results.join("\n\n");
+    } catch {
+      /* try next provider */
+    }
+  }
+  return `No results for "${q}".`;
+}
+
 /**
  * Replace Python string literals and comments with spaces (preserving newlines
  * and length so line numbers and indentation are unchanged) before counting
