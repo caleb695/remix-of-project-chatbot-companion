@@ -2,6 +2,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { webSearch } from "./agent-tools.server";
 
 const API = "https://www.kaggle.com/api/v1";
 

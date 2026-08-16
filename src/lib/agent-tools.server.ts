@@ -7,13 +7,13 @@ import { swarmExecute } from './swarm-orchestrator.server';
 import { smartPlan } from './smart-planner.server';
 import { learnFromSession, retrieveKnowledge } from './learning-system.server';
 
-// Helper to create tools with consistent typing
-export function createTool<TInput extends Record<string, any>, TOutput>(config: {
+// Helper to create tools with consistent typing (using any for flexibility with AI SDK)
+export function createTool(config: {
   id: string;
   name: string;
   description: string;
-  inputSchema: z.ZodType<TInput>;
-  execute: (input: TInput, context: any) => Promise<TOutput>;
+  inputSchema: z.ZodType<any>;
+  execute: (input: any, context: any) => Promise<any>;
 }) {
   return tool({
     description: config.description,

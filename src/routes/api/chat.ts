@@ -375,8 +375,6 @@ export const Route = createFileRoute("/api/chat")({
           tools,
           // Adaptive step limit: more steps for build/debug, fewer for plan/improve
           stopWhen: stepCountIs(mode === "plan" ? 25 : mode === "debug" ? 50 : 35),
-          // Enable parallel tool execution for independent reads
-          experimental_parallelToolCalls: true,
           // Retry transient tool execution errors
           maxRetries: 2,
           onStepFinish: async (step) => {
@@ -413,7 +411,8 @@ export const Route = createFileRoute("/api/chat")({
                   const verb = name === "write_file" ? "Wrote" : name === "edit_file" || name === "batch_edit_files" ? "Edited" : "Deleted";
                   await logEvent("action", `${verb} ${input.path ?? "file"}`, phase);
                 } else if (name === "batch_read_files") {
-                  await logEvent("action", `Read ${Array.isArray(input.paths) ? input.paths.length : 0} files`, phase);
+                  const pathsInput = input as any;
+                  await logEvent("action", `Read ${Array.isArray(pathsInput?.paths) ? pathsInput.paths.length : 0} files`, phase);
                 } else if (name === "check_code") {
                   phase = PHASE.checking;
                   sawCheck = true;

@@ -27,36 +27,36 @@ export const learnFromSession = createTool({
     projectType: z.enum(['web-app', 'api', 'library', 'notebook', 'script']).describe('Type of project')
   }),
   execute: async ({ sessionId, outcomes, projectType }, context) => {
-    const successes = outcomes.filter(o => o.result === 'success');
-    const failures = outcomes.filter(o => o.result === 'failure');
-    const partials = outcomes.filter(o => o.result === 'partial');
+    const successes = outcomes.filter((o: any) => o.result === 'success');
+    const failures = outcomes.filter((o: any) => o.result === 'failure');
+    const partials = outcomes.filter((o: any) => o.result === 'partial');
 
     const learnings = {
       sessionId,
       timestamp: new Date().toISOString(),
       projectType,
       patterns: {
-        successful: successes.map(s => ({
+        successful: successes.map((s: any) => ({
           pattern: s.action,
           confidence: 0.8 + (s.timeTaken ? Math.min(0.2, 60 / s.timeTaken) : 0),
           applicability: ['similar-projects', 'same-language']
         })),
-        avoid: failures.map(f => ({
+        avoid: failures.map((f: any) => ({
           pattern: f.action,
           reason: f.lessonsLearned || 'Caused errors or inefficiencies',
           severity: 'high'
         }))
       },
       optimizations: {
-        avgTimeSaved: successes.reduce((acc, s) => acc + (s.timeTaken || 0), 0) / (successes.length || 1),
+        avgTimeSaved: successes.reduce((acc: number, s: any) => acc + (s.timeTaken || 0), 0) / (successes.length || 1),
         recommendedTools: successes.length > 0 ? ['batch_read_files', 'swarm_execute'] : [],
         suggestedWorkflows: projectType === 'web-app' 
           ? ['analyze-first', 'parallel-edit', 'verify-immediately']
           : ['read-context', 'incremental-change', 'test-driven']
       },
       knowledgeGraph: {
-        nodes: outcomes.map((o, i) => ({ id: i, label: o.action, type: o.result })),
-        edges: outcomes.slice(1).map((o, i) => ({ from: i, to: i + 1, strength: o.result === 'success' ? 1 : 0.3 }))
+        nodes: outcomes.map((o: any, i: number) => ({ id: i, label: o.action, type: o.result })),
+        edges: outcomes.slice(1).map((o: any, i: number) => ({ from: i, to: i + 1, strength: o.result === 'success' ? 1 : 0.3 }))
       }
     };
 
@@ -67,7 +67,7 @@ export const learnFromSession = createTool({
       summary: `Processed ${outcomes.length} actions: ${successes.length} successes, ${failures.length} failures`,
       topPatterns: learnings.patterns.successful.slice(0, 3),
       criticalAvoids: learnings.patterns.avoid.slice(0, 3),
-      recommendations: learnings.optimizations.recommendedWorkflows,
+      recommendations: learnings.optimizations.suggestedWorkflows,
       nextSessionBoost: `${Math.min(50, successes.length * 5)}% faster expected`
     };
   }
