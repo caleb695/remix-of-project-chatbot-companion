@@ -342,13 +342,9 @@ export function buildKaggleTools(
               problems.push({ issue: `Line ${i + 2}: block opened on line ${i + 1} is not indented`, severity: "error", line: i + 1 });
             }
           }
-          // Check for common Python issues
-          if (/^\s*print\s*\(/i.test(l) && !/# noqa|# type: ignore/.test(l)) {
-            problems.push({ issue: `Line ${i + 1}: Contains print() - consider using logging or removing before commit`, severity: "warning", line: i + 1 });
-          }
-          if (/import\s+pandas|from\s+pandas/.test(l) && !/as\s+pd/.test(l)) {
-            problems.push({ issue: `Line ${i + 1}: pandas imported without 'as pd' alias - consider following convention`, severity: "warning", line: i + 1 });
-          }
+          // Note: print() is the standard way to display output in a Kaggle
+          // notebook, so it is not flagged. pandas-without-`as pd` is a style
+          // preference, not an error, so it is not flagged either.
           
           // NEW: Detect potential performance issues in data processing
           if (/\.apply\s*\(/.test(l) && !/#.*vectorize/.test(l)) {
@@ -397,7 +393,15 @@ export function buildKaggleTools(
       execute: async ({ find, replace, replace_all }) => {
         const nb = await load();
         const src = nb?.working_source ?? "";
-        if (!src.includes(find)) return { error: "The `find` text does not appear in the notebook. Read it again." };
+        if (!src.includes(find)) {
+          const tokens = find.split(/\s+/).filter((t) => t.length >= 4).sort((a, b) => b.length - a.length);
+          const lines = src.split("\n");
+          for (const tok of tokens) {
+            const idx = lines.findIndex((l: string) => l.includes(tok));
+            if (idx >= 0) return { error: `The \`find\` text does not appear in the notebook. A near match ("${tok.slice(0, 40)}") is on line ${idx + 1} — the exact text may differ (whitespace/casing). Re-read that region.` };
+          }
+          return { error: "The `find` text does not appear in the notebook. Read it again." };
+        }
         return save(replace_all ? src.split(find).join(replace) : src.replace(find, replace));
       },
     }),

@@ -354,7 +354,9 @@ export const Route = createFileRoute("/api/chat")({
             : "Your file tools edit a staged working copy. Nothing reaches GitHub until the user presses Commit, so you may edit freely.",
           "Never claim you changed code unless you actually called a write tool and it succeeded.",
           "Use search_web to look up current docs, package versions, APIs or fixes when you are not sure, instead of guessing — but prefer the repo's own code when the answer lives there.",
-          isKaggle ? "" : "Before editing, read the files you are about to change. Prefer edit_file for small changes. You also have read-only reference-repo tools for other connected GitHub repos; use them when the user asks you to copy or adapt code from another repo, but only write changes to the current repo.",
+          isKaggle
+            ? "Before editing, call read_notebook once so your find/replace anchors match the current source. Prefer edit_notebook/batch_edit_notebook for targeted changes over rewriting the whole notebook."
+            : "Before editing, read the files you are about to change. Use glob to locate files by pattern instead of listing the whole repo, and batch_read_files to read several files at once instead of many read_file calls. Prefer edit_file for small changes. You also have read-only reference-repo tools for other connected GitHub repos; use them when the user asks you to copy or adapt code from another repo, but only write changes to the current repo.",
           "When you finish, summarise what you changed, why, and anything the user needs to know or do.",
           modePrompts(isKaggle)[mode],
           thread.seed_summary ? `Context carried over from the previous chat:\n${thread.seed_summary}` : "",
@@ -367,6 +369,15 @@ export const Route = createFileRoute("/api/chat")({
         let phase: string = PHASE.planning;
         let sawWrite = false;
         let sawCheck = false;
+        // Guard against a degenerate loop where the model keeps invoking the
+        // same read-only tool calls without making progress (mirrors the
+        // runner's toolRepeatStreak guard). Also force a check_code before the
+        // model is allowed to finish on unverified edits.
+        let verifyNudged = false;
+        let lastToolSig: string | null = null;
+        let toolRepeatStreak = 0;
+
+        const WRITE_TOOL_NAMES = new Set(["write_file", "edit_file", "delete_file", "batch_edit_files", "write_notebook", "edit_notebook", "batch_edit_notebook"]);
 
         const result = streamText({
           model,
@@ -375,10 +386,36 @@ export const Route = createFileRoute("/api/chat")({
           tools,
           // Adaptive step limit: more steps for build/debug, fewer for plan/improve
           stopWhen: stepCountIs(mode === "plan" ? 25 : mode === "debug" ? 50 : 35),
-          // Enable parallel tool execution for independent reads
-          experimental_parallelToolCalls: true,
           // Retry transient tool execution errors
           maxRetries: 2,
+          prepareStep: ({ steps }) => {
+            const last = steps[steps.length - 1];
+            const calls = (last?.toolCalls ?? []) as Array<{ toolName: string; input?: unknown }>;
+            // Degenerate-loop interrupt: three identical read-only turns in a
+            // row with no writes. Nudge the model to change approach so it
+            // doesn't burn the rest of the step budget spinning.
+            if (toolRepeatStreak >= 3) {
+              toolRepeatStreak = 0;
+              lastToolSig = null;
+              return {
+                messages: [
+                  { role: "user" as const, content: [{ type: "text" as const, text: "You have repeated the same read-only calls three times without making edits. Reconsider your approach — read what you need, then actually change files (or call finish if the task is already done). Do not repeat the same calls again." }] },
+                ],
+              };
+            }
+            // Verify-before-finish: if the model produced a text-only step (no
+            // tool calls) after writing but never checked, nudge it once to run
+            // check_code instead of letting it finish on unchecked work.
+            if (mode !== "plan" && sawWrite && !sawCheck && !verifyNudged && calls.length === 0) {
+              verifyNudged = true;
+              return {
+                messages: [
+                  { role: "user" as const, content: [{ type: "text" as const, text: "You changed code but never ran check_code. Call check_code now, fix anything it reports, then write your final summary." }] },
+                ],
+              };
+            }
+            return {};
+          },
           onStepFinish: async (step) => {
             // Heartbeat the Kaggle job so a long-running in-page run isn't
             // mistaken for a dead one (getJob marks kaggle/running jobs stale
@@ -391,7 +428,7 @@ export const Route = createFileRoute("/api/chat")({
             if (toolCalls.length > 0) {
               for (const call of toolCalls) {
                 const name = call.toolName;
-                const input = (call.input ?? {}) as { path?: string; query?: string; source?: string };
+                const input = (call.input ?? {}) as { path?: string; query?: string; source?: string; pattern?: string; paths?: string[] };
                 if (name === "write_notebook" || name === "edit_notebook") {
                   if (sawCheck) phase = PHASE.debugging;
                   else phase = PHASE.coding;
@@ -422,6 +459,8 @@ export const Route = createFileRoute("/api/chat")({
                   await logEvent("action", `Read ${input.path ?? "file"}`, phase);
                 } else if (name === "list_files") {
                   await logEvent("action", "Listed the repository files", phase);
+                } else if (name === "glob") {
+                  await logEvent("action", `Globbed for "${input.pattern ?? ""}"`, phase);
                 } else if (name === "search_code") {
                   await logEvent("action", `Searched for "${input.query ?? ""}"`, phase);
                 } else if (name === "search_web") {
@@ -429,6 +468,18 @@ export const Route = createFileRoute("/api/chat")({
                 } else if (name === "staged_changes") {
                   await logEvent("action", "Reviewed the staged changes", phase);
                 }
+              }
+              // Degenerate-loop guard: if this step made only read-only calls
+              // (no writes) and they are identical to the previous turn's calls,
+              // count a streak. prepareStep reads these to interrupt the loop.
+              const wrote = toolCalls.some((c) => WRITE_TOOL_NAMES.has(c.toolName));
+              const sig = toolCalls.map((c) => c.toolName + ":" + JSON.stringify(c.input ?? {}).slice(0, 80)).join("|");
+              if (!wrote && sig) {
+                if (sig === lastToolSig) toolRepeatStreak += 1;
+                else { lastToolSig = sig; toolRepeatStreak = 1; }
+              } else {
+                lastToolSig = null;
+                toolRepeatStreak = 0;
               }
             }
             const reasoning = step.text?.trim();
@@ -442,11 +493,19 @@ export const Route = createFileRoute("/api/chat")({
           },
         });
 
-        return withSseHeartbeat(result.toUIMessageStreamResponse({
+        const streamResponse = result.toUIMessageStreamResponse({
           originalMessages: messages,
-          // Keep the run going (and persist it) even if the browser disconnects,
-          // e.g. the user switches to another tab mid-run.
-          // Don't consume the stream - let it flow naturally to avoid timeouts
+          // onFinish fires only when the response body stream is fully consumed.
+          // In a serverless runtime (Cloudflare/nitro) the body stops being
+          // consumed the moment the browser disconnects (e.g. the user switches
+          // tabs mid-run, which chat-store.ts explicitly supports), so the
+          // finalize work below — persisting the assistant turn, logging the
+          // terminal `done` event, and marking the Kaggle job completed — used
+          // to never run. That left the client showing a checkmark (its in-page
+          // stream had ended) while nothing was actually committed: the
+          // "checkmark and nothing happens" symptom. We now tee the body and
+          // consume one branch server-side so onFinish is guaranteed to run
+          // regardless of whether the client reads the other branch to the end.
           onFinish: async ({ messages: finalMessages }) => {
 
             const assistant = finalMessages[finalMessages.length - 1];
@@ -509,6 +568,28 @@ export const Route = createFileRoute("/api/chat")({
             }
             return msg;
           },
+        });
+
+        // Tee the body: one branch goes to the client (through the SSE
+        // heartbeat wrapper), the other is consumed server-side so the
+        // onFinish/onError callbacks above are guaranteed to run even if the
+        // browser disconnects before reading the whole response. Without this,
+        // a dropped client connection left the run "finished" in the UI
+        // (checkmark) but the assistant message, terminal `done` event, and
+        // Kaggle job completion were never persisted.
+        const responseBody = streamResponse.body;
+        if (!responseBody) {
+          // No body to stream (shouldn't happen for streamText, but stay safe):
+          // consume the result so callbacks fire, then return the empty response.
+          void consumeStream({ stream: result.toUIMessageStream() });
+          return streamResponse;
+        }
+        const [toClient, toServer] = responseBody.tee();
+        void consumeStream({ stream: toServer });
+        return withSseHeartbeat(new Response(toClient, {
+          status: streamResponse.status,
+          statusText: streamResponse.statusText,
+          headers: streamResponse.headers,
         }));
       },
     },
