@@ -11,36 +11,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Clean npm cache
-        run: |
-          rm -rf node_modules package-lock.json
-          npm cache clean --force || true
-      
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          check-latest: true
-          cache: 'npm'
-      
-      - name: Verify Node version
-        run: |
-          node --version
-          npm --version
-          
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Mask job secret
+        run: echo "::add-mask::${{ github.event.client_payload.job_secret }}"
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.client_payload.working_branch }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Mask job secret
-        run: echo "::add-mask::${{ github.event.client_payload.job_secret }}"
-      
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
-        
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: Run Coderbot
         env:
           JOB_ID: ${{ github.event.client_payload.job_id }}
