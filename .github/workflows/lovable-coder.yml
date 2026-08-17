@@ -10,6 +10,7 @@ jobs:
     timeout-minutes: 350
     permissions:
       contents: write
+      workflows: write
     steps:
       - name: Mask job secret
         run: echo "::add-mask::${{ github.event.client_payload.job_secret }}"
@@ -20,7 +21,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Run Coderbot
         env:
           JOB_ID: ${{ github.event.client_payload.job_id }}
