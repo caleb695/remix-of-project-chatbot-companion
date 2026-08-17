@@ -442,11 +442,19 @@ export const Route = createFileRoute("/api/chat")({
           },
         });
 
-        return withSseHeartbeat(result.toUIMessageStreamResponse({
+        const streamResponse = result.toUIMessageStreamResponse({
           originalMessages: messages,
-          // Keep the run going (and persist it) even if the browser disconnects,
-          // e.g. the user switches to another tab mid-run.
-          // Don't consume the stream - let it flow naturally to avoid timeouts
+          // onFinish fires only when the response body stream is fully consumed.
+          // In a serverless runtime (Cloudflare/nitro) the body stops being
+          // consumed the moment the browser disconnects (e.g. the user switches
+          // tabs mid-run, which chat-store.ts explicitly supports), so the
+          // finalize work below — persisting the assistant turn, logging the
+          // terminal `done` event, and marking the Kaggle job completed — used
+          // to never run. That left the client showing a checkmark (its in-page
+          // stream had ended) while nothing was actually committed: the
+          // "checkmark and nothing happens" symptom. We now tee the body and
+          // consume one branch server-side so onFinish is guaranteed to run
+          // regardless of whether the client reads the other branch to the end.
           onFinish: async ({ messages: finalMessages }) => {
 
             const assistant = finalMessages[finalMessages.length - 1];
@@ -509,6 +517,28 @@ export const Route = createFileRoute("/api/chat")({
             }
             return msg;
           },
+        });
+
+        // Tee the body: one branch goes to the client (through the SSE
+        // heartbeat wrapper), the other is consumed server-side so the
+        // onFinish/onError callbacks above are guaranteed to run even if the
+        // browser disconnects before reading the whole response. Without this,
+        // a dropped client connection left the run "finished" in the UI
+        // (checkmark) but the assistant message, terminal `done` event, and
+        // Kaggle job completion were never persisted.
+        const responseBody = streamResponse.body;
+        if (!responseBody) {
+          // No body to stream (shouldn't happen for streamText, but stay safe):
+          // consume the result so callbacks fire, then return the empty response.
+          void consumeStream({ stream: result.toUIMessageStream() });
+          return streamResponse;
+        }
+        const [toClient, toServer] = responseBody.tee();
+        void consumeStream({ stream: toServer });
+        return withSseHeartbeat(new Response(toClient, {
+          status: streamResponse.status,
+          statusText: streamResponse.statusText,
+          headers: streamResponse.headers,
         }));
       },
     },
