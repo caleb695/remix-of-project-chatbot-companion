@@ -13,7 +13,7 @@ export interface ToolCtx {
 }
 
 const MAX_READ = 40_000;
-const MAX_BATCH_READ = 5; // Max files for batch operations
+const MAX_BATCH_READ = 10; // Max files for batch operations
 
 async function findReferenceRepo(sb: Sb, userId: string, repo: string) {
   const [owner, name] = repo.split("/");
@@ -127,6 +127,35 @@ export async function webSearch(query: string, maxResults: number): Promise<stri
   return `No results for "${q}".`;
 }
 
+// Convert a glob pattern (e.g. src/**/ *.tsx or **/ *.test.ts) to a RegExp.
+// Supports ** (any depth incl. none), * (within a path segment), and ? .
+function globToRegex(pattern: string): RegExp {
+  let out = "^";
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i];
+    if (c === "*") {
+      if (pattern[i + 1] === "*") {
+        // ** — match any chars including path separators
+        out += ".*";
+        i += 2;
+        if (pattern[i] === "/") i += 1; // let **/ consume the slash
+        continue;
+      }
+      // * — match within a single path segment (no /)
+      out += "[^/]*";
+      i += 1;
+      continue;
+    }
+    if (c === "?") { out += "[^/]"; i += 1; continue; }
+    if (/[.+()|^[\]{}$\\]/.test(c)) { out += "\\" + c; i += 1; continue; }
+    out += c;
+    i += 1;
+  }
+  out += "$";
+  return new RegExp(out, "i");
+}
+
 // Cache for frequently accessed file lists (per-repo, short-lived)
 const fileListCache = new Map<string, { data: any[]; timestamp: number }>();
 const CACHE_TTL_MS = 30_000; // 30 seconds
@@ -180,6 +209,38 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           };
         }
         return { count: rows.length, files: rows.slice(0, 600).map((r) => `${r.path}${r.status !== "unchanged" ? ` (${r.status})` : ""}`) };
+      },
+    }),
+
+    glob: tool({
+      description:
+        "Find files by glob pattern (e.g. 'src/**/*.tsx', '**/*.test.ts', 'lib/*.py'). Faster and more precise than list_files when you want a specific set of files. Returns matching paths (up to 600).",
+      inputSchema: z.object({ pattern: z.string().describe("Glob pattern, e.g. src/**/*.ts") }),
+      execute: async ({ pattern }) => {
+        const cacheKey = `files:${repoId}:`;
+        const now = Date.now();
+        let rows: Array<{ path: string; status: string }>;
+        const cached = fileListCache.get(cacheKey);
+        if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+          rows = cached.data as typeof rows;
+        } else {
+          const { data, error } = await sb
+            .from("working_files")
+            .select("path, status")
+            .eq("repo_selection_id", repoId)
+            .neq("status", "deleted")
+            .order("path");
+          if (error) return { error: error.message };
+          rows = data ?? [];
+          fileListCache.set(cacheKey, { data: rows, timestamp: now });
+        }
+        const re = globToRegex(String(pattern || ""));
+        const matched = rows.filter((r) => re.test(r.path));
+        return {
+          pattern,
+          count: matched.length,
+          files: matched.slice(0, 600).map((r) => `${r.path}${r.status !== "unchanged" ? ` (${r.status})` : ""}`),
+        };
       },
     }),
 
@@ -440,11 +501,13 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
               problems.push({ path: f.path, issue: `Imports missing local file: ${spec}`, severity: "error" });
             }
           }
-          // Check for common syntax issues
-          if (/\b(async)\s+(?!\()/i.test(content) && !/\bawait\b/.test(content)) {
+          // Check for common syntax issues on comment/string-stripped code so
+          // identifiers inside comments and string literals don't false-fire.
+          // Only flag `async` when the function body truly never awaits.
+          if (/\basync\b/.test(code) && !/\bawait\b/.test(code)) {
             problems.push({ path: f.path, issue: "async function without await - might be unnecessary", severity: "warning" });
           }
-          if (/console\.log\s*\(/i.test(content)) {
+          if (/console\.log\s*\(/i.test(code)) {
             problems.push({ path: f.path, issue: "Contains console.log - consider removing before commit", severity: "warning" });
           }
           
@@ -525,7 +588,10 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           .maybeSingle();
         if (!row) return { error: `Not found: ${path}` };
         const content = row.content ?? "";
-        if (!content.includes(find)) return { error: "The `find` text does not appear in the file. Read it again." };
+        if (!content.includes(find)) {
+          const hint = nearestMatchHint(content, find);
+          return { error: `The \`find\` text does not appear in ${path}.${hint}` };
+        }
         const next = replace_all ? content.split(find).join(replace) : content.replace(find, replace);
         const { error } = await sb
           .from("working_files")
@@ -612,6 +678,18 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       },
     }),
   };
+}
+
+function nearestMatchHint(content: string, find: string): string {
+  // Help the model recover from a near-miss find without a full re-read:
+  // report the line number of the longest token from `find` that IS present.
+  const tokens = find.split(/\s+/).filter((t) => t.length >= 4).sort((a, b) => b.length - a.length);
+  const lines = content.split("\n");
+  for (const tok of tokens) {
+    const idx = lines.findIndex((l) => l.includes(tok));
+    if (idx >= 0) return ` A near match ("${tok.slice(0, 40)}") is on line ${idx + 1} — the exact text may differ (whitespace/casing). Re-read that region.`;
+  }
+  return " Read the file again.";
 }
 
 function resolveRelative(fromPath: string, spec: string): string {
