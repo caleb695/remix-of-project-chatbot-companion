@@ -65,9 +65,14 @@ const event = async (kind, text, phase, agent) => {
 
 const sh = (cmd, opts = {}) => execSync(cmd, { stdio: ["pipe", "pipe", "pipe"], encoding: "utf8", timeout: 1000 * 60 * 10, ...opts });
 
-const MAX_STEPS = 200;
 const START = Date.now();
 const TIME_LIMIT_MS = 1000 * 60 * 60 * 5.2; // checkpoint well before the 6h wall
+
+// Mode-specific limits: build stops after task completion, debug/improve run long-term
+function getStepLimit(mode) {
+  if (mode === \"debug\" || mode === \"improve\") return Infinity; // long-running modes
+  return 200; // build/plan modes have fixed limits
+}
 
 /* ---------------------------------- tools --------------------------------- */
 
@@ -101,6 +106,8 @@ const tools = [
     parameters: { type: "object", properties: { path: { type: "string" }, offset: { type: "number" }, limit: { type: "number" } }, required: ["path"] } } },
   { type: "function", function: { name: "read_files", description: "Read several files at once. Use this instead of many read_file calls when exploring.",
     parameters: { type: "object", properties: { paths: { type: "array", items: { type: "string" } } }, required: ["paths"] } } },
+  { type: "function", function: { name: "batch_read_files", description: "Read up to 5 files in a single call with full content. More efficient than read_files for understanding cross-file relationships. Returns each file's content separately.",
+    parameters: { type: "object", properties: { paths: { type: "array", items: { type: "string" }, maxItems: 5 } }, required: ["paths"] } } },
   { type: "function", function: { name: "search_code", description: "Search the repo for a regular expression. Returns path:line matches. Optional `path_filter` substring and `context` lines.",
     parameters: { type: "object", properties: { query: { type: "string" }, max_results: { type: "number" }, path_filter: { type: "string" }, context: { type: "number" } }, required: ["query"] } } },
   { type: "function", function: { name: "list_reference_repos", description: "List other connected GitHub repos available read-only as code references. Use these to borrow patterns or copy snippets into the repo you are editing.",
@@ -117,6 +124,8 @@ const tools = [
     parameters: { type: "object", properties: { path: { type: "string" }, find: { type: "string" }, replace: { type: "string" }, replace_all: { type: "boolean" } }, required: ["path", "find", "replace"] } } },
   { type: "function", function: { name: "multi_edit", description: "Apply several find/replace edits, optionally across several files, in one atomic call. All edits must match or none are applied.",
     parameters: { type: "object", properties: { edits: { type: "array", items: { type: "object", properties: { path: { type: "string" }, find: { type: "string" }, replace: { type: "string" }, replace_all: { type: "boolean" } }, required: ["path", "find", "replace"] } } }, required: ["edits"] } } },
+  { type: "function", function: { name: "batch_edit_files", description: "Apply the same find/replace edit across up to 10 files at once. Useful for renaming functions, updating imports, or making consistent changes across multiple files.",
+    parameters: { type: "object", properties: { find: { type: "string" }, replace: { type: "string" }, paths: { type: "array", items: { type: "string" }, maxItems: 10 } }, required: ["find", "replace", "paths"] } } },
   { type: "function", function: { name: "delete_file", description: "Delete a file.",
     parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } } },
   { type: "function", function: { name: "move_file", description: "Rename or move a file, creating parent directories as needed.",
@@ -148,7 +157,7 @@ const DELEGATE_TOOL = { type: "function", function: {
 } };
 
 /* Read-only tools can safely run at the same time within one assistant turn. */
-const READ_ONLY_TOOLS = new Set(["list_files", "glob", "read_file", "read_files", "search_code", "git_diff", "fetch_url", "search_web", "list_reference_repos", "list_reference_files", "read_reference_file", "search_reference_code"]);
+const READ_ONLY_TOOLS = new Set(["list_files", "glob", "read_file", "read_files", "batch_read_files", "search_code", "git_diff", "fetch_url", "search_web", "list_reference_repos", "list_reference_files", "read_reference_file", "search_reference_code"]);
 
 /* Tools available to the model this step. `finish` and `delegate` are main-agent only. */
 function toolsFor(kind, subAgents) {
@@ -447,6 +456,14 @@ async function execTool(name, args) {
         return "--- " + p + " ---\n" + (c == null ? "(not found)" : c.slice(0, 20000));
       }).join("\n\n").slice(0, 80000) || "ERR: no paths given";
     }
+    if (name === "batch_read_files") {
+      const paths = Array.isArray(args.paths) ? args.paths.slice(0, 5) : [];
+      if (!paths.length) return "ERR: no paths given";
+      return paths.map((p) => {
+        const c = readFileSafe(p);
+        return "=== FILE: " + p + " ===\n" + (c == null ? "ERROR: File not found" : c);
+      }).join("\n\n");
+    }
     if (name === "search_code") {
       let re; try { re = new RegExp(args.query, "i"); } catch (e) { return "ERR: bad pattern " + e.message; }
       const limit = Math.min(args.max_results || 60, 200);
@@ -498,6 +515,23 @@ async function execTool(name, args) {
       }
       for (const [p, content] of staged) writeFileSafe(p, content);
       return "OK applied " + edits.length + " edits to " + [...staged.keys()].join(", ");
+    }
+    if (name === "batch_edit_files") {
+      const paths = Array.isArray(args.paths) ? args.paths.slice(0, 10) : [];
+      if (!paths.length) return "ERR: no paths given";
+      if (!args.find) return "ERR: find text required";
+      let successCount = 0;
+      let failedPaths = [];
+      for (const p of paths) {
+        const c = readFileSafe(p);
+        if (c == null) { failedPaths.push(p + " (not found)"); continue; }
+        if (!c.includes(args.find)) { failedPaths.push(p + " (find text not present)"); continue; }
+        const next = c.replace(args.find, args.replace ?? "");
+        writeFileSafe(p, next);
+        successCount++;
+      }
+      if (successCount === 0) return "ERR: no edits succeeded. Failures: " + failedPaths.join("; ");
+      return "OK edited " + successCount + "/" + paths.length + " files. Failures: " + (failedPaths.length ? failedPaths.join("; ") : "none");
     }
     if (name === "delete_file") { fs.unlinkSync(args.path); return "OK deleted " + args.path; }
     if (name === "move_file") {
@@ -729,7 +763,7 @@ function verb(name, args) {
   return name;
 }
 
-const WRITE_TOOLS = new Set(["write_file", "edit_file", "multi_edit", "delete_file", "move_file"]);
+const WRITE_TOOLS = new Set(["write_file", "edit_file", "multi_edit", "batch_edit_files", "delete_file", "move_file"]);
 
 /* Files each sub-agent has been given, so two agents never edit the same file. */
 const FILE_OWNER = new Map();
@@ -936,10 +970,45 @@ async function main() {
   let lastErrorSig = null;
   let errorStreak = 0;
 
-  for (let step = 0; step < MAX_STEPS; step++) {
+  const mode = spec.mode || "build";
+  const stepLimit = getStepLimit(mode);
+  let brainstormingPhase = false;
+  let ideasExhausted = false;
+  let lastMessageCount = messages.length;
+
+  // Poll for new user messages during long-running sessions (debug/improve modes)
+  async function checkForNewMessages() {
+    if (mode !== "debug" && mode !== "improve") return;
+    try {
+      const r = await fetch(APP_URL + "/api/public/jobs/new-messages", {
+        method: "POST",
+        headers: HEAD,
+        body: JSON.stringify({ lastMessageCount }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (data.newMessages && data.newMessages.length > 0) {
+          await log("Received " + data.newMessages.length + " new user message(s) while working");
+          for (const msg of data.newMessages) {
+            messages.push({ role: "user", content: msg.content });
+          }
+          lastMessageCount += data.newMessages.length;
+          await event("status", "Incorporating new user feedback into current work.", "planning");
+        }
+      }
+    } catch (e) {
+      // Silently ignore - don't interrupt the run for polling errors
+    }
+  }
+
+  for (let step = 0; step < stepLimit; step++) {
     if (Date.now() - START > TIME_LIMIT_MS) {
       await checkpointAndContinue(messages);
       return;
+    }
+    // Check for new user messages every 3 steps in long-running modes
+    if (step > 0 && step % 3 === 0) {
+      await checkForNewMessages();
     }
     try {
     messages = await compactIfNeeded(spec, messages);
@@ -954,8 +1023,33 @@ async function main() {
 
     const calls = msg.tool_calls || [];
     if (calls.length === 0) {
-      // The model stopped calling tools. If it never verified its edits, nudge
-      // it once instead of silently finishing on unchecked work.
+      // The model stopped calling tools. Handle differently based on mode.
+      if (mode === \"debug\" || mode === \"improve\") {
+        // Long-running modes: brainstorm for more work or check if done
+        if (!brainstormingPhase && !ideasExhausted) {
+          // Enter brainstorming phase to find more improvements/bugs
+          brainstormingPhase = true;
+          const prompt = mode === \"debug\"
+            ? \"You have not identified any more bugs to fix. Take a systematic approach: review the codebase for potential issues like error handling gaps, edge cases, performance bottlenecks, security concerns, or logic errors. List specific files and line numbers where problems might exist, then investigate and fix them. Only call finish when you've thoroughly checked and found nothing else to debug.\"
+            : \"You have not identified any more improvements. Brainstorm systematically: review the codebase for optimization opportunities, code quality improvements, missing features that would add value, refactoring chances to reduce duplication, better patterns to adopt, or hardening of weak spots. List specific improvements with file locations, then implement them. Only call finish when you've exhausted meaningful improvements.\";
+          messages.push({ role: "user", content: prompt });
+          continue;
+        }
+        if (brainstormingPhase && noProgress === 0) {
+          // Gave it a chance to brainstorm but still no tool calls - mark as exhausted
+          ideasExhausted = true;
+          noProgress++;
+          messages.push({ role: "user", content: "If you genuinely cannot find any more " + (mode === "debug" ? "bugs" : "improvements") + " after systematic review, explain what you checked and why nothing else needs attention, then call finish. Otherwise, start investigating specific areas you mentioned." });
+          continue;
+        }
+        if (ideasExhausted) {
+          // Truly exhausted - allow finish
+          done = { summary: msg.content || "No more " + mode + " opportunities found.", commit_message: "Coderbot " + mode + " session complete" };
+          break;
+        }
+      }
+      
+      // Build/plan mode or fallback: normal finish behavior
       if (sawWrite && !sawCheck && noProgress === 0) {
         noProgress++;
         messages.push({ role: "user", content: "You changed files but never ran check_code. Run it now, fix anything it reports, then call finish." });
