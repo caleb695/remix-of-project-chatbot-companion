@@ -127,9 +127,25 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
 
   const { messages, sendMessage, setMessages, status, error, stop } = useChat({ chat });
   // Server-side runs append their turns in the database; mirror them in here.
+  // In-page Kaggle runs stream the assistant turn into local state WITHOUT the
+  // `data-run` part (that part is only added server-side in onFinish when the
+  // message is persisted). Once the DB copy lands (with data-run), the counts
+  // match so the old length-only check never replaced the streamed message —
+  // leaving the user with a checkmark and no RunCard. Also replace when the DB
+  // version of the last assistant message carries a data-run part the local
+  // streamed copy does not, so the persisted (richer) version wins.
   useEffect(() => {
-    if (initial.length > messages.length) setMessages(initial);
-  }, [initial.length, messages.length, setMessages]);
+    if (initial.length > messages.length) { setMessages(initial); return; }
+    if (initial.length === messages.length && initial.length > 0) {
+      const dbLast = initial[initial.length - 1];
+      const localLast = messages[messages.length - 1];
+      if (dbLast?.role === "assistant" && localLast?.role === "assistant") {
+        const dbHasRun = (dbLast.parts ?? []).some((p: { type?: string }) => p.type === "data-run");
+        const localHasRun = (localLast.parts ?? []).some((p: { type?: string }) => p.type === "data-run");
+        if (dbHasRun && !localHasRun) setMessages(initial);
+      }
+    }
+  }, [initial, messages, setMessages]);
 
   const [input, setInput] = useState("");
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -273,14 +289,27 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const limitError = events.data?.filter((e) => e.kind === "error").slice(-1)[0]?.text ?? null;
 
   // Pull the agent's final message into the transcript when a run finishes.
+  // Two finish signals: durable jobs (jobRunning) and in-page streams (busy).
   const prevRunning = useRef(false);
+  const prevBusy = useRef(false);
   useEffect(() => {
-    if (prevRunning.current && !jobRunning) {
+    const durableJustEnded = prevRunning.current && !jobRunning;
+    const inPageJustEnded = prevBusy.current && !busy && !durable;
+    if (durableJustEnded || inPageJustEnded) {
+      // Force a fresh fetch of the persisted transcript (the server's onFinish
+      // adds the data-run part there) and of the staged notebook/kaggle state
+      // so the commit bar and RunCard appear immediately instead of waiting
+      // for the next slow background poll.
       qc.invalidateQueries({ queryKey: ["messages", threadId] });
-      qc.invalidateQueries({ queryKey: ["staged", repoId] });
+      if (isKaggle) {
+        qc.invalidateQueries({ queryKey: ["kaggle_staged", notebookId] });
+      } else {
+        qc.invalidateQueries({ queryKey: ["staged", repoId] });
+      }
     }
     prevRunning.current = jobRunning;
-  }, [jobRunning, qc, threadId, repoId]);
+    prevBusy.current = busy;
+  }, [jobRunning, busy, durable, isKaggle, notebookId, qc, threadId, repoId]);
 
   // A remount cannot rely on module memory to identify the active job. The
   // jobs list below discovers it from durable state; transcript polling above
