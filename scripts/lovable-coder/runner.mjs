@@ -26,17 +26,22 @@ if (!JOB_ID || !JOB_SECRET || !APP_URL) { console.error("missing env"); process.
 
 const HEAD = { "Content-Type": "application/json", "X-Job-Id": JOB_ID, "X-Job-Secret": JOB_SECRET };
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const API_TIMEOUT_MS = 1000 * 60 * 60; // 60 minutes for API calls to match the overall job timeout
 async function api(p, body) {
   let lastError;
   for (let attempt = 0; attempt < 6; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
     try {
-      const r = await fetch(APP_URL + p, { method: "POST", headers: HEAD, body: JSON.stringify(body ?? {}) });
+      const r = await fetch(APP_URL + p, { method: "POST", headers: HEAD, body: JSON.stringify(body ?? {}), signal: controller.signal });
+      clearTimeout(timeout);
       if (r.ok) return r.json();
       const text = await r.text();
       const error = new Error(p + " " + r.status + " " + text);
       if (r.status !== 429 && r.status < 500) throw error;
       lastError = error;
     } catch (e) {
+      clearTimeout(timeout);
       lastError = e;
       if (attempt === 5) break;
     }
