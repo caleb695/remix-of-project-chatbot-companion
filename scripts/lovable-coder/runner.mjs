@@ -26,11 +26,14 @@ if (!JOB_ID || !JOB_SECRET || !APP_URL) { console.error("missing env"); process.
 
 const HEAD = { "Content-Type": "application/json", "X-Job-Id": JOB_ID, "X-Job-Secret": JOB_SECRET };
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const API_TIMEOUT_MS = 1000 * 60 * 60; // 60 minutes for API calls to match the overall job timeout
 async function api(p, body) {
   let lastError;
   for (let attempt = 0; attempt < 6; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
     try {
-      const r = await fetch(APP_URL + p, { method: "POST", headers: HEAD, body: JSON.stringify(body ?? {}) });
+      const r = await fetch(APP_URL + p, { method: "POST", headers: HEAD, body: JSON.stringify(body ?? {}), signal: controller.signal });
       if (r.ok) return r.json();
       const text = await r.text();
       const error = new Error(p + " " + r.status + " " + text);
@@ -39,6 +42,8 @@ async function api(p, body) {
     } catch (e) {
       lastError = e;
       if (attempt === 5) break;
+    } finally {
+      clearTimeout(timeout);
     }
     await delay(Math.min(30000, 1000 * (2 ** attempt)) + Math.floor(Math.random() * 500));
   }
@@ -809,7 +814,10 @@ async function fetchAttachments(spec) {
       const a = list[index];
       const safe = safeUploadPath(a.name);
       try {
-        const res = await fetch(a.url);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000); // 15 second timeout for attachment downloads
+        const res = await fetch(a.url, { signal: controller.signal });
+        clearTimeout(timeout);
         if (!res.ok) throw new Error("download " + res.status);
         const buf = Buffer.from(await res.arrayBuffer());
         const target = path.join("uploads", safe);
@@ -819,6 +827,9 @@ async function fetchAttachments(spec) {
         if (!a.code_only) readable.push({ name: safe, mime: a.mime_type || "", buf });
       } catch (e) {
         await log("attachment failed " + safe + ": " + ((e && e.message) || e));
+      } finally {
+        // Ensure timeout is cleared even if an error occurs
+        // Note: clearTimeout is safe to call even if timeout was already cleared
       }
     }
   });
