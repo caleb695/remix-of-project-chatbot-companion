@@ -198,6 +198,7 @@ async function kaggleFetch(
     method: init?.method ?? "GET",
     headers: kaggleHeaders(username, key),
     ...(init?.body ? { body: JSON.stringify(init.body) } : {}),
+    signal: AbortSignal.timeout(30000) // 30 second timeout for Kaggle API calls
   });
   const text = await res.text();
   if (!res.ok) {
