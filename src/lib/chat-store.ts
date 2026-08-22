@@ -1,6 +1,23 @@
 import { Chat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, type UIMessage, type ChatTransport, type HttpChatTransportInitOptions } from "ai";
 import { supabase } from "@/integrations/supabase/client";
+
+/**
+ * Custom transport that disables reconnection. Our architecture doesn't maintain
+ * persistent server-side streams (each POST creates a new stream), so reconnection
+ * via GET /api/chat/{chatId}/stream doesn't work. Instead, we rely on background
+ * polling of messages/agent_events to sync state when the user returns.
+ */
+class NoReconnectTransport extends DefaultChatTransport {
+  constructor(options?: HttpChatTransportInitOptions<UIMessage>) {
+    super(options);
+  }
+
+  // Disable reconnection - return null to signal "nothing to reconnect to"
+  async reconnectToStream() {
+    return null;
+  }
+}
 
 /**
  * Chat instances live outside React so an in-flight run keeps streaming when the
@@ -15,7 +32,7 @@ export function getThreadChat(threadId: string, repoId: string, initial: UIMessa
     chat = new Chat<UIMessage>({
       id: threadId,
       messages: initial,
-      transport: new DefaultChatTransport({
+      transport: new NoReconnectTransport({
         api: "/api/chat",
         fetch: async (input, init) => {
           const { data } = await supabase.auth.getSession();
