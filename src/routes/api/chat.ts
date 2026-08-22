@@ -232,46 +232,63 @@ export const Route = createFileRoute("/api/chat")({
             : settings.embedding_provider === "nvidia"
               ? "https://integrate.api.nvidia.com/v1/embeddings"
               : "https://openrouter.ai/api/v1/embeddings";
+        
+        // Run semantic search and file outline in parallel to reduce latency
         if (!isKaggle && thread.repo_selection_id && embeddingKey && lastUserText) {
-          try {
-            const embRes = await fetch(embeddingUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${embeddingKey}` },
-              body: JSON.stringify({ model: settings.embedding_model, input: [lastUserText.slice(0, 4000)] }),
-            });
-            if (embRes.ok) {
-              const embBody = (await embRes.json()) as { data: { embedding: number[] }[] };
-              const vec = embBody.data[0]?.embedding;
-              if (vec) {
+          const [semanticResult, outlineResult] = await Promise.all([
+            // Semantic search
+            (async () => {
+              try {
+                const embRes = await fetch(embeddingUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${embeddingKey}` },
+                  body: JSON.stringify({ model: settings.embedding_model, input: [lastUserText.slice(0, 4000)] }),
+                });
+                if (!embRes.ok) return null;
+                const embBody = (await embRes.json()) as { data: { embedding: number[] }[] };
+                const vec = embBody.data[0]?.embedding;
+                if (!vec) return null;
                 const { data: hits } = await supa.rpc("match_repo_chunks", {
                   p_repo_selection_id: thread.repo_selection_id,
                   p_query: vec as unknown as string,
                   p_match_count: 8,
                 });
-                if (hits?.length) {
-                  ragContext =
-                    "Relevant repo code (semantic search):\n\n" +
-                    hits
-                      .map((h: { path: string; content: string }) => `--- ${h.path} ---\n${(h.content ?? "").slice(0, 1200)}`)
-                      .join("\n\n");
-                }
+                if (!hits?.length) return null;
+                return hits
+                  .map((h: { path: string; content: string }) => `--- ${h.path} ---\n${(h.content ?? "").slice(0, 1200)}`)
+                  .join("\n\n");
+              } catch {
+                return null;
               }
-            }
-          } catch {
-            /* best-effort */
-          }
+            })(),
+            // File outline
+            (async () => {
+              try {
+                const { data: files } = await supa
+                  .from("repo_files")
+                  .select("path, summary")
+                  .eq("repo_selection_id", thread.repo_selection_id)
+                  .limit(400);
+                if (!files?.length) return null;
+                return files
+                  .map((f) => (f.summary ? `${f.path} — ${f.summary}` : f.path))
+                  .join("\n")
+                  .slice(0, 8000);
+              } catch {
+                return null;
+              }
+            })(),
+          ]);
 
-          const { data: files } = await supa
-            .from("repo_files")
-            .select("path, summary")
-            .eq("repo_selection_id", thread.repo_selection_id)
-            .limit(400);
-          if (files?.length) {
-            const outline = files
-              .map((f) => (f.summary ? `${f.path} — ${f.summary}` : f.path))
-              .join("\n")
-              .slice(0, 8000);
-            ragContext = `Repository file outline:\n${outline}\n\n${ragContext}`;
+          const outline = outlineResult;
+          const semantic = semanticResult;
+
+          if (outline && semantic) {
+            ragContext = `Repository file outline:\n${outline}\n\nRelevant repo code (semantic search):\n\n${semantic}`;
+          } else if (outline) {
+            ragContext = `Repository file outline:\n${outline}`;
+          } else if (semantic) {
+            ragContext = `Relevant repo code (semantic search):\n\n${semantic}`;
           }
         }
 
@@ -466,13 +483,14 @@ export const Route = createFileRoute("/api/chat")({
           onStepFinish: async (step) => {
             // Heartbeat the Kaggle job so a long-running in-page run isn't
             // mistaken for a dead one (getJob marks kaggle/running jobs stale
-            // after 5 min of inactivity).
+            // after 15 min of inactivity - updated from 5 min).
             if (isKaggle && kaggleJobId) {
               void supa.from("coding_jobs").update({ updated_at: new Date().toISOString() }).eq("id", kaggleJobId);
             }
-            // Process tool calls in order but log them efficiently
+            // Process tool calls - batch logEvent calls for efficiency
             const toolCalls = step.toolCalls ?? [];
             if (toolCalls.length > 0) {
+              const logPromises = [];
               for (const call of toolCalls) {
                 const name = call.toolName;
                 const input = (call.input ?? {}) as { path?: string; query?: string; source?: string; pattern?: string; paths?: string[] };
@@ -480,42 +498,45 @@ export const Route = createFileRoute("/api/chat")({
                   if (sawCheck) phase = PHASE.debugging;
                   else phase = PHASE.coding;
                   sawWrite = true;
-                  await logEvent("action", name === "write_notebook" ? "Rewrote the notebook source" : "Edited the notebook source", phase);
+                  logPromises.push(logEvent("action", name === "write_notebook" ? "Rewrote the notebook source" : "Edited the notebook source", phase));
                 } else if (name === "read_notebook") {
-                  await logEvent("action", "Read the notebook source", phase);
+                  logPromises.push(logEvent("action", "Read the notebook source", phase));
                 } else if (name === "search_notebook") {
-                  await logEvent("action", `Searched the notebook for "${input.query ?? ""}"`, phase);
+                  logPromises.push(logEvent("action", `Searched the notebook for "${input.query ?? ""}"`, phase));
                 } else if (name === "batch_edit_notebook") {
                   if (sawCheck) phase = PHASE.debugging;
                   else phase = PHASE.coding;
                   sawWrite = true;
-                  await logEvent("action", "Applied batch edits to the notebook source", phase);
+                  logPromises.push(logEvent("action", "Applied batch edits to the notebook source", phase));
                 } else if (name === "write_file" || name === "edit_file" || name === "delete_file" || name === "batch_edit_files") {
                   if (sawCheck) phase = PHASE.debugging;
                   else phase = PHASE.coding;
                   sawWrite = true;
                   const verb = name === "write_file" ? "Wrote" : name === "edit_file" || name === "batch_edit_files" ? "Edited" : "Deleted";
-                  await logEvent("action", `${verb} ${input.path ?? "file"}`, phase);
+                  logPromises.push(logEvent("action", `${verb} ${input.path ?? "file"}`, phase));
                 } else if (name === "batch_read_files") {
-                  await logEvent("action", `Read ${Array.isArray(input.paths) ? input.paths.length : 0} files`, phase);
+                  logPromises.push(logEvent("action", `Read ${Array.isArray(input.paths) ? input.paths.length : 0} files`, phase));
                 } else if (name === "check_code") {
                   phase = PHASE.checking;
                   sawCheck = true;
-                  await logEvent("action", "Checked the code I changed for problems", phase);
+                  logPromises.push(logEvent("action", "Checked the code I changed for problems", phase));
                 } else if (name === "read_file") {
-                  await logEvent("action", `Read ${input.path ?? "file"}`, phase);
+                  logPromises.push(logEvent("action", `Read ${input.path ?? "file"}`, phase));
                 } else if (name === "list_files") {
-                  await logEvent("action", "Listed the repository files", phase);
+                  logPromises.push(logEvent("action", "Listed the repository files", phase));
                 } else if (name === "glob") {
-                  await logEvent("action", `Globbed for "${input.pattern ?? ""}"`, phase);
+                  logPromises.push(logEvent("action", `Globbed for "${input.pattern ?? ""}"`, phase));
                 } else if (name === "search_code") {
-                  await logEvent("action", `Searched for "${input.query ?? ""}"`, phase);
+                  logPromises.push(logEvent("action", `Searched for "${input.query ?? ""}"`, phase));
                 } else if (name === "search_web") {
-                  await logEvent("action", `Searched the web for "${input.query ?? ""}"`, phase);
+                  logPromises.push(logEvent("action", `Searched the web for "${input.query ?? ""}"`, phase));
                 } else if (name === "staged_changes") {
-                  await logEvent("action", "Reviewed the staged changes", phase);
+                  logPromises.push(logEvent("action", "Reviewed the staged changes", phase));
                 }
               }
+              // Execute all log events in parallel
+              await Promise.all(logPromises);
+              
               // Degenerate-loop guard: if this step made only read-only calls
               // (no writes) and they are identical to the previous turn's calls,
               // count a streak. prepareStep reads these to interrupt the loop.

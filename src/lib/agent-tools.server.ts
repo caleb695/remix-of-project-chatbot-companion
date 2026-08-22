@@ -30,6 +30,60 @@ async function findReferenceRepo(sb: Sb, userId: string, repo: string) {
   return { repo: data } as const;
 }
 
+/* ---- Caching layer for file reads, searches, and web fetches ---- */
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+class LRUCache<T> {
+  private cache = new Map<string, CacheEntry<T>>();
+  private maxSize: number;
+  private ttlMs: number;
+
+  constructor(maxSize: number = 1000, ttlMs: number = 5 * 60 * 1000) {
+    this.maxSize = maxSize;
+    this.ttlMs = ttlMs;
+  }
+
+  get(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > this.ttlMs) {
+      this.cache.delete(key);
+      return null;
+    }
+    // Move to end (most recently used)
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+    return entry.data;
+  }
+
+  set(key: string, data: T): void {
+    if (this.cache.size >= this.maxSize) {
+      // Remove oldest (first entry)
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey) this.cache.delete(firstKey);
+    }
+    this.cache.set(key, { data, timestamp: Date.now() });
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  // Expose keys for invalidation
+  keys(): IterableIterator<string> {
+    return this.cache.keys();
+  }
+}
+
+// Cache instances with appropriate TTLs
+const fileContentCache = new LRUCache<{ content: string; status: string }>(500, 5 * 60 * 1000); // 5 min
+const searchCodeCache = new LRUCache<{ count: number; hits: Array<{ path: string; line: number; text: string }> }>(200, 2 * 60 * 1000); // 2 min
+const webSearchCache = new LRUCache<string[]>(100, 10 * 60 * 1000); // 10 min
+const fetchUrlCache = new LRUCache<string>(200, 10 * 60 * 1000); // 10 min
+
 /* ---- Web search helpers (DuckDuckGo HTML with Bing fallback, no API key) ---- */
 function stripHtml(s: string): string {
   return s
@@ -245,9 +299,15 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
     }),
 
     read_file: tool({
-      description: "Read the full contents of a file from the working copy.",
+      description: "Read the full contents of a file from the working copy. Results cached for 5 minutes.",
       inputSchema: z.object({ path: z.string() }),
       execute: async ({ path }) => {
+        const cacheKey = `file:${repoId}:${path}`;
+        const cached = fileContentCache.get(cacheKey);
+        if (cached) {
+          const content = cached.content ?? "";
+          return { path, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ, cached: true };
+        }
         const { data, error } = await sb
           .from("working_files")
           .select("content, status")
@@ -256,45 +316,72 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           .maybeSingle();
         if (error) return { error: error.message };
         if (!data || data.status === "deleted") return { error: `Not found: ${path}` };
+        fileContentCache.set(cacheKey, { content: data.content ?? "", status: data.status });
         const content = data.content ?? "";
         return { path, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ };
       },
     }),
 
     batch_read_files: tool({
-      description: "Read multiple files at once for efficiency. Returns an array of file contents. Use when you need to understand relationships between files or make cross-file changes.",
+      description: "Read multiple files at once for efficiency. Returns an array of file contents. Use when you need to understand relationships between files or make cross-file changes. Results cached for 5 minutes.",
       inputSchema: z.object({ paths: z.array(z.string()).max(MAX_BATCH_READ) }),
       execute: async ({ paths }) => {
-        const { data, error } = await sb
-          .from("working_files")
-          .select("path, content, status")
-          .eq("repo_selection_id", repoId)
-          .in("path", paths);
-        if (error) return { error: error.message };
         const results: Array<{ path: string; content: string; truncated: boolean; error?: string }> = [];
-        const foundPaths = new Set(data?.map(d => d.path) || []);
+        const missing: string[] = [];
+        
+        // Check cache first
+        const uncachedPaths: string[] = [];
         for (const p of paths) {
-          const row = data?.find(d => d.path === p);
-          if (!row || row.status === "deleted") {
-            results.push({ path: p, content: "", truncated: false, error: "Not found" });
+          const cacheKey = `file:${repoId}:${p}`;
+          const cached = fileContentCache.get(cacheKey);
+          if (cached && cached.status !== "deleted") {
+            const content = cached.content ?? "";
+            results.push({ path: p, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ, cached: true });
           } else {
-            const content = row.content ?? "";
-            results.push({ path: p, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ });
+            uncachedPaths.push(p);
           }
         }
-        return { files: results, missing: paths.filter(p => !foundPaths.has(p)) };
+        
+        // Fetch uncached paths in a single query
+        if (uncachedPaths.length > 0) {
+          const { data, error } = await sb
+            .from("working_files")
+            .select("path, content, status")
+            .eq("repo_selection_id", repoId)
+            .in("path", uncachedPaths);
+          if (error) return { error: error.message };
+          
+          const foundPaths = new Set(data?.map(d => d.path) || []);
+          for (const p of uncachedPaths) {
+            const row = data?.find(d => d.path === p);
+            if (!row || row.status === "deleted") {
+              results.push({ path: p, content: "", truncated: false, error: "Not found" });
+              missing.push(p);
+            } else {
+              fileContentCache.set(`file:${repoId}:${p}`, { content: row.content ?? "", status: row.status });
+              const content = row.content ?? "";
+              results.push({ path: p, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ });
+            }
+          }
+        }
+        
+        return { files: results, missing: missing.length > 0 ? missing : undefined };
       },
     }),
 
     search_code: tool({
       description:
-        "Search the working copy for a literal string or regular expression. Returns matching files with line numbers.",
+        "Search the working copy for a literal string or regular expression. Returns matching files with line numbers. Results cached for 2 minutes.",
       inputSchema: z.object({
         query: z.string(),
         regex: z.boolean().optional(),
         max_results: z.number().optional(),
       }),
       execute: async ({ query, regex, max_results }) => {
+        const cacheKey = `search:${repoId}:${query}:${regex}:${max_results ?? 40}`;
+        const cached = searchCodeCache.get(cacheKey);
+        if (cached) return { ...cached, cached: true };
+        
         const { data, error } = await sb
           .from("working_files")
           .select("path, content")
@@ -319,29 +406,41 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           }
           if (hits.length >= limit) break;
         }
-        return { count: hits.length, hits };
+        const result = { count: hits.length, hits };
+        searchCodeCache.set(cacheKey, result);
+        return result;
       },
     }),
 
     search_web: tool({
       description:
-        "Search the web for a query and return titles, URLs and snippets of the top results. Use this to look up current docs, package versions, error fixes and best practices instead of guessing. Read-only.",
+        "Search the web for a query and return titles, URLs and snippets of the top results. Use this to look up current docs, package versions, error fixes and best practices instead of guessing. Read-only. Results cached for 10 minutes.",
       inputSchema: z.object({
         query: z.string().describe("The search query"),
         max_results: z.number().optional().describe("Max results (default 6, max 12)"),
       }),
       execute: async ({ query, max_results }) => {
-        return webSearch(query ?? "", max_results ?? 6);
+        const cacheKey = `web:${query}:${max_results ?? 6}`;
+        const cached = webSearchCache.get(cacheKey);
+        if (cached) return cached;
+        const result = await webSearch(query ?? "", max_results ?? 6);
+        webSearchCache.set(cacheKey, result);
+        return result;
       },
     }),
 
     fetch_url: tool({
-      description: "Fetch the text content of a URL (e.g., documentation, API reference, RFC). Returns up to 50KB of content. Use this to read external resources needed for the code.",
+      description: "Fetch the text content of a URL (e.g., documentation, API reference, RFC). Returns up to 50KB of content. Use this to read external resources needed for the code. Results cached for 10 minutes.",
       inputSchema: z.object({ url: z.string().describe("The URL to fetch") }),
       execute: async ({ url }) => {
         const u = String(url || "").trim();
         if (!u) return "fetch_url requires a ?url=";
         if (!/^https?:\/\//i.test(u)) return "URL must start with http:// or https://";
+        
+        const cacheKey = `fetch:${u}`;
+        const cached = fetchUrlCache.get(cacheKey);
+        if (cached) return cached;
+        
         try {
           const res = await fetch(u, { 
             headers: { "User-Agent": "Mozilla/5.0 (compatible; Coderbot/1.0)" }, 
@@ -349,7 +448,9 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           });
           if (!res.ok) return `HTTP ${res.status}`;
           const text = await res.text();
-          return text.slice(0, 50_000) + (text.length > 50_000 ? "\n\n[...truncated]" : "");
+          const result = text.slice(0, 50_000) + (text.length > 50_000 ? "\n\n[...truncated]" : "");
+          fetchUrlCache.set(cacheKey, result);
+          return result;
         } catch (e) {
           return `Fetch failed: ${String(e)}`;
         }
@@ -555,6 +656,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
             .update({ content, status: "modified", updated_at: new Date().toISOString() })
             .eq("id", existing.id);
           if (error) return { error: error.message };
+          fileContentCache.set(`file:${repoId}:${path}`, { content, status: "modified" });
           return { ok: true, path, action: "modified", bytes: content.length };
         }
         const { error } = await sb.from("working_files").insert({
@@ -566,6 +668,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           status: "added",
         });
         if (error) return { error: error.message };
+        fileContentCache.set(`file:${repoId}:${path}`, { content, status: "added" });
         return { ok: true, path, action: "added", bytes: content.length };
       },
     }),
@@ -598,6 +701,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           .update({ content: next, status: "modified", updated_at: new Date().toISOString() })
           .eq("id", row.id);
         if (error) return { error: error.message };
+        fileContentCache.set(`file:${repoId}:${path}`, { content: next, status: "modified" });
         return { ok: true, path, action: "edited" };
       },
     }),
@@ -636,6 +740,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           if (error) {
             results.push({ path, success: false, error: error.message });
           } else {
+            fileContentCache.set(`file:${repoId}:${path}`, { content: next, status: "modified" });
             results.push({ path, success: true });
           }
         }
@@ -660,6 +765,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           .update({ status: "deleted", updated_at: new Date().toISOString() })
           .eq("id", row.id);
         if (error) return { error: error.message };
+        fileContentCache.set(`file:${repoId}:${path}`, { content: "", status: "deleted" });
         return { ok: true, path, action: "deleted" };
       },
     }),
@@ -678,6 +784,28 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       },
     }),
   };
+}
+
+/**
+ * Invalidate cache entries for a specific repo and optionally a specific file.
+ * Call this after external changes (e.g., git operations, sync from GitHub).
+ */
+export function invalidateFileCache(repoId: string, path?: string): void {
+  if (path) {
+    fileContentCache.set(`file:${repoId}:${path}`, { content: "", status: "deleted" });
+  } else {
+    // Clear all entries for this repo
+    for (const key of fileContentCache.keys()) {
+      if (key.startsWith(`file:${repoId}:`)) {
+        fileContentCache['cache'].delete(key);
+      }
+    }
+    for (const key of searchCodeCache.keys()) {
+      if (key.startsWith(`search:${repoId}:`)) {
+        searchCodeCache['cache'].delete(key);
+      }
+    }
+  }
 }
 
 function nearestMatchHint(content: string, find: string): string {
