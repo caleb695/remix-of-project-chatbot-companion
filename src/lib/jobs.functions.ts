@@ -1,11 +1,23 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { ghFetch } from "@/lib/github.server";
 import { z } from "zod";
 
 const contentsPath = (owner: string, name: string, filePath: string) =>
   `/repos/${owner}/${name}/contents/${encodeURIComponent(filePath).replace(/%2F/g, "/")}`;
+
+/** Get the public app URL for runner callbacks. Prefer explicit env var, fallback to request origin. */
+export function getAppUrl(request?: Request): string {
+  // Explicit public URL (required for GitHub Actions runner to reach the app)
+  if (process.env.VITE_PUBLIC_APP_URL) return process.env.VITE_PUBLIC_APP_URL;
+  // Fallback: derive from request (works for local/production if request comes from public URL)
+  if (request) {
+    const requestUrl = new URL(request.url);
+    return `${requestUrl.protocol}//${requestUrl.host}`;
+  }
+  // No request context available (e.g., background job) - this will fail if VITE_PUBLIC_APP_URL is not set
+  throw new Error("VITE_PUBLIC_APP_URL environment variable is required for background jobs");
+}
 
 /** Write a file into the user's repo through the Contents API. */
 async function putRepoFile(args: {
@@ -175,8 +187,7 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
     }
 
     const secret = crypto.randomUUID() + crypto.randomUUID();
-    const requestUrl = new URL(getRequest().url);
-    const appUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+    const appUrl = getAppUrl(); // Use env var VITE_PUBLIC_APP_URL for background job
 
     const { data: job, error: je } = await context.supabase
       .from("coding_jobs").insert({
@@ -406,8 +417,7 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
     if (!conn) throw new Error("Connect GitHub");
 
     const secret = crypto.randomUUID() + crypto.randomUUID();
-    const requestUrl = new URL(getRequest().url);
-    const appUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+    const appUrl = getAppUrl(); // Use env var VITE_PUBLIC_APP_URL for background job
 
     const { data: job, error: je } = await context.supabase
       .from("coding_jobs").insert({

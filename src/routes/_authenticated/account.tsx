@@ -152,6 +152,10 @@ function KaggleSection() {
             on Kaggle → Settings → API, then copy the username and key from <code>kaggle.json</code>.
             {status.data?.connected && " · connected"}
           </p>
+          <p className="text-[11px] text-green-600">
+            <span className="font-medium">Note:</span> Kaggle notebook runs continue in the background even if you close the tab.
+            The server tees the stream so work completes server-side.
+          </p>
           <Button
             size="sm" className="w-full"
             disabled={saveMut.isPending || !(username || status.data?.username) || key.length < 10}

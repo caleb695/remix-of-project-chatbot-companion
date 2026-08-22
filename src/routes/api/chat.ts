@@ -1,6 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { streamText, convertToModelMessages, stepCountIs, consumeStream, type UIMessage } from "ai";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+// Access H3Event via the same global symbol TanStack Start uses internally
+// This allows us to use waitUntil for background work on serverless platforms
+const GLOBAL_EVENT_STORAGE_KEY = Symbol.for("tanstack-start:event-storage");
+const globalObj = globalThis as typeof globalThis & {
+  [GLOBAL_EVENT_STORAGE_KEY]?: AsyncLocalStorage<{ h3Event: { waitUntil: (p: Promise<any>) => void } }>;
+};
+
+function getH3Event() {
+  const storage = globalObj[GLOBAL_EVENT_STORAGE_KEY];
+  if (!storage) {
+    throw new Error("No StartEvent storage found. Make sure you are using the function within the server runtime.");
+  }
+  const event = storage.getStore();
+  if (!event) {
+    throw new Error("No StartEvent found in AsyncLocalStorage. Make sure you are using the function within the server runtime.");
+  }
+  return event.h3Event;
+}
 
 type Mode = "plan" | "build" | "debug" | "improve";
 
@@ -379,13 +399,19 @@ export const Route = createFileRoute("/api/chat")({
 
         const WRITE_TOOL_NAMES = new Set(["write_file", "edit_file", "delete_file", "batch_edit_files", "write_notebook", "edit_notebook", "batch_edit_notebook"]);
 
+        // Adaptive step limit: more steps for build/debug/improve, fewer for plan
+        // Kaggle runs don't have GitHub Actions runner, so they need more steps to complete
+        // the work in a single in-page session.
+        const baseSteps = mode === "plan" ? 25 : mode === "debug" ? 100 : mode === "improve" ? 80 : 50;
+        const steps = isKaggle ? baseSteps * 1.5 : baseSteps; // Kaggle gets 50% more steps
+        const stepLimit = Math.floor(steps);
+
         const result = streamText({
           model,
           system: systemPrompt,
           messages: await convertToModelMessages(messages),
           tools,
-          // Adaptive step limit: more steps for build/debug, fewer for plan/improve
-          stopWhen: stepCountIs(mode === "plan" ? 25 : mode === "debug" ? 50 : 35),
+          stopWhen: stepCountIs(stepLimit),
           // Retry transient tool execution errors
           maxRetries: 2,
           prepareStep: ({ steps }) => {
@@ -585,7 +611,17 @@ export const Route = createFileRoute("/api/chat")({
           return streamResponse;
         }
         const [toClient, toServer] = responseBody.tee();
-        void consumeStream({ stream: toServer });
+        
+        // Use waitUntil to ensure background consumption completes even after response is sent
+        // This is critical for serverless platforms like Cloudflare Workers
+        try {
+          const event = getH3Event();
+          event.waitUntil(consumeStream({ stream: toServer }));
+        } catch {
+          // Fallback if not in H3Event context (e.g., during testing)
+          void consumeStream({ stream: toServer });
+        }
+        
         return withSseHeartbeat(new Response(toClient, {
           status: streamResponse.status,
           statusText: streamResponse.statusText,

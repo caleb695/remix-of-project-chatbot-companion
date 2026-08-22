@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { authJobRequest } from "@/lib/job-auth.server";
 import { ghFetch } from "@/lib/github.server";
+import { getAppUrl } from "@/lib/jobs.functions";
 
 /**
  * Called by the runner just before the 6h GitHub Actions limit. Stores the
@@ -37,7 +38,7 @@ export const Route = createFileRoute("/api/public/jobs/continue")({
     }).select("id").single();
     if (error) return new Response(`could not queue continuation: ${error.message}`, { status: 500 });
 
-    const origin = new URL(request.url).origin;
+    const appUrl = getAppUrl(); // Use env var VITE_PUBLIC_APP_URL for background job
     try {
       await ghFetch(`/repos/${sel.owner}/${sel.name}/dispatches`, conn.access_token, {
         method: "POST",
@@ -47,7 +48,7 @@ export const Route = createFileRoute("/api/public/jobs/continue")({
           client_payload: {
             job_id: next.id,
             job_secret: secret,
-            app_url: origin,
+            app_url: appUrl,
             // Continuations check out the review branch so the work in progress
             // is there; the merge target stays the user's working branch.
             working_branch: body.review_branch || job.working_branch || sel.working_branch,

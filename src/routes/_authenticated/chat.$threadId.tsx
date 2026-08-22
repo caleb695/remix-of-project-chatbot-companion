@@ -226,12 +226,21 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
   const submit = () => {
     const text = input.trim();
     if (!text || runMut.isPending) return;
-    if (durable) { runMut.mutate(text); return; }
+    if (durable) { 
+      runMut.mutate(text); 
+      return; 
+    }
     const id = crypto.randomUUID();
     setTaskId(id);
     sendMessage({ text }, { body: { taskId: id, mode } });
     setInput("");
     requestAnimationFrame(autoGrow);
+    
+    // For Kaggle notebooks, the run continues server-side even if you close the tab
+    // because we tee the stream on the server (see /api/chat.ts)
+    if (isKaggle) {
+      toast.success("Kaggle run started — continues in background if you close this tab");
+    }
   };
 
   const jobFn = useServerFn(getJob);
@@ -429,6 +438,9 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
             <span className="font-medium text-foreground">{PHASE_LABEL[phase] ?? phase}</span>
             {lastEvent && phase !== "waiting" && <span className="truncate">· {lastEvent.text}</span>}
             {phase !== "waiting" && <ArrowUpRight className="ml-auto h-3 w-3 shrink-0" />}
+            {isKaggle && !working && phase === "done" && (
+              <span className="ml-2 text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">Continued in background</span>
+            )}
           </button>
         )}
         {limitError && (
@@ -446,7 +458,7 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
             <span className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
               <Zap className="h-3 w-3 text-primary" />
               {durable ? "Runs on GitHub Actions"
-                : isKaggle ? "Kaggle notebook"
+                : isKaggle ? "Kaggle notebook (runs in background)"
                 : mode === "plan" ? "Live chat" : "Install the workflow first"}
             </span>
           </div>
