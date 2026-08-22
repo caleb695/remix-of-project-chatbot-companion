@@ -254,8 +254,10 @@ export const getJob = createServerFn({ method: "GET" })
     // Kaggle runs stream in-page; if the tab closed the stream is gone. Don't
     // leave the job spinning forever — staged notebook edits are already saved,
     // so surface the partial result and let the user re-run if needed.
+    // Heartbeat runs every 30s in chat.ts, so use a longer timeout (15 min)
+    // to account for long model generations without tool calls.
     if (job && job.job_type === "kaggle" && job.status === "running"
-        && Date.now() - new Date(job.updated_at).getTime() > 5 * 60 * 1000) {
+        && Date.now() - new Date(job.updated_at).getTime() > 15 * 60 * 1000) {
       const message = "The run stopped when the tab was closed. Any notebook edits made so far are staged — review them and re-run if needed.";
       await context.supabase.from("coding_jobs")
         .update({ status: "failed", error: message, finished_at: new Date().toISOString() })

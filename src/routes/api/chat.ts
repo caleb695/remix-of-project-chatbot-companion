@@ -154,6 +154,25 @@ export const Route = createFileRoute("/api/chat")({
           });
         };
 
+        // ---- heartbeat to keep job alive even during long model "thinking" ----
+        // The getJob stale check uses updated_at. Without tool calls, no logEvent fires.
+        // This heartbeat runs every 30s to prevent false "tab closed" failures.
+        let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+        const startHeartbeat = () => {
+          if (heartbeatTimer) return;
+          // Fire immediately, then every 30s
+          void supa.from("coding_jobs").update({ updated_at: new Date().toISOString() }).eq("id", kaggleJobId);
+          heartbeatTimer = setInterval(() => {
+            void supa.from("coding_jobs").update({ updated_at: new Date().toISOString() }).eq("id", kaggleJobId);
+          }, 30_000);
+        };
+        const stopHeartbeat = () => {
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+          }
+        };
+
         // ---- persist the user turn ------------------------------------------------
         const lastUser = messages[messages.length - 1];
         const lastUserText =
@@ -196,6 +215,8 @@ export const Route = createFileRoute("/api/chat")({
           }).select("id").single();
           kaggleJobId = kj?.id ?? null;
         }
+        // Start heartbeat to keep job alive during long model generations
+        if (kaggleJobId) startHeartbeat();
 
         // ---- repo context (RAG + outline) ----------------------------------------
         let ragContext = "";
@@ -578,6 +599,7 @@ export const Route = createFileRoute("/api/chat")({
                 updated_at: new Date().toISOString(),
               }).eq("id", kaggleJobId);
             }
+            stopHeartbeat();
           },
           onError: (error) => {
             const msg = error instanceof Error ? error.message : String(error);
@@ -592,6 +614,7 @@ export const Route = createFileRoute("/api/chat")({
                 updated_at: new Date().toISOString(),
               }).eq("id", kaggleJobId);
             }
+            stopHeartbeat();
             return msg;
           },
         });
@@ -618,8 +641,9 @@ export const Route = createFileRoute("/api/chat")({
           const event = getH3Event();
           event.waitUntil(consumeStream({ stream: toServer }));
         } catch {
-          // Fallback if not in H3Event context (e.g., during testing)
-          void consumeStream({ stream: toServer });
+          // Fallback if not in H3Event context (e.g., during testing or non-TanStack runtimes)
+          // Schedule the consumption as a microtask to ensure it runs after response is sent
+          queueMicrotask(() => consumeStream({ stream: toServer }));
         }
         
         return withSseHeartbeat(new Response(toClient, {

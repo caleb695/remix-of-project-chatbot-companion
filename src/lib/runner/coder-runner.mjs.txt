@@ -45,7 +45,11 @@ async function api(p, body) {
   throw lastError || new Error(p + " failed after retries");
 }
 
-const log = async (line) => { console.log(line); try { await api("/api/public/jobs/log", { line }); } catch {} };
+const log = async (line) => { 
+  console.log(line); 
+  try { await api("/api/public/jobs/log", { line }); } 
+  catch (e) { console.error("Failed to log to app:", e); } 
+};
 
 /* The activity feed the user sees in the app. */
 let PHASE = "planning";
@@ -60,7 +64,7 @@ const event = async (kind, text, phase, agent) => {
       agent_id: agent ? agent.id : "main",
       agent_label: agent ? agent.label : "Main agent",
     });
-  } catch {}
+  } catch (e) { console.error("Failed to send event to app:", e); }
 };
 
 const sh = (cmd, opts = {}) => execSync(cmd, { stdio: ["pipe", "pipe", "pipe"], encoding: "utf8", timeout: 1000 * 60 * 10, ...opts });
@@ -583,7 +587,7 @@ function chatRoute(spec, model) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* Upper bound for one (non-streamed) completion request. */
-const MODEL_TIMEOUT_MS = 1000 * 60 * 10;
+const MODEL_TIMEOUT_MS = 1000 * 60 * 30;
 
 /* Per-minute rate limits: wait 10s and retry (up to ~50 minutes of waiting).
  * Transient network/5xx failures back off and retry a few times.
@@ -650,6 +654,9 @@ async function callModel(spec, messages, opts = {}) {
       if (++rpmWaits <= 300) {
         if (rpmWaits === 1 || rpmWaits % 6 === 0) {
           await event("status", "Rate limited — waiting and retrying (" + rpmWaits * 10 + "s so far).", undefined, opts.agent);
+        } else {
+          // Log every wait to console so user sees progress in GitHub Actions log
+          await log("Rate limited — waiting and retrying (" + rpmWaits * 10 + "s so far).");
         }
         await sleep(10000);
         continue;
@@ -658,6 +665,7 @@ async function callModel(spec, messages, opts = {}) {
     }
     if (res.status >= 500 || res.status === 408) {
       if (++transient > 6) throw new Error("Provider error " + res.status + ": " + text);
+      await event("status", "Provider error " + res.status + " — retrying.", undefined, opts.agent);
       await sleep(Math.min(30000, 2000 * transient));
       continue;
     }
@@ -1023,8 +1031,15 @@ async function main() {
 
     const calls = msg.tool_calls || [];
     if (calls.length === 0) {
+      // Model returned no tool calls. If this is the FIRST turn with no content,
+      // nudge it to start working instead of silently finishing.
+      if (!msg.content || !String(msg.content).trim()) {
+        await event("status", "Model returned empty response — nudging to start working.", PHASE);
+        messages.push({ role: "user", content: "Your previous response was empty. Please start working by calling tools (read_file, write_file, search_code, etc.) or explain your plan." });
+        continue;
+      }
       // The model stopped calling tools. Handle differently based on mode.
-      if (mode === \"debug\" || mode === \"improve\") {
+      if (mode === "debug" || mode === "improve") {
         // Long-running modes: brainstorm for more work or check if done
         if (!brainstormingPhase && !ideasExhausted) {
           // Enter brainstorming phase to find more improvements/bugs
