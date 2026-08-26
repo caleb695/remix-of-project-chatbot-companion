@@ -38,7 +38,7 @@ export const Route = createFileRoute("/api/public/jobs/continue")({
     }).select("id").single();
     if (error) return new Response(`could not queue continuation: ${error.message}`, { status: 500 });
 
-    const appUrl = getAppUrl(); // Use env var VITE_PUBLIC_APP_URL for background job
+    const appUrl = getAppUrl(request); // Pass request for fallback when VITE_PUBLIC_APP_URL not set
     try {
       await ghFetch(`/repos/${sel.owner}/${sel.name}/dispatches`, conn.access_token, {
         method: "POST",

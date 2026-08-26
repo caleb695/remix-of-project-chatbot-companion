@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { ghFetch } from "@/lib/github.server";
 import { z } from "zod";
@@ -187,7 +188,7 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
     }
 
     const secret = crypto.randomUUID() + crypto.randomUUID();
-    const appUrl = getAppUrl(); // Use env var VITE_PUBLIC_APP_URL for background job
+    const appUrl = getAppUrl(getRequest()); // Pass request for fallback when VITE_PUBLIC_APP_URL not set
 
     const { data: job, error: je } = await context.supabase
       .from("coding_jobs").insert({
@@ -419,7 +420,7 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
     if (!conn) throw new Error("Connect GitHub");
 
     const secret = crypto.randomUUID() + crypto.randomUUID();
-    const appUrl = getAppUrl(); // Use env var VITE_PUBLIC_APP_URL for background job
+    const appUrl = getAppUrl(getRequest()); // Pass request for fallback when VITE_PUBLIC_APP_URL not set
 
     const { data: job, error: je } = await context.supabase
       .from("coding_jobs").insert({

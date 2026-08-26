@@ -658,13 +658,19 @@ export const Route = createFileRoute("/api/chat")({
         
         // Use waitUntil to ensure background consumption completes even after response is sent
         // This is critical for serverless platforms like Cloudflare Workers
+        // Pass explicit abortSignal: null so server-side consumption isn't cancelled when client disconnects
+        const consumeServerStream = () => consumeStream({ 
+          stream: toServer,
+          abortSignal: undefined, // Don't pass abort signal - let it run to completion
+        });
+        
         try {
           const event = getH3Event();
-          event.waitUntil(consumeStream({ stream: toServer }));
+          event.waitUntil(consumeServerStream());
         } catch {
           // Fallback if not in H3Event context (e.g., during testing or non-TanStack runtimes)
           // Schedule the consumption as a microtask to ensure it runs after response is sent
-          queueMicrotask(() => consumeStream({ stream: toServer }));
+          queueMicrotask(consumeServerStream);
         }
         
         return withSseHeartbeat(new Response(toClient, {
