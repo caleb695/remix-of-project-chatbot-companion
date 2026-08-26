@@ -45,7 +45,11 @@ async function api(p, body) {
   throw lastError || new Error(p + " failed after retries");
 }
 
-const log = async (line) => { console.log(line); try { await api("/api/public/jobs/log", { line }); } catch {} };
+const log = async (line) => { 
+  console.log(line); 
+  try { await api("/api/public/jobs/log", { line }); } 
+  catch (e) { console.error("Failed to log to app:", e); } 
+};
 
 /* The activity feed the user sees in the app. */
 let PHASE = "planning";
@@ -60,7 +64,7 @@ const event = async (kind, text, phase, agent) => {
       agent_id: agent ? agent.id : "main",
       agent_label: agent ? agent.label : "Main agent",
     });
-  } catch {}
+  } catch (e) { console.error("Failed to send event to app:", e); }
 };
 
 const sh = (cmd, opts = {}) => execSync(cmd, { stdio: ["pipe", "pipe", "pipe"], encoding: "utf8", timeout: 1000 * 60 * 10, ...opts });
@@ -79,7 +83,23 @@ function getStepLimit(mode) {
 const IGNORE_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", ".turbo", ".cache", "coverage", "out", ".venv", "venv", "target", ".output"]);
 const TEXT_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|py|rs|go|java|kt|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|sh|bash|zsh|yml|yaml|json|md|mdx|txt|toml|ini|css|scss|html|svelte|vue|astro|sql|graphql|prisma)$/i;
 
+/* ---- Caching layer for file reads and directory walks ---- */
+const fileContentCache = new Map(); // path -> { content, mtime }
+const walkCache = { data: null, mtime: 0, base: "" };
+
+function invalidateWalkCache() {
+  walkCache.data = null;
+  walkCache.mtime = 0;
+  walkCache.base = "";
+}
+
 function walk(dir, base = dir, out = []) {
+  const now = Date.now();
+  // Cache walk results for 30 seconds if base hasn't changed
+  if (walkCache.data && walkCache.base === base && now - walkCache.mtime < 30000) {
+    return walkCache.data;
+  }
+  
   let names = [];
   try { names = fs.readdirSync(dir); } catch { return out; }
   for (const name of names) {
@@ -89,11 +109,34 @@ function walk(dir, base = dir, out = []) {
     if (st.isDirectory()) walk(p, base, out);
     else if (TEXT_EXT.test(name) && st.size <= 200000) out.push({ path: path.relative(base, p).split(path.sep).join("/"), size: st.size });
   }
+  walkCache.data = out;
+  walkCache.mtime = now;
+  walkCache.base = base;
   return out;
 }
 
-function readFileSafe(p) { try { return fs.readFileSync(p, "utf8"); } catch { return null; } }
-function writeFileSafe(p, content) { fs.mkdirSync(path.dirname(p) || ".", { recursive: true }); fs.writeFileSync(p, content, "utf8"); }
+function readFileSafe(p) {
+  // Check cache first
+  try {
+    const stats = fs.statSync(p);
+    const cached = fileContentCache.get(p);
+    if (cached && cached.mtime === stats.mtimeMs) {
+      return cached.content;
+    }
+    const content = fs.readFileSync(p, "utf8");
+    fileContentCache.set(p, { content, mtime: stats.mtimeMs });
+    return content;
+  } catch {
+    return null;
+  }
+}
+
+function writeFileSafe(p, content) {
+  fs.mkdirSync(path.dirname(p) || ".", { recursive: true });
+  fs.writeFileSync(p, content, "utf8");
+  // Invalidate cache for this file
+  fileContentCache.delete(p);
+}
 
 let TODOS = [];
 
@@ -583,7 +626,7 @@ function chatRoute(spec, model) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* Upper bound for one (non-streamed) completion request. */
-const MODEL_TIMEOUT_MS = 1000 * 60 * 10;
+const MODEL_TIMEOUT_MS = 1000 * 60 * 30;
 
 /* Per-minute rate limits: wait 10s and retry (up to ~50 minutes of waiting).
  * Transient network/5xx failures back off and retry a few times.
@@ -650,6 +693,9 @@ async function callModel(spec, messages, opts = {}) {
       if (++rpmWaits <= 300) {
         if (rpmWaits === 1 || rpmWaits % 6 === 0) {
           await event("status", "Rate limited — waiting and retrying (" + rpmWaits * 10 + "s so far).", undefined, opts.agent);
+        } else {
+          // Log every wait to console so user sees progress in GitHub Actions log
+          await log("Rate limited — waiting and retrying (" + rpmWaits * 10 + "s so far).");
         }
         await sleep(10000);
         continue;
@@ -658,6 +704,7 @@ async function callModel(spec, messages, opts = {}) {
     }
     if (res.status >= 500 || res.status === 408) {
       if (++transient > 6) throw new Error("Provider error " + res.status + ": " + text);
+      await event("status", "Provider error " + res.status + " — retrying.", undefined, opts.agent);
       await sleep(Math.min(30000, 2000 * transient));
       continue;
     }
@@ -885,15 +932,17 @@ async function runSubAgent(spec, agent, task, ownFiles) {
   return "Sub-agent " + agent.id + " hit its step limit; check its work.";
 }
 
-/* Execute one assistant turn's tool calls. Read-only calls run concurrently,
- * writes and shell commands run in order so they can't race each other. */
+/* Execute one assistant turn's tool calls. Read-only calls run concurrently.
+ * Write calls run with file-level locking: writes to DIFFERENT files can run in parallel,
+ * writes to the SAME file are serialized. This enables true parallel sub-agent execution. */
 async function runToolCalls(calls, agent, onTool) {
   const results = new Map();
   const parse = (c) => { try { return JSON.parse((c.function && c.function.arguments) || "{}"); } catch { return {}; } };
 
   const reads = calls.filter((c) => READ_ONLY_TOOLS.has(c.function.name));
-  const rest = calls.filter((c) => !READ_ONLY_TOOLS.has(c.function.name));
+  const writes = calls.filter((c) => !READ_ONLY_TOOLS.has(c.function.name));
 
+  // Read-only tools: fully parallel
   await Promise.all(reads.map(async (c) => {
     const args = parse(c);
     await event("action", verb(c.function.name, args), undefined, agent);
@@ -901,28 +950,55 @@ async function runToolCalls(calls, agent, onTool) {
     results.set(c.id, String(await execTool(c.function.name, args)).slice(0, 40000));
   }));
 
-  for (const c of rest) {
+  // Write tools: group by file path, run each group in parallel, files within group serialized
+  // This allows sub-agents working on different files to run truly in parallel
+  const writeGroups = new Map();
+  for (const c of writes) {
     const args = parse(c);
     const name = c.function.name;
     if (name === "delegate") { results.set(c.id, "ERR: sub-agents cannot delegate"); continue; }
+    
+    // Determine files this write affects
+    let files = [];
+    if (name === "multi_edit") {
+      files = (args.edits || []).map((e) => e.path);
+    } else if (name === "move_file") {
+      files = [args.from, args.to];
+    } else if (args.path) {
+      files = [args.path];
+    }
+    
+    // Check file ownership for sub-agents
     if (agent && WRITE_TOOLS.has(name) && agent.ownFiles && agent.ownFiles.length) {
-      const requested = name === "multi_edit" ? (args.edits || []).map((e) => e.path)
-        : name === "move_file" ? [args.from, args.to]
-        : [args.path];
-      const outside = requested.filter((p) => p && !agent.ownFiles.includes(p));
+      const outside = files.filter((p) => p && !agent.ownFiles.includes(p));
       if (outside.length) {
         results.set(c.id, "ERR: outside your assigned files: " + outside.join(", "));
         continue;
       }
     }
-    await event("action", verb(name, args), undefined, agent);
-    onTool(name, args);
-    const run = () => execTool(name, args);
-    const output = WRITE_TOOLS.has(name) || name === "run_shell" || name === "check_code"
-      ? await serialized(run)
-      : await run();
-    results.set(c.id, String(output).slice(0, 40000));
+    
+    // Group by primary file (first file for multi-file ops)
+    const primaryFile = files[0] || name; // fallback to tool name for run_shell, check_code
+    if (!writeGroups.has(primaryFile)) writeGroups.set(primaryFile, []);
+    writeGroups.get(primaryFile).push({ call: c, args, name, files });
   }
+
+  // Execute each file group in parallel, but serialize within group
+  await Promise.all(Array.from(writeGroups.entries()).map(async ([primaryFile, group]) => {
+    // Serialize within this file group
+    await serialized(async () => {
+      for (const { call, args, name, files } of group) {
+        await event("action", verb(name, args), undefined, agent);
+        onTool(name, args);
+        const run = () => execTool(name, args);
+        const output = WRITE_TOOLS.has(name) || name === "run_shell" || name === "check_code"
+          ? await run()
+          : await run();
+        results.set(call.id, String(output).slice(0, 40000));
+      }
+    });
+  }));
+
   return results;
 }
 
@@ -1023,8 +1099,15 @@ async function main() {
 
     const calls = msg.tool_calls || [];
     if (calls.length === 0) {
+      // Model returned no tool calls. If this is the FIRST turn with no content,
+      // nudge it to start working instead of silently finishing.
+      if (!msg.content || !String(msg.content).trim()) {
+        await event("status", "Model returned empty response — nudging to start working.", PHASE);
+        messages.push({ role: "user", content: "Your previous response was empty. Please start working by calling tools (read_file, write_file, search_code, etc.) or explain your plan." });
+        continue;
+      }
       // The model stopped calling tools. Handle differently based on mode.
-      if (mode === \"debug\" || mode === \"improve\") {
+      if (mode === "debug" || mode === "improve") {
         // Long-running modes: brainstorm for more work or check if done
         if (!brainstormingPhase && !ideasExhausted) {
           // Enter brainstorming phase to find more improvements/bugs
