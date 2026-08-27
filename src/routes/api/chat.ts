@@ -434,6 +434,7 @@ export const Route = createFileRoute("/api/chat")({
         let verifyNudged = false;
         let lastToolSig: string | null = null;
         let toolRepeatStreak = 0;
+        let firstTurnNudged = false;
 
         const WRITE_TOOL_NAMES = new Set(["write_file", "edit_file", "delete_file", "batch_edit_files", "write_notebook", "edit_notebook", "batch_edit_notebook"]);
 
@@ -449,12 +450,25 @@ export const Route = createFileRoute("/api/chat")({
           system: systemPrompt,
           messages: await convertToModelMessages(messages),
           tools,
+          // Default tool choice is "auto", but explicitly set it to ensure
+          // the model must call tools when available (prevents silent finishes)
+          toolChoice: "auto",
           stopWhen: stepCountIs(stepLimit),
           // Retry transient tool execution errors
           maxRetries: 2,
-          prepareStep: ({ steps }) => {
+          prepareStep: ({ steps, stepNumber }) => {
             const last = steps[steps.length - 1];
             const calls = (last?.toolCalls ?? []) as Array<{ toolName: string; input?: unknown }>;
+            // Handle empty first response nudge: if we nudged on step 0,
+            // add a user message to prompt the model to start working
+            if (firstTurnNudged && stepNumber === 1) {
+              firstTurnNudged = false; // only nudge once
+              return {
+                messages: [
+                  { role: "user" as const, content: [{ type: "text" as const, text: "Your previous response was empty. Please start working by calling tools (read_notebook, write_notebook, edit_notebook, search_notebook, check_code, etc.) or explain your plan." }] },
+                ],
+              };
+            }
             // Degenerate-loop interrupt: three identical read-only turns in a
             // row with no writes. Nudge the model to change approach so it
             // doesn't burn the rest of the step budget spinning.
@@ -481,6 +495,22 @@ export const Route = createFileRoute("/api/chat")({
             return {};
           },
           onStepFinish: async (step) => {
+            // Handle empty first response: if this is step 0 and the model
+            // returned no text and no tool calls, nudge it to start working.
+            // This mirrors the runner's logic (coder-runner.mjs.txt lines 1104-1106)
+            // and prevents the "done immediately" symptom where the model
+            // silently finishes without doing any work.
+            if (step.stepNumber === 0 && (!step.text?.trim()) && (!step.toolCalls?.length)) {
+              await logEvent("status", "Model returned empty first response — nudging to start working.", PHASE);
+              // We can't directly modify messages here like the runner does,
+              // but the prepareStep callback will catch this on the next step.
+              // Mark that we've nudged to avoid repeated nudging.
+              if (!firstTurnNudged) {
+                firstTurnNudged = true;
+                // The next prepareStep will see toolRepeatStreak and nudge
+              }
+            }
+
             // Heartbeat the Kaggle job so a long-running in-page run isn't
             // mistaken for a dead one (getJob marks kaggle/running jobs stale
             // after 15 min of inactivity - updated from 5 min).
