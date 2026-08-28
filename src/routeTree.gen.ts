@@ -25,6 +25,7 @@ import { Route as ApiPublicJobsContinueRouteImport } from './routes/api/public/j
 import { Route as ApiPublicJobsEventRouteImport } from './routes/api/public/jobs/event'
 import { Route as ApiPublicJobsIndexBatchRouteImport } from './routes/api/public/jobs/index-batch'
 import { Route as ApiPublicJobsIndexProgressRouteImport } from './routes/api/public/jobs/index-progress'
+import { Route as ApiPublicJobsKaggleRouteImport } from './routes/api/public/jobs/kaggle'
 import { Route as ApiPublicJobsLogRouteImport } from './routes/api/public/jobs/log'
 import { Route as ApiPublicJobsNewMessagesRouteImport } from './routes/api/public/jobs/new-messages'
 import { Route as ApiPublicJobsReferenceRouteImport } from './routes/api/public/jobs/reference'
@@ -110,6 +111,11 @@ const ApiPublicJobsIndexProgressRoute =
     path: '/api/public/jobs/index-progress',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicJobsKaggleRoute = ApiPublicJobsKaggleRouteImport.update({
+  id: '/api/public/jobs/kaggle',
+  path: '/api/public/jobs/kaggle',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicJobsLogRoute = ApiPublicJobsLogRouteImport.update({
   id: '/api/public/jobs/log',
   path: '/api/public/jobs/log',
@@ -143,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/api/public/jobs/event': typeof ApiPublicJobsEventRoute
   '/api/public/jobs/index-batch': typeof ApiPublicJobsIndexBatchRoute
   '/api/public/jobs/index-progress': typeof ApiPublicJobsIndexProgressRoute
+  '/api/public/jobs/kaggle': typeof ApiPublicJobsKaggleRoute
   '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
   '/api/public/jobs/new-messages': typeof ApiPublicJobsNewMessagesRoute
   '/api/public/jobs/reference': typeof ApiPublicJobsReferenceRoute
@@ -162,6 +169,7 @@ export interface FileRoutesByTo {
   '/api/public/jobs/event': typeof ApiPublicJobsEventRoute
   '/api/public/jobs/index-batch': typeof ApiPublicJobsIndexBatchRoute
   '/api/public/jobs/index-progress': typeof ApiPublicJobsIndexProgressRoute
+  '/api/public/jobs/kaggle': typeof ApiPublicJobsKaggleRoute
   '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
   '/api/public/jobs/new-messages': typeof ApiPublicJobsNewMessagesRoute
   '/api/public/jobs/reference': typeof ApiPublicJobsReferenceRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/api/public/jobs/event': typeof ApiPublicJobsEventRoute
   '/api/public/jobs/index-batch': typeof ApiPublicJobsIndexBatchRoute
   '/api/public/jobs/index-progress': typeof ApiPublicJobsIndexProgressRoute
+  '/api/public/jobs/kaggle': typeof ApiPublicJobsKaggleRoute
   '/api/public/jobs/log': typeof ApiPublicJobsLogRoute
   '/api/public/jobs/new-messages': typeof ApiPublicJobsNewMessagesRoute
   '/api/public/jobs/reference': typeof ApiPublicJobsReferenceRoute
@@ -206,6 +215,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/event'
     | '/api/public/jobs/index-batch'
     | '/api/public/jobs/index-progress'
+    | '/api/public/jobs/kaggle'
     | '/api/public/jobs/log'
     | '/api/public/jobs/new-messages'
     | '/api/public/jobs/reference'
@@ -225,6 +235,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/event'
     | '/api/public/jobs/index-batch'
     | '/api/public/jobs/index-progress'
+    | '/api/public/jobs/kaggle'
     | '/api/public/jobs/log'
     | '/api/public/jobs/new-messages'
     | '/api/public/jobs/reference'
@@ -246,6 +257,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/event'
     | '/api/public/jobs/index-batch'
     | '/api/public/jobs/index-progress'
+    | '/api/public/jobs/kaggle'
     | '/api/public/jobs/log'
     | '/api/public/jobs/new-messages'
     | '/api/public/jobs/reference'
@@ -264,6 +276,7 @@ export interface RootRouteChildren {
   ApiPublicJobsEventRoute: typeof ApiPublicJobsEventRoute
   ApiPublicJobsIndexBatchRoute: typeof ApiPublicJobsIndexBatchRoute
   ApiPublicJobsIndexProgressRoute: typeof ApiPublicJobsIndexProgressRoute
+  ApiPublicJobsKaggleRoute: typeof ApiPublicJobsKaggleRoute
   ApiPublicJobsLogRoute: typeof ApiPublicJobsLogRoute
   ApiPublicJobsNewMessagesRoute: typeof ApiPublicJobsNewMessagesRoute
   ApiPublicJobsReferenceRoute: typeof ApiPublicJobsReferenceRoute
@@ -383,6 +396,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicJobsIndexProgressRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/jobs/kaggle': {
+      id: '/api/public/jobs/kaggle'
+      path: '/api/public/jobs/kaggle'
+      fullPath: '/api/public/jobs/kaggle'
+      preLoaderRoute: typeof ApiPublicJobsKaggleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/jobs/log': {
       id: '/api/public/jobs/log'
       path: '/api/public/jobs/log'
@@ -446,6 +466,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicJobsEventRoute: ApiPublicJobsEventRoute,
   ApiPublicJobsIndexBatchRoute: ApiPublicJobsIndexBatchRoute,
   ApiPublicJobsIndexProgressRoute: ApiPublicJobsIndexProgressRoute,
+  ApiPublicJobsKaggleRoute: ApiPublicJobsKaggleRoute,
   ApiPublicJobsLogRoute: ApiPublicJobsLogRoute,
   ApiPublicJobsNewMessagesRoute: ApiPublicJobsNewMessagesRoute,
   ApiPublicJobsReferenceRoute: ApiPublicJobsReferenceRoute,

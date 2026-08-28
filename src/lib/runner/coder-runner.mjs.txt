@@ -22,6 +22,14 @@ const BRANCH = process.env.WORKING_BRANCH;
 let BASE_BRANCH = BRANCH;
 let REVIEW_BRANCH = BRANCH;
 
+/* Kaggle-specific environment (for notebook jobs) */
+const KAGGLE_USERNAME = process.env.KAGGLE_USERNAME;
+const KAGGLE_KEY = process.env.KAGGLE_KEY;
+const KAGGLE_NOTEBOOK_ID = process.env.KAGGLE_NOTEBOOK_ID;
+const KAGGLE_OWNER = process.env.KAGGLE_OWNER;
+const KAGGLE_SLUG = process.env.KAGGLE_SLUG;
+const KAGGLE_WORKING_SOURCE = process.env.KAGGLE_WORKING_SOURCE;
+
 if (!JOB_ID || !JOB_SECRET || !APP_URL) { console.error("missing env"); process.exit(1); }
 
 const HEAD = { "Content-Type": "application/json", "X-Job-Id": JOB_ID, "X-Job-Secret": JOB_SECRET };
@@ -74,7 +82,7 @@ const TIME_LIMIT_MS = 1000 * 60 * 60 * 5.2; // checkpoint well before the 6h wal
 
 // Mode-specific limits: build stops after task completion, debug/improve run long-term
 function getStepLimit(mode) {
-  if (mode === \"debug\" || mode === \"improve\") return Infinity; // long-running modes
+  if (mode === "debug" || mode === "improve") return Infinity; // long-running modes
   return 200; // build/plan modes have fixed limits
 }
 
@@ -140,7 +148,99 @@ function writeFileSafe(p, content) {
 
 let TODOS = [];
 
+// Helper: is this a Kaggle notebook job?
+function isKaggleJob() {
+  return Boolean(KAGGLE_USERNAME && KAGGLE_KEY && KAGGLE_NOTEBOOK_ID && KAGGLE_OWNER && KAGGLE_SLUG);
+}
+
+// Helper: strip Python literals for bracket balance checking
+function stripPythonLiterals(src) {
+  const blanks = (len) => " ".repeat(len);
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    if (c === "#") { // line comment
+      while (i < n && src[i] !== "\n") { out += " "; i++; }
+      continue;
+    }
+    if (c === "\"" || c === "'" || c === "`") { // string/template
+      const q = c;
+      out += " "; i++;
+      while (i < n) {
+        if (src[i] === "\\") { out += "  "; i += 2; continue; }
+        if (src[i] === q) { out += " "; i++; break; }
+        out += " "; i++;
+      }
+      continue;
+    }
+    if (c === "r" && (src[i + 1] === "\"" || src[i + 1] === "'")) { // raw string
+      const q = src[i + 1];
+      out += "  "; i += 2;
+      while (i < n) {
+        if (src[i] === "\\") { out += "  "; i += 2; continue; }
+        if (src[i] === q) { out += " "; i++; break; }
+        out += " "; i++;
+      }
+      continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
+
+// Build Kaggle-specific tools when in a Kaggle job
+function buildKaggleTools() {
+  if (!isKaggleJob()) return [];
+
+  const KAGGLE_API = "https://www.kaggle.com/api/v1";
+  const kaggleAuth = "Basic " + Buffer.from(KAGGLE_USERNAME + ":" + KAGGLE_KEY).toString("base64");
+  const kaggleHeaders = { "Authorization": kaggleAuth, "Content-Type": "application/json" };
+
+  async function kaggleFetch(endpoint, options = {}) {
+    const res = await fetch(KAGGLE_API + endpoint, { headers: kaggleHeaders, ...options });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error("Kaggle API " + res.status + ": " + text);
+    }
+    return res.json();
+  }
+
+  async function getNotebookSource() {
+    // First try to get the working source from the app
+    const res = await api("/api/public/jobs/kaggle", { action: "get_source" });
+    return res?.source;
+  }
+
+  async function saveNotebookSource(source) {
+    const res = await api("/api/public/jobs/kaggle", { action: "save_source", source });
+    return res;
+  }
+
+  return [
+    { type: "function", function: { name: "read_notebook", description: "Read the full source of the Kaggle notebook you are working on.",
+      parameters: { type: "object", properties: {} } } },
+    { type: "function", function: { name: "search_notebook", description: "Search the notebook source for a string or regex. Returns matching line numbers.",
+      parameters: { type: "object", properties: { query: { type: "string" }, regex: { type: "boolean" } }, required: ["query"] } } },
+    { type: "function", function: { name: "write_notebook", description: "Replace the entire notebook source. Pass the COMPLETE new source. Staged only — not pushed to Kaggle until the user commits.",
+      parameters: { type: "object", properties: { source: { type: "string" } }, required: ["source"] } } },
+    { type: "function", function: { name: "edit_notebook", description: "Replace an exact substring inside the notebook source. Prefer this for targeted edits.",
+      parameters: { type: "object", properties: { find: { type: "string" }, replace: { type: "string" }, replace_all: { type: "boolean" } }, required: ["find", "replace"] } } },
+    { type: "function", function: { name: "batch_edit_notebook", description: "Apply multiple find/replace edits to the notebook source in a single operation. More efficient than calling edit_notebook repeatedly for multiple changes.",
+      parameters: { type: "object", properties: { edits: { type: "array", items: { type: "object", properties: { find: { type: "string" }, replace: { type: "string" }, replace_all: { type: "boolean" } }, required: ["find", "replace"] }, maxItems: 20 } }, required: ["edits"] } } },
+    { type: "function", function: { name: "check_code", description: "Static review of the notebook source: unbalanced brackets, merge markers, obviously broken Python indentation, leftover TODO/FIXME, empty source. Call after editing and fix anything reported, then check again until clean.",
+      parameters: { type: "object", properties: {} } } },
+    { type: "function", function: { name: "fetch_url", description: "Fetch the text content of a URL (e.g., documentation, API reference, dataset page). Returns up to 50KB of content. Use this to read external resources needed for the notebook.",
+      parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } } },
+    { type: "function", function: { name: "search_web", description: "Search the web for a query and return titles, URLs and snippets of the top results. Use to look up API docs, package versions, dataset details or pandas/scikit/keras fixes instead of guessing. Read-only.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "The search query" }, max_results: { type: "number", description: "Max results (default 6, max 12)" } }, required: ["query"] } } },
+  ];
+}
+
+// All available tools (repo + Kaggle). For repo jobs, Kaggle tools are empty.
 const tools = [
+  // Repo tools (always available)
   { type: "function", function: { name: "list_files", description: "List repository files. Optional substring filter on the path.",
     parameters: { type: "object", properties: { filter: { type: "string" } } } } },
   { type: "function", function: { name: "glob", description: "Find files by glob pattern (e.g. 'src/**/*.tsx', '**/*.test.ts'). Faster than list_files for targeted lookups.",
@@ -187,6 +287,7 @@ const tools = [
     parameters: { type: "object", properties: { todos: { type: "array", items: { type: "object", properties: { title: { type: "string" }, status: { type: "string" } }, required: ["title", "status"] } } }, required: ["todos"] } } },
   { type: "function", function: { name: "finish", description: "Call only when the task is complete and check_code is clean. Provide a user-facing summary and a commit message.",
     parameters: { type: "object", properties: { summary: { type: "string" }, commit_message: { type: "string" } }, required: ["summary", "commit_message"] } } },
+  // Kaggle tools (conditionally added in toolsFor)
 ];
 
 const DELEGATE_TOOL = { type: "function", function: {
@@ -200,12 +301,15 @@ const DELEGATE_TOOL = { type: "function", function: {
 } };
 
 /* Read-only tools can safely run at the same time within one assistant turn. */
-const READ_ONLY_TOOLS = new Set(["list_files", "glob", "read_file", "read_files", "batch_read_files", "search_code", "git_diff", "fetch_url", "search_web", "list_reference_repos", "list_reference_files", "read_reference_file", "search_reference_code"]);
+const READ_ONLY_TOOLS = new Set(["list_files", "glob", "read_file", "read_files", "batch_read_files", "search_code", "git_diff", "fetch_url", "search_web", "list_reference_repos", "list_reference_files", "read_reference_file", "search_reference_code", "read_notebook", "search_notebook", "check_code"]);
 
 /* Tools available to the model this step. `finish` and `delegate` are main-agent only. */
 function toolsFor(kind, subAgents) {
-  if (kind === "sub") return tools.filter((t) => t.function.name !== "finish");
-  return subAgents && subAgents.length ? [...tools, DELEGATE_TOOL] : tools;
+  // For Kaggle jobs, include Kaggle tools; for repo jobs, use repo tools
+  const kaggleTools = isKaggleJob() ? buildKaggleTools() : [];
+  const allTools = [...tools, ...kaggleTools];
+  if (kind === "sub") return allTools.filter((t) => t.function.name !== "finish");
+  return subAgents && subAgents.length ? [...allTools, DELEGATE_TOOL] : allTools;
 }
 
 // Sub-agents reason in parallel, while checkout mutations and commands are
@@ -608,6 +712,75 @@ async function execTool(name, args) {
     }
     if (name === "check_code") { return JSON.stringify(runCheckCode()).slice(0, 12000); }
     if (name === "update_plan") { TODOS = Array.isArray(args.todos) ? args.todos : []; return "OK"; }
+    // Kaggle tools (only available when KAGGLE_* env vars are set)
+    if (name === "read_notebook") {
+      try {
+        const res = await api("/api/public/jobs/kaggle", { action: "get_source" });
+        const src = res?.source;
+        if (!src) return "ERR: notebook not found or not synced";
+        return src.slice(0, 120000);
+      } catch (e) {
+        return "ERR: " + ((e && e.message) || String(e)).slice(0, 4000);
+      }
+    }
+    if (name === "search_notebook") {
+      try {
+        const res = await api("/api/public/jobs/kaggle", { action: "get_source" });
+        const src = res?.source || "";
+        let re; try { re = new RegExp(args.query, args.regex ? "i" : "i"); } catch (e) { return "ERR: bad pattern " + e.message; }
+        const hits = [];
+        src.split("\n").forEach((l, i) => {
+          if (hits.length < 60 && re.test(l)) hits.push({ line: i + 1, text: l.slice(0, 200) });
+        });
+        return JSON.stringify({ count: hits.length, hits }).slice(0, 20000);
+      } catch (e) {
+        return "ERR: " + ((e && e.message) || String(e)).slice(0, 4000);
+      }
+    }
+    if (name === "write_notebook") {
+      try {
+        const res = await api("/api/public/jobs/kaggle", { action: "save_source", source: args.source });
+        return res?.ok ? "OK saved notebook (" + (args.source?.length || 0) + " bytes)" : "ERR: " + (res?.error || "save failed");
+      } catch (e) {
+        return "ERR: " + ((e && e.message) || String(e)).slice(0, 4000);
+      }
+    }
+    if (name === "edit_notebook") {
+      try {
+        const res = await api("/api/public/jobs/kaggle", { action: "get_source" });
+        let src = res?.source || "";
+        if (!src.includes(args.find)) return "ERR: the `find` text does not appear in the notebook — read it again";
+        const next = args.replace_all ? src.split(args.find).join(args.replace) : src.replace(args.find, args.replace);
+        const saveRes = await api("/api/public/jobs/kaggle", { action: "save_source", source: next });
+        return saveRes?.ok ? "OK edited notebook" : "ERR: " + (saveRes?.error || "save failed");
+      } catch (e) {
+        return "ERR: " + ((e && e.message) || String(e)).slice(0, 4000);
+      }
+    }
+    if (name === "batch_edit_notebook") {
+      try {
+        const res = await api("/api/public/jobs/kaggle", { action: "get_source" });
+        let src = res?.source || "";
+        const edits = Array.isArray(args.edits) ? args.edits : [];
+        if (!edits.length) return "ERR: no edits given";
+        const results = [];
+        for (const edit of edits) {
+          if (!src.includes(edit.find)) {
+            results.push({ find: edit.find.slice(0, 50), success: false, error: "Find text not in notebook" });
+            continue;
+          }
+          src = edit.replace_all ? src.split(edit.find).join(edit.replace) : src.replace(edit.find, edit.replace);
+          results.push({ find: edit.find.slice(0, 50), success: true });
+        }
+        const saveRes = await api("/api/public/jobs/kaggle", { action: "save_source", source: src });
+        const succeeded = results.filter(r => r.success).length;
+        return saveRes?.ok
+          ? "OK applied " + edits.length + " edits (" + succeeded + " succeeded, " + (edits.length - succeeded) + " failed)"
+          : "ERR: " + (saveRes?.error || "save failed");
+      } catch (e) {
+        return "ERR: " + ((e && e.message) || String(e)).slice(0, 4000);
+      }
+    }
     return "ERR: unknown tool";
   } catch (e) {
     return "ERR: " + ((e && (e.stderr || e.stdout) ? (e.stderr || e.stdout).toString() : (e && e.message) || String(e))).slice(0, 4000);
@@ -807,10 +980,16 @@ function verb(name, args) {
   if (name === "check_code") return "Checked the code I changed for problems";
   if (name === "update_plan") return "Updated the plan: " + (args.todos || []).map((t) => t.title).join(" · ").slice(0, 200);
   if (name === "delegate") return "Delegated to " + (args.agent_id || "a sub-agent");
+  // Kaggle tools
+  if (name === "read_notebook") return "Read the notebook source";
+  if (name === "search_notebook") return 'Searched the notebook for "' + String(args.query || "").slice(0, 60) + '"';
+  if (name === "write_notebook") return "Rewrote the notebook source";
+  if (name === "edit_notebook") return "Edited the notebook source";
+  if (name === "batch_edit_notebook") return "Applied batch edits to the notebook source";
   return name;
 }
 
-const WRITE_TOOLS = new Set(["write_file", "edit_file", "multi_edit", "batch_edit_files", "delete_file", "move_file"]);
+const WRITE_TOOLS = new Set(["write_file", "edit_file", "multi_edit", "batch_edit_files", "delete_file", "move_file", "write_notebook", "edit_notebook", "batch_edit_notebook"]);
 
 /* Files each sub-agent has been given, so two agents never edit the same file. */
 const FILE_OWNER = new Map();
@@ -828,7 +1007,7 @@ function releaseFiles(agentId) {
 }
 
 function phaseFor(name, sawCheck) {
-  if (name === "write_file" || name === "edit_file" || name === "delete_file") return sawCheck ? "debugging" : "coding";
+  if (name === "write_file" || name === "edit_file" || name === "delete_file" || name === "write_notebook" || name === "edit_notebook" || name === "batch_edit_notebook") return sawCheck ? "debugging" : "coding";
   if (name === "check_code") return "checking";
   if (name === "run_shell") return sawCheck ? "debugging" : "coding";
   return PHASE;
@@ -1031,6 +1210,9 @@ async function main() {
   let done = null;
   let sawCheck = false;
   let sawWrite = false;
+  // Set true the moment the model calls any tool at all (read or write). Used
+  // to catch a "replied but did nothing" first turn in build/debug/improve.
+  let touchedAnyTool = false;
   let noProgress = 0;
   let redelegateNote = null;
   // Guard against a degenerate loop where the model keeps invoking the exact
@@ -1112,9 +1294,9 @@ async function main() {
         if (!brainstormingPhase && !ideasExhausted) {
           // Enter brainstorming phase to find more improvements/bugs
           brainstormingPhase = true;
-          const prompt = mode === \"debug\"
-            ? \"You have not identified any more bugs to fix. Take a systematic approach: review the codebase for potential issues like error handling gaps, edge cases, performance bottlenecks, security concerns, or logic errors. List specific files and line numbers where problems might exist, then investigate and fix them. Only call finish when you've thoroughly checked and found nothing else to debug.\"
-            : \"You have not identified any more improvements. Brainstorm systematically: review the codebase for optimization opportunities, code quality improvements, missing features that would add value, refactoring chances to reduce duplication, better patterns to adopt, or hardening of weak spots. List specific improvements with file locations, then implement them. Only call finish when you've exhausted meaningful improvements.\";
+          const prompt = mode === "debug"
+            ? "You have not identified any more bugs to fix. Take a systematic approach: review the codebase for potential issues like error handling gaps, edge cases, performance bottlenecks, security concerns, or logic errors. List specific files and line numbers where problems might exist, then investigate and fix them. Only call finish when you've thoroughly checked and found nothing else to debug."
+            : "You have not identified any more improvements. Brainstorm systematically: review the codebase for optimization opportunities, code quality improvements, missing features that would add value, refactoring chances to reduce duplication, better patterns to adopt, or hardening of weak spots. List specific improvements with file locations, then implement them. Only call finish when you've exhausted meaningful improvements.";
           messages.push({ role: "user", content: prompt });
           continue;
         }
@@ -1132,6 +1314,18 @@ async function main() {
         }
       }
       
+      // The model produced text but did not touch any tools yet. In every
+      // mode except plan this means it "said something but did nothing" —
+      // the exact "runner started but the AI does nothing" symptom. Nudge it
+      // to actually interact with its tools instead of finishing instantly.
+      // Complete before we hit the step cap so a chatty-but-inert model can't
+      // burn the budget at the top; once it has made any progress we let the
+      // normal flow (including a no-more-work finish) take over.
+      if (mode !== "plan" && !sawWrite && !touchedAnyTool) {
+        await event("status", "Model replied but hasn't used any tools yet — nudging it to start working.", PHASE);
+        messages.push({ role: "user", content: "You only replied without calling any tools, so the task is not done. Look at the task, read the relevant files (" + (mode === "debug" || mode === "improve" ? "search_code, read_file, etc." : "glob, batch_read_files, read_file, etc.") + "), make real changes with your write tools, run check_code, and only then write your final summary." });
+        continue;
+      }
       // Build/plan mode or fallback: normal finish behavior
       if (sawWrite && !sawCheck && noProgress === 0) {
         noProgress++;
@@ -1142,6 +1336,7 @@ async function main() {
       break;
     }
 
+    touchedAnyTool = true;
     const parse = (c) => { try { return JSON.parse((c.function && c.function.arguments) || "{}"); } catch { return {}; } };
 
     // Sub-agents delegated in the same turn run concurrently, so several

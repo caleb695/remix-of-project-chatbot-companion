@@ -3,7 +3,7 @@
 import RUNNER_SOURCE from "./runner/coder-runner.mjs.txt?raw";
 
 /** Bump when the workflow or runner changes so installs re-write the files. */
-export const RUNNER_VERSION = 12;
+export const RUNNER_VERSION = 14;
 
 export const WORKFLOW_YML = `name: Coderbot
 # Installed by Coderbot — runner version ${RUNNER_VERSION}
@@ -20,6 +20,11 @@ jobs:
     steps:
       - name: Mask job secret
         run: echo "::add-mask::\${{ github.event.client_payload.job_secret }}"
+        # Also mask Kaggle credentials if present
+        if: \${{ github.event.client_payload.kaggle_key != '' }}
+      - name: Mask Kaggle key
+        run: echo "::add-mask::\${{ github.event.client_payload.kaggle_key }}"
+        if: \${{ github.event.client_payload.kaggle_key != '' }}
       - uses: actions/checkout@v4
         with:
           ref: \${{ github.event.client_payload.working_branch }}
@@ -35,6 +40,13 @@ jobs:
           APP_URL: \${{ github.event.client_payload.app_url }}
           WORKING_BRANCH: \${{ github.event.client_payload.working_branch }}
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          # Kaggle environment (only set for notebook jobs)
+          KAGGLE_USERNAME: \${{ github.event.client_payload.kaggle_username }}
+          KAGGLE_KEY: \${{ github.event.client_payload.kaggle_key }}
+          KAGGLE_NOTEBOOK_ID: \${{ github.event.client_payload.kaggle_notebook_id }}
+          KAGGLE_OWNER: \${{ github.event.client_payload.kaggle_owner }}
+          KAGGLE_SLUG: \${{ github.event.client_payload.kaggle_slug }}
+          KAGGLE_WORKING_SOURCE: \${{ github.event.client_payload.kaggle_working_source }}
         run: node scripts/lovable-coder/runner.mjs
 `;
 

@@ -138,100 +138,211 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { data: thread, error: te } = await context.supabase
       .from("chat_threads")
-      .select("id, title, model, mode, repo_selection_id, repo_selections(owner, name, working_branch, workflow_installed_at)")
+      .select("id, title, model, mode, target, repo_selection_id, kaggle_notebook_id, repo_selections(owner, name, working_branch, workflow_installed_at), kaggle_notebooks(owner, slug, title, status)")
       .eq("id", data.threadId).single();
     if (te) throw te;
-    if (!thread.repo_selections) throw new Error("Thread has no repo");
-    const repo = thread.repo_selections as { owner: string; name: string; working_branch: string; workflow_installed_at: string | null };
-    if (!repo.workflow_installed_at) throw new Error("Install the coder workflow for this repo first");
-    if (!thread.model) throw new Error("Pick a model for this chat first");
+    
+    const isKaggle = thread.target === "kaggle" && thread.kaggle_notebook_id;
+    
+    if (isKaggle) {
+      // Kaggle notebook job - use GitHub Actions for reliable background execution
+      if (!thread.kaggle_notebooks) throw new Error("Kaggle notebook not found");
+      const nb = thread.kaggle_notebooks as { owner: string; slug: string; title: string; status: string };
+      
+      const { data: conn } = await context.supabase
+        .from("github_connections").select("access_token").maybeSingle();
+      if (!conn) throw new Error("Connect GitHub");
 
-    const { data: conn } = await context.supabase
-      .from("github_connections").select("access_token").maybeSingle();
-    if (!conn) throw new Error("Connect GitHub");
+      // Get Kaggle credentials
+      const { data: kaggleCreds } = await context.supabase
+        .from("openrouter_settings")
+        .select("kaggle_username, kaggle_key").maybeSingle();
+      if (!kaggleCreds?.kaggle_username || !kaggleCreds?.kaggle_key) {
+        throw new Error("Kaggle credentials not configured. Add them on the Account tab.");
+      }
 
-    const mode = data.mode ?? ((thread.mode as string) || "build");
-    const taskId = data.taskId ?? crypto.randomUUID();
+      const mode = data.mode ?? ((thread.mode as string) || "build");
+      const taskId = data.taskId ?? crypto.randomUUID();
 
-    // Persist the user's turn so it survives closing the tab, and title new chats.
-    await context.supabase.from("chat_messages").insert({
-      thread_id: data.threadId,
-      user_id: context.userId,
-      role: "user",
-      parts: [{ type: "text", text: data.prompt }],
-    });
-    if (thread.title === "New chat") {
-      await context.supabase.from("chat_threads")
-        .update({ title: data.prompt.slice(0, 60) }).eq("id", data.threadId);
-    }
-    await context.supabase.from("agent_events").insert({
-      user_id: context.userId,
-      thread_id: data.threadId,
-      task_id: taskId,
-      agent_id: "main",
-      agent_label: "Main agent",
-      phase: "planning",
-      kind: "status",
-      text: "Queued on GitHub Actions — you can close this tab, the run continues.",
-    });
-
-    // A repo installed before a runner fix would otherwise keep running the old copy.
-    try {
-      await refreshRunnerIfStale({
-        token: conn.access_token,
-        owner: repo.owner,
-        name: repo.name,
-        branch: repo.working_branch,
+      // Persist the user's turn so it survives closing the tab
+      await context.supabase.from("chat_messages").insert({
+        thread_id: data.threadId,
+        user_id: context.userId,
+        role: "user",
+        parts: [{ type: "text", text: data.prompt }],
       });
-    } catch {
-      /* best-effort — run with whatever is installed */
-    }
-
-    const secret = crypto.randomUUID() + crypto.randomUUID();
-    const appUrl = getAppUrl(getRequest()); // Pass request for fallback when VITE_PUBLIC_APP_URL not set
-
-    const { data: job, error: je } = await context.supabase
-      .from("coding_jobs").insert({
+      if (thread.title === "New chat") {
+        await context.supabase.from("chat_threads")
+          .update({ title: data.prompt.slice(0, 60) }).eq("id", data.threadId);
+      }
+      await context.supabase.from("agent_events").insert({
         user_id: context.userId,
         thread_id: data.threadId,
-        repo_selection_id: thread.repo_selection_id!,
-        status: "queued",
-        prompt: data.prompt,
-        model: thread.model,
-        job_type: "code",
-        mode,
         task_id: taskId,
-        hmac_secret: secret,
-        working_branch: repo.working_branch,
-        logs: "",
-      }).select().single();
-    if (je) throw je;
-
-    // repository_dispatch — ghFetch retries transient network/5xx failures so a
-    // dropped connection no longer aborts the edit with a raw error.
-    try {
-      await ghFetch(`/repos/${repo.owner}/${repo.name}/dispatches`, conn.access_token, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event_type: "lovable-coding-job",
-          client_payload: {
-            job_id: job.id,
-            job_secret: secret,
-            app_url: appUrl,
-            working_branch: repo.working_branch,
-          },
-        }),
+        agent_id: "main",
+        agent_label: "Main agent",
+        phase: "planning",
+        kind: "status",
+        text: "Queued on GitHub Actions for Kaggle — you can close this tab, the run continues.",
       });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      await context.supabase.from("coding_jobs")
-        .update({ status: "failed", error: `dispatch: ${msg.slice(0, 400)}` })
-        .eq("id", job.id);
-      throw new Error(`GitHub dispatch failed: ${msg.slice(0, 200)}`);
-    }
 
-    return { jobId: job.id, taskId };
+      // Ensure runner is up to date
+      try {
+        await refreshRunnerIfStale({
+          token: conn.access_token,
+          owner: nb.owner,
+          name: nb.slug,
+          branch: "main", // Kaggle notebooks don't have branches in the same way
+        });
+      } catch {
+        /* best-effort — run with whatever is installed */
+      }
+
+      const secret = crypto.randomUUID() + crypto.randomUUID();
+      const appUrl = getAppUrl(getRequest());
+
+      const { data: job, error: je } = await context.supabase
+        .from("coding_jobs").insert({
+          user_id: context.userId,
+          thread_id: data.threadId,
+          repo_selection_id: thread.kaggle_notebook_id!, // Store notebook ID here for Kaggle jobs
+          status: "queued",
+          prompt: data.prompt,
+          model: thread.model,
+          job_type: "kaggle",
+          mode,
+          task_id: taskId,
+          hmac_secret: secret,
+          working_branch: "main", // Kaggle uses main branch concept
+          logs: "",
+        }).select().single();
+      if (je) throw je;
+
+      // Dispatch to GitHub Actions with Kaggle credentials
+      try {
+        await ghFetch(`/repos/${nb.owner}/${nb.slug}/dispatches`, conn.access_token, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_type: "lovable-coding-job",
+            client_payload: {
+              job_id: job.id,
+              job_secret: secret,
+              app_url: appUrl,
+              working_branch: "main",
+              // Kaggle-specific fields
+              kaggle_username: kaggleCreds.kaggle_username,
+              kaggle_key: kaggleCreds.kaggle_key,
+              kaggle_notebook_id: thread.kaggle_notebook_id!,
+              kaggle_owner: nb.owner,
+              kaggle_slug: nb.slug,
+              kaggle_working_source: "", // Will be fetched from DB by runner
+            },
+          }),
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await context.supabase.from("coding_jobs")
+          .update({ status: "failed", error: `dispatch: ${msg.slice(0, 400)}` })
+          .eq("id", job.id);
+        throw new Error(`GitHub dispatch failed: ${msg.slice(0, 200)}`);
+      }
+
+      return { jobId: job.id, taskId };
+    } else {
+      // Regular GitHub repo job
+      if (!thread.repo_selections) throw new Error("Thread has no repo");
+      const repo = thread.repo_selections as { owner: string; name: string; working_branch: string; workflow_installed_at: string | null };
+      if (!repo.workflow_installed_at) throw new Error("Install the coder workflow for this repo first");
+      if (!thread.model) throw new Error("Pick a model for this chat first");
+
+      const { data: conn } = await context.supabase
+        .from("github_connections").select("access_token").maybeSingle();
+      if (!conn) throw new Error("Connect GitHub");
+
+      const mode = data.mode ?? ((thread.mode as string) || "build");
+      const taskId = data.taskId ?? crypto.randomUUID();
+
+      // Persist the user's turn so it survives closing the tab, and title new chats.
+      await context.supabase.from("chat_messages").insert({
+        thread_id: data.threadId,
+        user_id: context.userId,
+        role: "user",
+        parts: [{ type: "text", text: data.prompt }],
+      });
+      if (thread.title === "New chat") {
+        await context.supabase.from("chat_threads")
+          .update({ title: data.prompt.slice(0, 60) }).eq("id", data.threadId);
+      }
+      await context.supabase.from("agent_events").insert({
+        user_id: context.userId,
+        thread_id: data.threadId,
+        task_id: taskId,
+        agent_id: "main",
+        agent_label: "Main agent",
+        phase: "planning",
+        kind: "status",
+        text: "Queued on GitHub Actions — you can close this tab, the run continues.",
+      });
+
+      // A repo installed before a runner fix would otherwise keep running the old copy.
+      try {
+        await refreshRunnerIfStale({
+          token: conn.access_token,
+          owner: repo.owner,
+          name: repo.name,
+          branch: repo.working_branch,
+        });
+      } catch {
+        /* best-effort — run with whatever is installed */
+      }
+
+      const secret = crypto.randomUUID() + crypto.randomUUID();
+      const appUrl = getAppUrl(getRequest()); // Pass request for fallback when VITE_PUBLIC_APP_URL not set
+
+      const { data: job, error: je } = await context.supabase
+        .from("coding_jobs").insert({
+          user_id: context.userId,
+          thread_id: data.threadId,
+          repo_selection_id: thread.repo_selection_id!,
+          status: "queued",
+          prompt: data.prompt,
+          model: thread.model,
+          job_type: "code",
+          mode,
+          task_id: taskId,
+          hmac_secret: secret,
+          working_branch: repo.working_branch,
+          logs: "",
+        }).select().single();
+      if (je) throw je;
+
+      // repository_dispatch — ghFetch retries transient network/5xx failures so a
+      // dropped connection no longer aborts the edit with a raw error.
+      try {
+        await ghFetch(`/repos/${repo.owner}/${repo.name}/dispatches`, conn.access_token, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_type: "lovable-coding-job",
+            client_payload: {
+              job_id: job.id,
+              job_secret: secret,
+              app_url: appUrl,
+              working_branch: repo.working_branch,
+            },
+          }),
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await context.supabase.from("coding_jobs")
+          .update({ status: "failed", error: `dispatch: ${msg.slice(0, 400)}` })
+          .eq("id", job.id);
+        throw new Error(`GitHub dispatch failed: ${msg.slice(0, 200)}`);
+      }
+
+      return { jobId: job.id, taskId };
+    }
   });
 
 export const getJob = createServerFn({ method: "GET" })

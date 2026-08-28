@@ -155,11 +155,15 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
 
   // Build/Debug/Improve runs happen on GitHub Actions so they survive closing
   // the tab. Plan mode stays as a live in-page conversation.
-  // Kaggle notebooks have no GitHub Actions runner, so they always stream in-page.
-  const durable = !isKaggle && mode !== "plan" && Boolean(thread.repo_selections?.workflow_installed_at);
+  // Kaggle notebooks now run on GitHub Actions too (since we added Kaggle support to the runner).
+  const durable = mode !== "plan" && Boolean(
+    isKaggle 
+      ? thread.kaggle_notebooks?.status === "synced" // Kaggle notebook must be synced
+      : thread.repo_selections?.workflow_installed_at
+  );
   // For durable runs (GitHub Actions), don't block user input while the job is running
   // since the user can send follow-up messages that will be queued for the next run.
-  // For in-page streaming (Kaggle, plan mode), still block to avoid concurrent requests.
+  // For in-page streaming (plan mode), still block to avoid concurrent requests.
   const busy = (status === "submitted" || status === "streaming") && !durable;
 
   useLayoutEffect(() => {
@@ -236,10 +240,10 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
     setInput("");
     requestAnimationFrame(autoGrow);
     
-    // For Kaggle notebooks, the run continues server-side even if you close the tab
-    // because we tee the stream on the server (see /api/chat.ts)
-    if (isKaggle) {
-      toast.success("Kaggle run started — continues in background if you close this tab");
+    // For GitHub Actions runs (including Kaggle now), the run continues on the runner
+    // even if you close the tab
+    if (durable) {
+      toast.success("Run queued on GitHub Actions — safe to close the tab");
     }
   };
 
@@ -458,7 +462,6 @@ function ChatView({ threadId, initial, thread }: { threadId: string; initial: UI
             <span className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
               <Zap className="h-3 w-3 text-primary" />
               {durable ? "Runs on GitHub Actions"
-                : isKaggle ? "Kaggle notebook (runs in background)"
                 : mode === "plan" ? "Live chat" : "Install the workflow first"}
             </span>
           </div>
