@@ -460,7 +460,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
     list_reference_repos: tool({
       description:
         "List other GitHub repos this user connected. Use these read-only reference repos to borrow patterns or copy any relevant code snippets into the repo you are editing.",
-      inputSchema: z.object({}),
+      inputSchema: z.object({ reason: z.string().optional().describe("Optional note about why you are listing them") }),
       execute: async () => {
         const { data, error } = await sb
           .from("repo_selections")
@@ -772,7 +772,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
 
     staged_changes: tool({
       description: "List every file currently staged for commit, with its status.",
-      inputSchema: z.object({}),
+      inputSchema: z.object({ reason: z.string().optional().describe("Optional note about why you are checking") }),
       execute: async () => {
         const { data } = await sb
           .from("working_files")

@@ -154,7 +154,7 @@ const tools = [
   { type: "function", function: { name: "search_code", description: "Search the repo for a regular expression. Returns path:line matches. Optional `path_filter` substring and `context` lines.",
     parameters: { type: "object", properties: { query: { type: "string" }, max_results: { type: "number" }, path_filter: { type: "string" }, context: { type: "number" } }, required: ["query"] } } },
   { type: "function", function: { name: "list_reference_repos", description: "List other connected GitHub repos available read-only as code references. Use these to borrow patterns or copy snippets into the repo you are editing.",
-    parameters: { type: "object", properties: {} } } },
+    parameters: { type: "object", properties: { reason: { type: "string", description: "Optional note about why you are listing them" } } } } },
   { type: "function", function: { name: "list_reference_files", description: "List files in a connected reference repo by owner/name. Read-only; cannot edit that repo.",
     parameters: { type: "object", properties: { repo: { type: "string", description: "owner/name" }, prefix: { type: "string" } }, required: ["repo"] } } },
   { type: "function", function: { name: "read_reference_file", description: "Read a file from a connected reference repo by owner/name so you can copy any useful part into the repo you are editing.",
@@ -182,7 +182,7 @@ const tools = [
   { type: "function", function: { name: "search_web", description: "Search the web for a query and return titles, URLs and snippets of the top results. Use this to look up current docs, package versions, error fixes and best practices instead of guessing. Read-only.",
     parameters: { type: "object", properties: { query: { type: "string", description: "The search query" }, max_results: { type: "number", description: "Max results to return (default 6, max 12)" } }, required: ["query"] } } },
   { type: "function", function: { name: "check_code", description: "Verify your work: runs the project's typecheck/lint/test/build scripts when they exist, plus static checks on changed files. Call this after editing and fix anything it reports.",
-    parameters: { type: "object", properties: {} } } },
+    parameters: { type: "object", properties: { reason: { type: "string", description: "Optional note about why you are checking" } } } } },
   { type: "function", function: { name: "update_plan", description: "Record or update your task list so the user can follow along. Each item has a title and a status of pending, in_progress or done.",
     parameters: { type: "object", properties: { todos: { type: "array", items: { type: "object", properties: { title: { type: "string" }, status: { type: "string" } }, required: ["title", "status"] } } }, required: ["todos"] } } },
   { type: "function", function: { name: "finish", description: "Call only when the task is complete and check_code is clean. Provide a user-facing summary and a commit message.",
@@ -1320,7 +1320,13 @@ async function gitCommit(message, branch) {
   if (!status.trim()) return null;
   sh("git add -A");
   sh("git commit -m " + JSON.stringify(message));
-  sh("git push --force origin HEAD:" + branch);
+  // Use GH_TOKEN for authenticated push (set by GitHub Actions workflow)
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (token) {
+    sh("git push --force https://x-access-token:" + token + "@github.com/" + process.env.GITHUB_REPOSITORY + ".git HEAD:" + branch);
+  } else {
+    sh("git push --force origin HEAD:" + branch);
+  }
   return sh("git rev-parse HEAD").trim();
 }
 

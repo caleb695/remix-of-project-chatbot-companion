@@ -3,7 +3,7 @@
 import RUNNER_SOURCE from "./runner/coder-runner.mjs.txt?raw";
 
 /** Bump when the workflow or runner changes so installs re-write the files. */
-export const RUNNER_VERSION = 12;
+export const RUNNER_VERSION = 13;
 
 export const WORKFLOW_YML = `name: Coderbot
 # Installed by Coderbot — runner version ${RUNNER_VERSION}
@@ -35,6 +35,8 @@ jobs:
           APP_URL: \${{ github.event.client_payload.app_url }}
           WORKING_BRANCH: \${{ github.event.client_payload.working_branch }}
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          VITE_PUBLIC_APP_URL: \${{ vars.VITE_PUBLIC_APP_URL }}
         run: node scripts/lovable-coder/runner.mjs
 `;
 

@@ -324,7 +324,7 @@ export function buildKaggleTools(
     check_code: tool({
       description:
         "Static review of the notebook source: unbalanced brackets, merge markers, obviously broken Python indentation, leftover TODO/FIXME, empty source. Call after editing and fix anything reported, then check again until clean.",
-      inputSchema: z.object({}),
+      inputSchema: z.object({ reason: z.string().optional().describe("Optional note about why you are checking") }),
       execute: async () => {
         const nb = await load();
         const src = nb?.working_source ?? "";

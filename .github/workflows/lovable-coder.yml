@@ -1,5 +1,5 @@
 name: Coderbot
-# Installed by Coderbot — runner version 12
+# Installed by Coderbot — runner version 13
 on:
   repository_dispatch:
     types: [lovable-coding-job]
@@ -28,4 +28,6 @@ jobs:
           APP_URL: ${{ github.event.client_payload.app_url }}
           WORKING_BRANCH: ${{ github.event.client_payload.working_branch }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          VITE_PUBLIC_APP_URL: ${{ vars.VITE_PUBLIC_APP_URL }}
         run: node scripts/lovable-coder/runner.mjs
