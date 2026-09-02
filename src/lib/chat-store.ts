@@ -1,5 +1,5 @@
 import { Chat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage, type ChatTransport, type HttpChatTransportInitOptions } from "ai";
+import { DefaultChatTransport, type UIMessage, type HttpChatTransportInitOptions } from "ai";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
