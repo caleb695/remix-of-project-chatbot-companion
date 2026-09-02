@@ -278,7 +278,12 @@ export function buildKaggleTools(
   const readOnly = {
     read_notebook: tool({
       description: "Read the full source of the Kaggle notebook you are working on.",
-      inputSchema: z.object({}),
+      // NOTE: several OpenAI-compatible providers (Groq, Mistral, NVIDIA and
+      // some OpenRouter upstreams) reject a function whose JSON schema has no
+      // properties, which fails the whole request before a single token is
+      // streamed — the "stuck on planning forever" symptom. Give every tool at
+      // least one optional property so the schema is always valid.
+      inputSchema: z.object({ reason: z.string().optional().describe("Optional note about why you are reading it") }),
       execute: async () => {
         const nb = await load();
         if (!nb) return { error: "Notebook not found" };

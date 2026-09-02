@@ -81,7 +81,7 @@ class LRUCache<T> {
 // Cache instances with appropriate TTLs
 const fileContentCache = new LRUCache<{ content: string; status: string }>(500, 5 * 60 * 1000); // 5 min
 const searchCodeCache = new LRUCache<{ count: number; hits: Array<{ path: string; line: number; text: string }> }>(200, 2 * 60 * 1000); // 2 min
-const webSearchCache = new LRUCache<string[]>(100, 10 * 60 * 1000); // 10 min
+const webSearchCache = new LRUCache<string>(100, 10 * 60 * 1000); // 10 min
 const fetchUrlCache = new LRUCache<string>(200, 10 * 60 * 1000); // 10 min
 
 /* ---- Web search helpers (DuckDuckGo HTML with Bing fallback, no API key) ---- */
@@ -326,7 +326,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       description: "Read multiple files at once for efficiency. Returns an array of file contents. Use when you need to understand relationships between files or make cross-file changes. Results cached for 5 minutes.",
       inputSchema: z.object({ paths: z.array(z.string()).max(MAX_BATCH_READ) }),
       execute: async ({ paths }) => {
-        const results: Array<{ path: string; content: string; truncated: boolean; error?: string }> = [];
+        const results: Array<{ path: string; content: string; truncated: boolean; error?: string; cached?: boolean }> = [];
         const missing: string[] = [];
         
         // Check cache first

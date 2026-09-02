@@ -1,5 +1,5 @@
 import { Chat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage, type ChatTransport, type HttpChatTransportInitOptions } from "ai";
+import { DefaultChatTransport, type UIMessage, type HttpChatTransportInitOptions } from "ai";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
  * via GET /api/chat/{chatId}/stream doesn't work. Instead, we rely on background
  * polling of messages/agent_events to sync state when the user returns.
  */
-class NoReconnectTransport extends DefaultChatTransport {
+class NoReconnectTransport extends DefaultChatTransport<UIMessage> {
   constructor(options?: HttpChatTransportInitOptions<UIMessage>) {
     super(options);
   }
