@@ -2,6 +2,7 @@
 // Nothing here touches GitHub — changes stay staged until the user commits.
 import { tool } from "ai";
 import { z } from "zod";
+import { lArray, lBool, lNum, lStr } from "./zod-lenient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Sb = SupabaseClient<any, any, any>;
@@ -223,7 +224,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         "List files in the working copy of the repository. Optionally filter by a path prefix or glob-ish substring.",
       inputSchema: z.object({
         prefix: z.string().optional().describe("Only return paths containing this substring"),
-        force_refresh: z.boolean().optional().describe("Skip cache and fetch fresh data"),
+        force_refresh: lBool.optional().describe("Skip cache and fetch fresh data"),
       }),
       execute: async ({ prefix, force_refresh }) => {
         const cacheKey = `files:${repoId}:${prefix || ""}`;
@@ -269,7 +270,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
     glob: tool({
       description:
         "Find files by glob pattern (e.g. 'src/**/*.tsx', '**/*.test.ts', 'lib/*.py'). Faster and more precise than list_files when you want a specific set of files. Returns matching paths (up to 600).",
-      inputSchema: z.object({ pattern: z.string().describe("Glob pattern, e.g. src/**/*.ts") }),
+      inputSchema: z.object({ pattern: lStr.describe("Glob pattern, e.g. src/**/*.ts") }),
       execute: async ({ pattern }) => {
         const cacheKey = `files:${repoId}:`;
         const now = Date.now();
@@ -300,7 +301,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
 
     read_file: tool({
       description: "Read the full contents of a file from the working copy. Results cached for 5 minutes.",
-      inputSchema: z.object({ path: z.string() }),
+      inputSchema: z.object({ path: lStr }),
       execute: async ({ path }) => {
         const cacheKey = `file:${repoId}:${path}`;
         const cached = fileContentCache.get(cacheKey);
@@ -324,7 +325,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
 
     batch_read_files: tool({
       description: "Read multiple files at once for efficiency. Returns an array of file contents. Use when you need to understand relationships between files or make cross-file changes. Results cached for 5 minutes.",
-      inputSchema: z.object({ paths: z.array(z.string()).max(MAX_BATCH_READ) }),
+      inputSchema: z.object({ paths: lArray(lStr) }),
       execute: async ({ paths }) => {
         const results: Array<{ path: string; content: string; truncated: boolean; error?: string; cached?: boolean }> = [];
         const missing: string[] = [];
@@ -373,9 +374,9 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       description:
         "Search the working copy for a literal string or regular expression. Returns matching files with line numbers. Results cached for 2 minutes.",
       inputSchema: z.object({
-        query: z.string(),
-        regex: z.boolean().optional(),
-        max_results: z.number().optional(),
+        query: lStr,
+        regex: lBool.optional(),
+        max_results: lNum.optional(),
       }),
       execute: async ({ query, regex, max_results }) => {
         const cacheKey = `search:${repoId}:${query}:${regex}:${max_results ?? 40}`;
@@ -416,8 +417,8 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       description:
         "Search the web for a query and return titles, URLs and snippets of the top results. Use this to look up current docs, package versions, error fixes and best practices instead of guessing. Read-only. Results cached for 10 minutes.",
       inputSchema: z.object({
-        query: z.string().describe("The search query"),
-        max_results: z.number().optional().describe("Max results (default 6, max 12)"),
+        query: lStr.describe("The search query"),
+        max_results: lNum.optional().describe("Max results (default 6, max 12)"),
       }),
       execute: async ({ query, max_results }) => {
         const cacheKey = `web:${query}:${max_results ?? 6}`;
@@ -431,7 +432,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
 
     fetch_url: tool({
       description: "Fetch the text content of a URL (e.g., documentation, API reference, RFC). Returns up to 50KB of content. Use this to read external resources needed for the code. Results cached for 10 minutes.",
-      inputSchema: z.object({ url: z.string().describe("The URL to fetch") }),
+      inputSchema: z.object({ url: lStr.describe("The URL to fetch") }),
       execute: async ({ url }) => {
         const u = String(url || "").trim();
         if (!u) return "fetch_url requires a ?url=";
@@ -475,7 +476,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
 
     list_reference_files: tool({
       description: "List files in a connected reference repo by owner/name. Read-only; cannot edit that repo.",
-      inputSchema: z.object({ repo: z.string().describe("owner/name"), prefix: z.string().optional() }),
+      inputSchema: z.object({ repo: lStr.describe("owner/name"), prefix: z.string().optional() }),
       execute: async ({ repo, prefix }) => {
         const found = await findReferenceRepo(sb, userId, repo);
         if ("error" in found) return { error: found.error };
@@ -494,7 +495,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
 
     read_reference_file: tool({
       description: "Read a file from a connected reference repo by owner/name so you can copy any useful part into the repo you are editing.",
-      inputSchema: z.object({ repo: z.string().describe("owner/name"), path: z.string() }),
+      inputSchema: z.object({ repo: lStr.describe("owner/name"), path: lStr }),
       execute: async ({ repo, path }) => {
         const found = await findReferenceRepo(sb, userId, repo);
         if ("error" in found) return { error: found.error };
@@ -513,7 +514,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
 
     search_reference_code: tool({
       description: "Search a connected reference repo for code to reuse. Returns matching files with line numbers. Read-only.",
-      inputSchema: z.object({ repo: z.string().describe("owner/name"), query: z.string(), regex: z.boolean().optional(), max_results: z.number().optional() }),
+      inputSchema: z.object({ repo: lStr.describe("owner/name"), query: lStr, regex: lBool.optional(), max_results: lNum.optional() }),
       execute: async ({ repo, query, regex, max_results }) => {
         const found = await findReferenceRepo(sb, userId, repo);
         if ("error" in found) return { error: found.error };
@@ -549,7 +550,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       description:
         "Static review of the files you changed in this task. Reports real, likely problems: unbalanced brackets, leftover merge-conflict markers, imports of local files that do not exist, TODO/FIXME left behind, and empty files. Call this after editing, then fix anything it reports and call it again until clean.",
       inputSchema: z.object({
-        paths: z.array(z.string()).optional().describe("Restrict the check to these paths"),
+        paths: lArray(lStr).optional().describe("Restrict the check to these paths"),
       }),
       execute: async ({ paths }) => {
         const q = sb
@@ -642,7 +643,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
     write_file: tool({
       description:
         "Create or overwrite a file in the working copy. Always pass the COMPLETE new file contents. Staged only — not pushed to GitHub until the user commits.",
-      inputSchema: z.object({ path: z.string(), content: z.string() }),
+      inputSchema: z.object({ path: lStr, content: lStr }),
       execute: async ({ path, content }) => {
         const { data: existing } = await sb
           .from("working_files")
@@ -677,10 +678,10 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       description:
         "Replace an exact substring in an existing file. Use for small targeted edits instead of rewriting the whole file.",
       inputSchema: z.object({
-        path: z.string(),
-        find: z.string(),
-        replace: z.string(),
-        replace_all: z.boolean().optional(),
+        path: lStr,
+        find: lStr,
+        replace: lStr,
+        replace_all: lBool.optional(),
       }),
       execute: async ({ path, find, replace, replace_all }) => {
         const { data: row } = await sb
@@ -709,10 +710,10 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
     batch_edit_files: tool({
       description: "Apply the same find/replace edit across multiple files at once. Use when you need to make the same change in several files (e.g., renaming a function, updating imports). More efficient than calling edit_file repeatedly.",
       inputSchema: z.object({
-        paths: z.array(z.string()).max(10),
-        find: z.string(),
-        replace: z.string(),
-        replace_all: z.boolean().optional(),
+        paths: lArray(lStr),
+        find: lStr,
+        replace: lStr,
+        replace_all: lBool.optional(),
       }),
       execute: async ({ paths, find, replace, replace_all }) => {
         const results: Array<{ path: string; success: boolean; error?: string }> = [];
@@ -751,7 +752,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
 
     delete_file: tool({
       description: "Mark a file as deleted in the working copy.",
-      inputSchema: z.object({ path: z.string() }),
+      inputSchema: z.object({ path: lStr }),
       execute: async ({ path }) => {
         const { data: row } = await sb
           .from("working_files")

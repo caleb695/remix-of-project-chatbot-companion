@@ -1,6 +1,7 @@
 // Server-only Kaggle API helpers + agent tools for notebook coding.
 import { tool } from "ai";
 import { z } from "zod";
+import { lArray, lBool, lNum, lStr } from "./zod-lenient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const API = "https://www.kaggle.com/api/v1";
@@ -293,21 +294,21 @@ export function buildKaggleTools(
     }),
     fetch_url: tool({
       description: "Fetch the text content of a URL (e.g., documentation, API reference, dataset page). Returns up to 50KB of content. Use this to read external resources needed for the notebook.",
-      inputSchema: z.object({ url: z.string().describe("The URL to fetch") }),
+      inputSchema: z.object({ url: lStr.describe("The URL to fetch") }),
       execute: async ({ url }) => fetchUrl(url),
     }),
     search_web: tool({
       description:
         "Search the web for a query and return titles, URLs and snippets of the top results. Use to look up API docs, package versions, dataset details or pandas/scikit/keras fixes instead of guessing. Read-only.",
       inputSchema: z.object({
-        query: z.string().describe("The search query"),
-        max_results: z.number().optional().describe("Max results (default 6, max 12)"),
+        query: lStr.describe("The search query"),
+        max_results: lNum.optional().describe("Max results (default 6, max 12)"),
       }),
       execute: async ({ query, max_results }) => webSearch(query ?? "", max_results ?? 6),
     }),
     search_notebook: tool({
       description: "Search the notebook source for a string or regex. Returns matching line numbers.",
-      inputSchema: z.object({ query: z.string(), regex: z.boolean().optional() }),
+      inputSchema: z.object({ query: lStr, regex: lBool.optional() }),
       execute: async ({ query, regex }) => {
         const nb = await load();
         const src = nb?.working_source ?? "";
@@ -390,12 +391,12 @@ export function buildKaggleTools(
     ...readOnly,
     write_notebook: tool({
       description: "Replace the entire notebook source. Pass the COMPLETE new source. Staged only — not pushed to Kaggle until the user commits.",
-      inputSchema: z.object({ source: z.string() }),
+      inputSchema: z.object({ source: lStr }),
       execute: async ({ source }) => save(source),
     }),
     edit_notebook: tool({
       description: "Replace an exact substring inside the notebook source. Prefer this for targeted edits.",
-      inputSchema: z.object({ find: z.string(), replace: z.string(), replace_all: z.boolean().optional() }),
+      inputSchema: z.object({ find: lStr, replace: lStr, replace_all: lBool.optional() }),
       execute: async ({ find, replace, replace_all }) => {
         const nb = await load();
         const src = nb?.working_source ?? "";
@@ -413,12 +414,22 @@ export function buildKaggleTools(
     }),
     batch_edit_notebook: tool({
       description: "Apply multiple find/replace edits to the notebook source in a single operation. More efficient than calling edit_notebook repeatedly for multiple changes.",
-      inputSchema: z.object({ edits: z.array(z.object({ find: z.string(), replace: z.string(), replace_all: z.boolean().optional() })).max(20) }),
+      inputSchema: z.object({ edits: lArray(z.object({ find: lStr, replace: lStr, replace_all: lBool.optional() })) }),
       execute: async ({ edits }) => {
         const nb = await load();
         let src = nb?.working_source ?? "";
         const results: Array<{ find: string; success: boolean; error?: string }> = [];
-        for (const edit of edits) {
+        // Models often repeat the same edit twice in one batch; applying it
+        // again would duplicate the inserted code.
+        const seen = new Set<string>();
+        const unique = edits.filter((e) => {
+          const k = `${e.find}\u0000${e.replace}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        for (const edit of unique) {
+
           if (!src.includes(edit.find)) {
             results.push({ find: edit.find.slice(0, 50), success: false, error: "Find text not in notebook" });
             continue;
@@ -429,7 +440,7 @@ export function buildKaggleTools(
         const saveResult = await save(src);
         if (saveResult.error) return { error: saveResult.error };
         const succeeded = results.filter(r => r.success).length;
-        return { total: edits.length, succeeded, failed: edits.length - succeeded, results, bytes: src.length };
+        return { total: unique.length, succeeded, failed: unique.length - succeeded, results, bytes: src.length };
       },
     }),
   };
