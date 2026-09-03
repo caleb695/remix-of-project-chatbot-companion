@@ -71,25 +71,66 @@ async function putRepoFile(args: {
  * when the files are rewritten. Compare the version stamped in the installed
  * workflow and refresh both files when it is behind.
  */
+const WORKFLOW_PATH = ".github/workflows/lovable-coder.yml";
+const RUNNER_PATH = "scripts/lovable-coder/runner.mjs";
+
+/**
+ * GitHub only starts a `repository_dispatch` workflow when the workflow file
+ * exists on the repository's DEFAULT branch — a copy that lives only on the
+ * working branch is accepted by the dispatch API (204) and then silently never
+ * runs ("the runner isn't starting"). So the workflow + runner are written to
+ * the default branch as well as the branch the job checks out.
+ */
+function installBranches(defaultBranch: string, workingBranch: string) {
+  const branches = [defaultBranch || workingBranch];
+  if (workingBranch && workingBranch !== branches[0]) branches.push(workingBranch);
+  return branches;
+}
+
+async function writeRunnerFiles(args: {
+  token: string;
+  owner: string;
+  name: string;
+  branches: string[];
+  message: string;
+  workflow: string;
+  runner: string;
+}) {
+  for (const branch of args.branches) {
+    const base = { token: args.token, owner: args.owner, name: args.name, branch, message: args.message };
+    await putRepoFile({ ...base, path: args.workflow ? WORKFLOW_PATH : WORKFLOW_PATH, content: args.workflow });
+    await putRepoFile({ ...base, path: RUNNER_PATH, content: args.runner });
+  }
+}
+
 async function refreshRunnerIfStale(args: {
   token: string;
   owner: string;
   name: string;
   branch: string;
+  defaultBranch: string;
 }) {
   const { WORKFLOW_YML, RUNNER_MJS, RUNNER_VERSION } = await import("./workflow-template.server");
+  const branches = installBranches(args.defaultBranch, args.branch);
   // A transient failure here must not abort the run; fall back to "not stale".
-  const installed = await ghFetch<string>(
-    `${contentsPath(args.owner, args.name, ".github/workflows/lovable-coder.yml")}?ref=${encodeURIComponent(args.branch)}`,
-    args.token,
-    { headers: { Accept: "application/vnd.github.raw+json" } },
-  ).then((t) => Number(/runner version (\d+)/.exec(String(t))?.[1] ?? 0)).catch(() => 0);
-  if (installed >= RUNNER_VERSION) return;
-  const message = `chore: update Lovable coder runner to v${RUNNER_VERSION}`;
-  const runner = "scripts/lovable-coder/runner.mjs";
-  const workflow = ".github/workflows/lovable-coder.yml";
-  await putRepoFile({ ...args, path: runner, content: RUNNER_MJS, message });
-  await putRepoFile({ ...args, path: workflow, content: WORKFLOW_YML, message });
+  const versionOn = async (branch: string) =>
+    ghFetch<string>(
+      `${contentsPath(args.owner, args.name, WORKFLOW_PATH)}?ref=${encodeURIComponent(branch)}`,
+      args.token,
+      { headers: { Accept: "application/vnd.github.raw+json" } },
+    ).then((t) => Number(/runner version (\d+)/.exec(String(t))?.[1] ?? 0)).catch(() => 0);
+  const versions = await Promise.all(branches.map(versionOn));
+  const stale = branches.filter((_, i) => versions[i] < RUNNER_VERSION);
+  if (!stale.length) return;
+  await writeRunnerFiles({
+    token: args.token,
+    owner: args.owner,
+    name: args.name,
+    branches: stale,
+    message: `chore: update Lovable coder runner to v${RUNNER_VERSION}`,
+    workflow: WORKFLOW_YML,
+    runner: RUNNER_MJS,
+  });
 }
 
 export const installCoderWorkflow = createServerFn({ method: "POST" })
