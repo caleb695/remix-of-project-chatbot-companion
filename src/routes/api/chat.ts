@@ -425,6 +425,19 @@ export const Route = createFileRoute("/api/chat")({
           .join("\n\n");
 
         let phase: string = PHASE.planning;
+        // Watchdog: a provider request that hangs (or is rejected upstream
+        // without an SSE error) used to leave the UI frozen on "planning" with
+        // no explanation. Report progress/failure so the run always resolves.
+        let sawFirstStep = false;
+        const slowTimer = setTimeout(() => {
+          if (!sawFirstStep) void logEvent("status", "Still waiting on the model's first response…", PHASE.planning);
+        }, 90_000);
+        const stallTimer = setTimeout(() => {
+          if (!sawFirstStep) {
+            void logEvent("error", "The model provider never responded. Check your API key and model on the Account tab, then try again.", PHASE.done);
+          }
+        }, 6 * 60 * 1000);
+        const clearWatchdog = () => { clearTimeout(slowTimer); clearTimeout(stallTimer); };
         let sawWrite = false;
         let sawCheck = false;
         // Guard against a degenerate loop where the model keeps invoking the
@@ -481,6 +494,8 @@ export const Route = createFileRoute("/api/chat")({
             return {};
           },
           onStepFinish: async (step) => {
+            sawFirstStep = true;
+            clearWatchdog();
             // Heartbeat the Kaggle job so a long-running in-page run isn't
             // mistaken for a dead one (getJob marks kaggle/running jobs stale
             // after 15 min of inactivity - updated from 5 min).
@@ -620,6 +635,7 @@ export const Route = createFileRoute("/api/chat")({
                 updated_at: new Date().toISOString(),
               }).eq("id", kaggleJobId);
             }
+            clearWatchdog();
             stopHeartbeat();
           },
           onError: (error) => {
@@ -635,6 +651,7 @@ export const Route = createFileRoute("/api/chat")({
                 updated_at: new Date().toISOString(),
               }).eq("id", kaggleJobId);
             }
+            clearWatchdog();
             stopHeartbeat();
             return msg;
           },

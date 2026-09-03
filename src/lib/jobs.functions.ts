@@ -71,25 +71,66 @@ async function putRepoFile(args: {
  * when the files are rewritten. Compare the version stamped in the installed
  * workflow and refresh both files when it is behind.
  */
+const WORKFLOW_PATH = ".github/workflows/lovable-coder.yml";
+const RUNNER_PATH = "scripts/lovable-coder/runner.mjs";
+
+/**
+ * GitHub only starts a `repository_dispatch` workflow when the workflow file
+ * exists on the repository's DEFAULT branch — a copy that lives only on the
+ * working branch is accepted by the dispatch API (204) and then silently never
+ * runs ("the runner isn't starting"). So the workflow + runner are written to
+ * the default branch as well as the branch the job checks out.
+ */
+function installBranches(defaultBranch: string, workingBranch: string) {
+  const branches = [defaultBranch || workingBranch];
+  if (workingBranch && workingBranch !== branches[0]) branches.push(workingBranch);
+  return branches;
+}
+
+async function writeRunnerFiles(args: {
+  token: string;
+  owner: string;
+  name: string;
+  branches: string[];
+  message: string;
+  workflow: string;
+  runner: string;
+}) {
+  for (const branch of args.branches) {
+    const base = { token: args.token, owner: args.owner, name: args.name, branch, message: args.message };
+    await putRepoFile({ ...base, path: WORKFLOW_PATH, content: args.workflow });
+    await putRepoFile({ ...base, path: RUNNER_PATH, content: args.runner });
+  }
+}
+
 async function refreshRunnerIfStale(args: {
   token: string;
   owner: string;
   name: string;
   branch: string;
+  defaultBranch: string;
 }) {
   const { WORKFLOW_YML, RUNNER_MJS, RUNNER_VERSION } = await import("./workflow-template.server");
+  const branches = installBranches(args.defaultBranch, args.branch);
   // A transient failure here must not abort the run; fall back to "not stale".
-  const installed = await ghFetch<string>(
-    `${contentsPath(args.owner, args.name, ".github/workflows/lovable-coder.yml")}?ref=${encodeURIComponent(args.branch)}`,
-    args.token,
-    { headers: { Accept: "application/vnd.github.raw+json" } },
-  ).then((t) => Number(/runner version (\d+)/.exec(String(t))?.[1] ?? 0)).catch(() => 0);
-  if (installed >= RUNNER_VERSION) return;
-  const message = `chore: update Lovable coder runner to v${RUNNER_VERSION}`;
-  const runner = "scripts/lovable-coder/runner.mjs";
-  const workflow = ".github/workflows/lovable-coder.yml";
-  await putRepoFile({ ...args, path: runner, content: RUNNER_MJS, message });
-  await putRepoFile({ ...args, path: workflow, content: WORKFLOW_YML, message });
+  const versionOn = async (branch: string) =>
+    ghFetch<string>(
+      `${contentsPath(args.owner, args.name, WORKFLOW_PATH)}?ref=${encodeURIComponent(branch)}`,
+      args.token,
+      { headers: { Accept: "application/vnd.github.raw+json" } },
+    ).then((t) => Number(/runner version (\d+)/.exec(String(t))?.[1] ?? 0)).catch(() => 0);
+  const versions = await Promise.all(branches.map(versionOn));
+  const stale = branches.filter((_, i) => versions[i] < RUNNER_VERSION);
+  if (!stale.length) return;
+  await writeRunnerFiles({
+    token: args.token,
+    owner: args.owner,
+    name: args.name,
+    branches: stale,
+    message: `chore: update Lovable coder runner to v${RUNNER_VERSION}`,
+    workflow: WORKFLOW_YML,
+    runner: RUNNER_MJS,
+  });
 }
 
 export const installCoderWorkflow = createServerFn({ method: "POST" })
@@ -113,13 +154,17 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
     // It's more forgiving than the tree/commit dance and gives a clearer error when the
     // OAuth token lacks write permissions for the repo (e.g. org repo not authorized).
     const { WORKFLOW_YML, RUNNER_MJS } = await import("./workflow-template.server");
-    const branch = sel.working_branch || sel.default_branch;
-    const base = { token: conn.access_token, owner: sel.owner, name: sel.name, branch };
-    const message = "chore: install Lovable coder workflow";
-    const runner = "scripts/lovable-coder/runner.mjs";
-    const workflow = ".github/workflows/lovable-coder.yml";
-    await putRepoFile({ ...base, path: workflow, content: WORKFLOW_YML, message });
-    await putRepoFile({ ...base, path: runner, content: RUNNER_MJS, message });
+    // Written to the default branch (required for repository_dispatch to fire)
+    // and to the working branch the job checks out.
+    await writeRunnerFiles({
+      token: conn.access_token,
+      owner: sel.owner,
+      name: sel.name,
+      branches: installBranches(sel.default_branch, sel.working_branch),
+      message: "chore: install Lovable coder workflow",
+      workflow: WORKFLOW_YML,
+      runner: RUNNER_MJS,
+    });
 
     await context.supabase.from("repo_selections")
       .update({ workflow_installed_at: new Date().toISOString() })
@@ -138,11 +183,11 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { data: thread, error: te } = await context.supabase
       .from("chat_threads")
-      .select("id, title, model, mode, repo_selection_id, repo_selections(owner, name, working_branch, workflow_installed_at)")
+      .select("id, title, model, mode, repo_selection_id, repo_selections(owner, name, working_branch, default_branch, workflow_installed_at)")
       .eq("id", data.threadId).single();
     if (te) throw te;
     if (!thread.repo_selections) throw new Error("Thread has no repo");
-    const repo = thread.repo_selections as { owner: string; name: string; working_branch: string; workflow_installed_at: string | null };
+    const repo = thread.repo_selections as { owner: string; name: string; working_branch: string; default_branch: string; workflow_installed_at: string | null };
     if (!repo.workflow_installed_at) throw new Error("Install the coder workflow for this repo first");
     if (!thread.model) throw new Error("Pick a model for this chat first");
 
@@ -182,6 +227,7 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
         owner: repo.owner,
         name: repo.name,
         branch: repo.working_branch,
+        defaultBranch: repo.default_branch,
       });
     } catch {
       /* best-effort — run with whatever is installed */
@@ -246,7 +292,10 @@ export const getJob = createServerFn({ method: "GET" })
     // A dispatch can be accepted by GitHub but never start the workflow (missing
     // or misconfigured workflow file). Don't leave the UI spinning forever.
     if (job && job.status === "queued" && Date.now() - new Date(job.created_at).getTime() > 6 * 60 * 1000) {
-      const message = "The GitHub Actions runner never started this job. Re-install the workflow from Account, then try again.";
+      const message =
+        "The GitHub Actions runner never started this job. Check that Actions are enabled for the repo " +
+        "(Settings → Actions → Allow all actions) and that the workflow file exists on the repository's default branch, " +
+        "then re-install the workflow from Account and try again.";
       await context.supabase.from("coding_jobs")
         .update({ status: "failed", error: message, finished_at: new Date().toISOString() })
         .eq("id", job.id);
@@ -392,7 +441,7 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { data: repo, error: re } = await context.supabase
       .from("repo_selections")
-      .select("id, owner, name, working_branch, workflow_installed_at").eq("id", data.repoId).single();
+      .select("id, owner, name, working_branch, default_branch, workflow_installed_at").eq("id", data.repoId).single();
     if (re) throw re;
     if (!repo.workflow_installed_at) throw new Error("Install the coder workflow for this repo first");
 
@@ -418,6 +467,18 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
     const { data: conn } = await context.supabase
       .from("github_connections").select("access_token").maybeSingle();
     if (!conn) throw new Error("Connect GitHub");
+
+    // Keep the workflow on the default branch current — repository_dispatch
+    // only fires for the copy that lives there.
+    try {
+      await refreshRunnerIfStale({
+        token: conn.access_token,
+        owner: repo.owner,
+        name: repo.name,
+        branch: repo.working_branch,
+        defaultBranch: repo.default_branch,
+      });
+    } catch { /* best-effort */ }
 
     const secret = crypto.randomUUID() + crypto.randomUUID();
     const appUrl = getAppUrl(getRequest()); // Pass request for fallback when VITE_PUBLIC_APP_URL not set
