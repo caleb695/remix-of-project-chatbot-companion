@@ -292,7 +292,10 @@ export const getJob = createServerFn({ method: "GET" })
     // A dispatch can be accepted by GitHub but never start the workflow (missing
     // or misconfigured workflow file). Don't leave the UI spinning forever.
     if (job && job.status === "queued" && Date.now() - new Date(job.created_at).getTime() > 6 * 60 * 1000) {
-      const message = "The GitHub Actions runner never started this job. Re-install the workflow from Account, then try again.";
+      const message =
+        "The GitHub Actions runner never started this job. Check that Actions are enabled for the repo " +
+        "(Settings → Actions → Allow all actions) and that the workflow file exists on the repository's default branch, " +
+        "then re-install the workflow from Account and try again.";
       await context.supabase.from("coding_jobs")
         .update({ status: "failed", error: message, finished_at: new Date().toISOString() })
         .eq("id", job.id);
