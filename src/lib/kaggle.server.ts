@@ -419,7 +419,17 @@ export function buildKaggleTools(
         const nb = await load();
         let src = nb?.working_source ?? "";
         const results: Array<{ find: string; success: boolean; error?: string }> = [];
-        for (const edit of edits) {
+        // Models often repeat the same edit twice in one batch; applying it
+        // again would duplicate the inserted code.
+        const seen = new Set<string>();
+        const unique = edits.filter((e) => {
+          const k = `${e.find}\u0000${e.replace}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        for (const edit of unique) {
+
           if (!src.includes(edit.find)) {
             results.push({ find: edit.find.slice(0, 50), success: false, error: "Find text not in notebook" });
             continue;
