@@ -440,7 +440,7 @@ export function buildKaggleTools(
         const saveResult = await save(src);
         if (saveResult.error) return { error: saveResult.error };
         const succeeded = results.filter(r => r.success).length;
-        return { total: edits.length, succeeded, failed: edits.length - succeeded, results, bytes: src.length };
+        return { total: unique.length, succeeded, failed: unique.length - succeeded, results, bytes: src.length };
       },
     }),
   };
