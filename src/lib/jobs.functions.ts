@@ -98,7 +98,7 @@ async function writeRunnerFiles(args: {
 }) {
   for (const branch of args.branches) {
     const base = { token: args.token, owner: args.owner, name: args.name, branch, message: args.message };
-    await putRepoFile({ ...base, path: args.workflow ? WORKFLOW_PATH : WORKFLOW_PATH, content: args.workflow });
+    await putRepoFile({ ...base, path: WORKFLOW_PATH, content: args.workflow });
     await putRepoFile({ ...base, path: RUNNER_PATH, content: args.runner });
   }
 }
@@ -154,13 +154,17 @@ export const installCoderWorkflow = createServerFn({ method: "POST" })
     // It's more forgiving than the tree/commit dance and gives a clearer error when the
     // OAuth token lacks write permissions for the repo (e.g. org repo not authorized).
     const { WORKFLOW_YML, RUNNER_MJS } = await import("./workflow-template.server");
-    const branch = sel.working_branch || sel.default_branch;
-    const base = { token: conn.access_token, owner: sel.owner, name: sel.name, branch };
-    const message = "chore: install Lovable coder workflow";
-    const runner = "scripts/lovable-coder/runner.mjs";
-    const workflow = ".github/workflows/lovable-coder.yml";
-    await putRepoFile({ ...base, path: workflow, content: WORKFLOW_YML, message });
-    await putRepoFile({ ...base, path: runner, content: RUNNER_MJS, message });
+    // Written to the default branch (required for repository_dispatch to fire)
+    // and to the working branch the job checks out.
+    await writeRunnerFiles({
+      token: conn.access_token,
+      owner: sel.owner,
+      name: sel.name,
+      branches: installBranches(sel.default_branch, sel.working_branch),
+      message: "chore: install Lovable coder workflow",
+      workflow: WORKFLOW_YML,
+      runner: RUNNER_MJS,
+    });
 
     await context.supabase.from("repo_selections")
       .update({ workflow_installed_at: new Date().toISOString() })
@@ -179,11 +183,11 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { data: thread, error: te } = await context.supabase
       .from("chat_threads")
-      .select("id, title, model, mode, repo_selection_id, repo_selections(owner, name, working_branch, workflow_installed_at)")
+      .select("id, title, model, mode, repo_selection_id, repo_selections(owner, name, working_branch, default_branch, workflow_installed_at)")
       .eq("id", data.threadId).single();
     if (te) throw te;
     if (!thread.repo_selections) throw new Error("Thread has no repo");
-    const repo = thread.repo_selections as { owner: string; name: string; working_branch: string; workflow_installed_at: string | null };
+    const repo = thread.repo_selections as { owner: string; name: string; working_branch: string; default_branch: string; workflow_installed_at: string | null };
     if (!repo.workflow_installed_at) throw new Error("Install the coder workflow for this repo first");
     if (!thread.model) throw new Error("Pick a model for this chat first");
 
@@ -223,6 +227,7 @@ export const enqueueCodingJob = createServerFn({ method: "POST" })
         owner: repo.owner,
         name: repo.name,
         branch: repo.working_branch,
+        defaultBranch: repo.default_branch,
       });
     } catch {
       /* best-effort — run with whatever is installed */
@@ -433,7 +438,7 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { data: repo, error: re } = await context.supabase
       .from("repo_selections")
-      .select("id, owner, name, working_branch, workflow_installed_at").eq("id", data.repoId).single();
+      .select("id, owner, name, working_branch, default_branch, workflow_installed_at").eq("id", data.repoId).single();
     if (re) throw re;
     if (!repo.workflow_installed_at) throw new Error("Install the coder workflow for this repo first");
 
