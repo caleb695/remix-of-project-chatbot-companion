@@ -465,6 +465,18 @@ export const enqueueIndexJob = createServerFn({ method: "POST" })
       .from("github_connections").select("access_token").maybeSingle();
     if (!conn) throw new Error("Connect GitHub");
 
+    // Keep the workflow on the default branch current — repository_dispatch
+    // only fires for the copy that lives there.
+    try {
+      await refreshRunnerIfStale({
+        token: conn.access_token,
+        owner: repo.owner,
+        name: repo.name,
+        branch: repo.working_branch,
+        defaultBranch: repo.default_branch,
+      });
+    } catch { /* best-effort */ }
+
     const secret = crypto.randomUUID() + crypto.randomUUID();
     const appUrl = getAppUrl(getRequest()); // Pass request for fallback when VITE_PUBLIC_APP_URL not set
 
