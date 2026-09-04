@@ -17,7 +17,7 @@ import { listOpenrouterModels, getOpenrouterSettings } from "@/lib/openrouter.fu
 import { enqueueCodingJob, listJobsForThread, getJob, cancelJob, getJobDiff, approveJob, discardJob } from "@/lib/jobs.functions";
 import { listAgentEvents, getStagedChanges, setThreadMode, branchThread } from "@/lib/agent.functions";
 import { getSubAgents, setSubAgents } from "@/lib/subagents.functions";
-import { listAttachments, registerAttachment, setAttachmentCodeOnly, deleteAttachment } from "@/lib/attachments.functions";
+import { listAttachments, registerAttachment, setAttachmentCodeOnly, setAllAttachmentsCodeOnly, deleteAttachment } from "@/lib/attachments.functions";
 import { getThreadChat, getRunState, setRunState } from "@/lib/chat-store";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { DrivePicker } from "@/components/DrivePicker";
