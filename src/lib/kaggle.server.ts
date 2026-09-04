@@ -270,11 +270,26 @@ export function buildKaggleTools(
   const { sb, notebookId } = ctx;
   const load = async () => {
     const { data, error } = await sb.from("kaggle_notebooks")
-      .select("owner, slug, title, language, working_source, original_source, status")
+      .select("owner, slug, title, language, kernel_type, is_private, enable_gpu, enable_internet, dataset_sources, working_source, original_source, status")
       .eq("id", notebookId).maybeSingle();
     if (error) throw new Error(error.message);
     return data;
   };
+
+  /** Kaggle credentials for live API calls (search datasets, run status, output). */
+  const apiCreds = async () => {
+    const { data } = await sb.from("openrouter_settings")
+      .select("kaggle_username, kaggle_key").maybeSingle();
+    if (!data?.kaggle_username || !data?.kaggle_key) {
+      throw new Error("Kaggle credentials are not set. Tell the user to add them on the Account tab.");
+    }
+    return { username: data.kaggle_username as string, key: data.kaggle_key as string };
+  };
+  const api = async (path: string) => {
+    const { username, key } = await apiCreds();
+    return await kaggleFetch(username, key, path);
+  };
+
 
   const readOnly = {
     read_notebook: tool({
