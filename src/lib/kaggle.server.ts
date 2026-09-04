@@ -526,5 +526,68 @@ export function buildKaggleTools(
         return { total: unique.length, succeeded, failed: unique.length - succeeded, results, bytes: src.length };
       },
     }),
+    update_notebook_settings: tool({
+      description: "Change the Kaggle notebook settings (title, GPU, internet, private, kernel type, language). Staged — applied when the user pushes to Kaggle.",
+      inputSchema: z.object({
+        title: lStr.optional(),
+        enable_gpu: lBool.optional(),
+        enable_internet: lBool.optional(),
+        is_private: lBool.optional(),
+        kernel_type: lStr.optional().describe("'notebook' or 'script'"),
+        language: lStr.optional().describe("'python' or 'r'"),
+      }),
+      execute: async (args) => {
+        const patch: Record<string, unknown> = {};
+        if (args.title !== undefined) patch["title"] = args.title;
+        if (args.enable_gpu !== undefined) patch["enable_gpu"] = args.enable_gpu;
+        if (args.enable_internet !== undefined) patch["enable_internet"] = args.enable_internet;
+        if (args.is_private !== undefined) patch["is_private"] = args.is_private;
+        if (args.kernel_type !== undefined) patch["kernel_type"] = args.kernel_type;
+        if (args.language !== undefined) patch["language"] = args.language;
+        if (!Object.keys(patch).length) return { error: "Nothing to change" };
+        patch["status"] = "modified";
+        patch["updated_at"] = new Date().toISOString();
+        const { data, error } = await sb.from("kaggle_notebooks")
+          .update(patch).eq("id", notebookId).select("id").maybeSingle();
+        if (error) return { error: error.message };
+        if (!data) return { error: "Notebook not found for this account." };
+        return { ok: true, changed: patch };
+      },
+    }),
+    attach_dataset: tool({
+      description: "Attach a Kaggle dataset (ref = owner/slug) as a data source for this notebook, so its files appear under /kaggle/input.",
+      inputSchema: z.object({ ref: lStr }),
+      execute: async ({ ref }) => {
+        const clean = String(ref ?? "").trim().replace(/^\/+|\/+$/g, "");
+        if (!/^[^/]+\/[^/]+$/.test(clean)) return { error: "ref must look like owner/slug" };
+        const nb = await load();
+        const current: string[] = Array.isArray(nb?.dataset_sources) ? (nb!.dataset_sources as string[]) : [];
+        if (current.includes(clean)) return { ok: true, dataset_sources: current, note: "Already attached" };
+        const next = [...current, clean];
+        const { data, error } = await sb.from("kaggle_notebooks")
+          .update({ dataset_sources: next, status: "modified", updated_at: new Date().toISOString() })
+          .eq("id", notebookId).select("id").maybeSingle();
+        if (error) return { error: error.message };
+        if (!data) return { error: "Notebook not found for this account." };
+        return { ok: true, dataset_sources: next, input_path: `/kaggle/input/${clean.split("/")[1]}` };
+      },
+    }),
+    detach_dataset: tool({
+      description: "Remove a dataset source (owner/slug) from this notebook.",
+      inputSchema: z.object({ ref: lStr }),
+      execute: async ({ ref }) => {
+        const clean = String(ref ?? "").trim();
+        const nb = await load();
+        const current: string[] = Array.isArray(nb?.dataset_sources) ? (nb!.dataset_sources as string[]) : [];
+        const next = current.filter((r) => r !== clean);
+        if (next.length === current.length) return { error: `"${clean}" is not attached. Current: ${current.join(", ") || "none"}` };
+        const { error } = await sb.from("kaggle_notebooks")
+          .update({ dataset_sources: next, status: "modified", updated_at: new Date().toISOString() })
+          .eq("id", notebookId);
+        if (error) return { error: error.message };
+        return { ok: true, dataset_sources: next };
+      },
+    }),
+
   };
 }
