@@ -56,6 +56,23 @@ export const setAttachmentCodeOnly = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/** Bulk switch every attachment in a thread between readable and code-only. */
+export const setAllAttachmentsCodeOnly = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((i: unknown) =>
+    z.object({ threadId: z.string().uuid(), codeOnly: z.boolean() }).parse(i),
+  )
+  .handler(async ({ context, data }) => {
+    const { error } = await context.supabase
+      .from("chat_attachments")
+      .update({ code_only: data.codeOnly })
+      .eq("thread_id", data.threadId)
+      .eq("user_id", context.userId);
+    if (error) throw error;
+    return { ok: true };
+  });
+
+
 export const deleteAttachment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
