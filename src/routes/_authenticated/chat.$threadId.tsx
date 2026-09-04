@@ -750,9 +750,28 @@ function AttachButton({ threadId }: { threadId: string }) {
               Every file is placed in <code>uploads/</code> so the agent's code can use it. Turn off “AI can read” to keep the
               contents private — the agent only knows the file exists.
             </p>
+            {count > 0 && (
+              <div className="flex gap-2 pt-1">
+                <Button
+                  type="button" size="sm" variant="secondary" className="h-7 flex-1 text-[11px]"
+                  disabled={toggleAll.isPending}
+                  onClick={() => toggleAll.mutate(false)}
+                >
+                  <Eye className="mr-1 h-3 w-3" /> AI can read all
+                </Button>
+                <Button
+                  type="button" size="sm" variant="secondary" className="h-7 flex-1 text-[11px]"
+                  disabled={toggleAll.isPending}
+                  onClick={() => toggleAll.mutate(true)}
+                >
+                  <EyeOff className="mr-1 h-3 w-3" /> Can't read any
+                </Button>
+              </div>
+            )}
           </SheetHeader>
           <div className="flex-1 space-y-2 overflow-y-auto p-4">
             {count === 0 && <p className="text-sm text-muted-foreground">Nothing uploaded yet.</p>}
+
             {(files.data ?? []).map((f) => (
               <div key={f.id} className="flex items-center gap-2 rounded-lg border border-border/60 p-2.5">
                 <div className="min-w-0 flex-1">
