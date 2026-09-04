@@ -660,6 +660,7 @@ function AttachButton({ threadId }: { threadId: string }) {
   const listFn = useServerFn(listAttachments);
   const registerFn = useServerFn(registerAttachment);
   const toggleFn = useServerFn(setAttachmentCodeOnly);
+  const toggleAllFn = useServerFn(setAllAttachmentsCodeOnly);
   const removeFn = useServerFn(deleteAttachment);
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -678,11 +679,17 @@ function AttachButton({ threadId }: { threadId: string }) {
     onSuccess: invalidate,
     onError: (e: Error) => toast.error(e.message),
   });
+  const toggleAll = useMutation({
+    mutationFn: (codeOnly: boolean) => toggleAllFn({ data: { threadId, codeOnly } }),
+    onSuccess: (_r, codeOnly) => { invalidate(); toast.success(codeOnly ? "All files set to code only" : "All files readable by the AI"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const remove = useMutation({
     mutationFn: (id: string) => removeFn({ data: { id } }),
     onSuccess: invalidate,
     onError: (e: Error) => toast.error(e.message),
   });
+
 
   const upload = async (picked: FileList) => {
     setUploading(true);
