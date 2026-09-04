@@ -384,7 +384,75 @@ export function buildKaggleTools(
         return { problems, suggestions, clean: problems.length === 0 };
       },
     }),
+    get_notebook_settings: tool({
+      description: "Read the notebook's Kaggle settings: title, language, kernel type, private flag, GPU, internet and attached dataset sources.",
+      inputSchema: z.object({ reason: z.string().optional() }),
+      execute: async () => {
+        const nb = await load();
+        if (!nb) return { error: "Notebook not found" };
+        return {
+          notebook: `${nb.owner}/${nb.slug}`,
+          title: nb.title, language: nb.language, kernel_type: nb.kernel_type,
+          is_private: nb.is_private, enable_gpu: nb.enable_gpu, enable_internet: nb.enable_internet,
+          dataset_sources: nb.dataset_sources ?? [],
+        };
+      },
+    }),
+    search_datasets: tool({
+      description: "Search public Kaggle datasets by keyword. Returns dataset refs (owner/slug) you can attach with attach_dataset.",
+      inputSchema: z.object({ query: lStr, max_results: lNum.optional() }),
+      execute: async ({ query, max_results }) => {
+        try {
+          const rows = (await api(`/datasets/list?search=${encodeURIComponent(query ?? "")}`)) as Array<Record<string, unknown>>;
+          const limit = Math.min(Math.max(Math.floor(max_results ?? 10), 1), 30);
+          return {
+            results: (Array.isArray(rows) ? rows : []).slice(0, limit).map((d) => ({
+              ref: d["ref"], title: d["title"], size: d["totalBytes"], downloads: d["downloadCount"],
+            })),
+          };
+        } catch (e) { return { error: String(e) }; }
+      },
+    }),
+    list_dataset_files: tool({
+      description: "List the files inside a Kaggle dataset (ref = owner/slug) so you can reference exact paths in the notebook.",
+      inputSchema: z.object({ ref: lStr.describe("Dataset ref, e.g. zynicide/wine-reviews") }),
+      execute: async ({ ref }) => {
+        const clean = String(ref ?? "").trim().replace(/^\/+|\/+$/g, "");
+        if (!/^[^/]+\/[^/]+$/.test(clean)) return { error: "ref must look like owner/slug" };
+        try {
+          const res = (await api(`/datasets/list/files/${clean}`)) as { datasetFiles?: Array<{ name?: string; totalBytes?: number }> };
+          return { files: (res?.datasetFiles ?? []).slice(0, 200).map((f) => ({ name: f.name, bytes: f.totalBytes })) };
+        } catch (e) { return { error: String(e) }; }
+      },
+    }),
+    notebook_run_status: tool({
+      description: "Check the status of the latest Kaggle run of this notebook (queued/running/complete/error).",
+      inputSchema: z.object({ reason: z.string().optional() }),
+      execute: async () => {
+        const nb = await load();
+        if (!nb) return { error: "Notebook not found" };
+        try {
+          return await api(`/kernels/status?user_name=${encodeURIComponent(nb.owner)}&kernel_slug=${encodeURIComponent(nb.slug)}`);
+        } catch (e) { return { error: String(e) }; }
+      },
+    }),
+    notebook_run_output: tool({
+      description: "Read the log/output of the last Kaggle run of this notebook. Use it to debug errors after the user pushes and runs it.",
+      inputSchema: z.object({ reason: z.string().optional() }),
+      execute: async () => {
+        const nb = await load();
+        if (!nb) return { error: "Notebook not found" };
+        try {
+          const res = (await api(`/kernels/output?user_name=${encodeURIComponent(nb.owner)}&kernel_slug=${encodeURIComponent(nb.slug)}`)) as {
+            log?: string; files?: Array<{ fileName?: string }>;
+          };
+          const log = typeof res?.log === "string" ? res.log : JSON.stringify(res?.log ?? "");
+          return { log: log.slice(-20_000), files: (res?.files ?? []).map((f) => f.fileName).slice(0, 50) };
+        } catch (e) { return { error: String(e) }; }
+      },
+    }),
   };
+
 
   if (!opts.allowWrites) return readOnly;
 
