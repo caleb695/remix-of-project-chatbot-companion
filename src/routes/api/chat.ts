@@ -370,6 +370,29 @@ export const Route = createFileRoute("/api/chat")({
               await sleep(Math.min(20_000, 2000 * transient));
               continue;
             }
+            // Some providers (NVIDIA NIM, a few OpenRouter upstreams) answer a
+            // streaming request with HTTP 200 and a JSON `{ "error": ... }`
+            // body — often a concurrency/rate limit. The SDK then surfaces the
+            // raw error object mid-stream ("[object Object]") and the run dies
+            // in half a second. Detect that shape and turn it into a real
+            // error status so the retry/reporting logic below handles it.
+            if (res.ok) {
+              const ctype = res.headers.get("content-type") ?? "";
+              if (!/text\/event-stream/i.test(ctype)) {
+                const text = await res.clone().text();
+                let errObj: Record<string, unknown> | null = null;
+                try {
+                  const parsed = JSON.parse(text) as Record<string, unknown>;
+                  if (parsed && typeof parsed === "object" && "error" in parsed && !("choices" in parsed)) errObj = parsed;
+                } catch { /* not JSON — let the SDK handle it */ }
+                if (errObj) {
+                  const inner = errObj.error as Record<string, unknown> | string;
+                  const code = typeof inner === "object" && inner ? Number(inner.code ?? inner.status ?? errObj.status) : NaN;
+                  const status = Number.isFinite(code) && code >= 400 && code < 600 ? code : 502;
+                  res = new Response(text, { status, headers: { "content-type": "application/json" } });
+                }
+              }
+            }
             if (res.status !== 429) {
               // Retry transient server errors so a provider hiccup doesn't fail the run.
               if ((res.status === 408 || res.status >= 500) && ++transient <= 4) {
@@ -379,13 +402,15 @@ export const Route = createFileRoute("/api/chat")({
               return res;
             }
             const text = await res.clone().text();
-            const isRpm = /per.?minute|rpm|requests per|rate.?limit/i.test(text) || !/quota|credit|balance|billing/i.test(text);
+            const isRpm = /per.?minute|rpm|requests per|rate.?limit|too many|concurren/i.test(text) || !/quota|credit|balance|billing/i.test(text);
             if (!isRpm) return res;
-            await logEvent("status", "Rate limited — waiting 10s and retrying.", PHASE.coding);
+            await logEvent("status", "Rate limited by the model provider — waiting 10s and retrying.", PHASE.coding);
             await sleep(10_000);
             if (++rpmWaits > 200) return res;
           }
         };
+        // Set by onError so onFinish knows the run died instead of "only replied".
+        let streamError: string | null = null;
 
         const provider = createOpenAICompatible({
           name: route.name,
