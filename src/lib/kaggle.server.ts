@@ -482,12 +482,13 @@ export function buildKaggleTools(
     write_notebook: tool({
       description: "Replace the entire notebook source. Pass the COMPLETE new source. Staged only — not pushed to Kaggle until the user commits.",
       inputSchema: z.object({ source: lStr }),
-      execute: async ({ source }) => save(source),
+      execute: async ({ source }) => mustReadFirst() ?? save(source),
     }),
     edit_notebook: tool({
       description: "Replace an exact substring inside the notebook source. Prefer this for targeted edits.",
       inputSchema: z.object({ find: lStr, replace: lStr, replace_all: lBool.optional() }),
       execute: async ({ find, replace, replace_all }) => {
+        const gate = mustReadFirst(); if (gate) return gate;
         const nb = await load();
         const src = nb?.working_source ?? "";
         if (!src.includes(find)) {
@@ -506,6 +507,7 @@ export function buildKaggleTools(
       description: "Apply multiple find/replace edits to the notebook source in a single operation. More efficient than calling edit_notebook repeatedly for multiple changes.",
       inputSchema: z.object({ edits: lArray(z.object({ find: lStr, replace: lStr, replace_all: lBool.optional() })) }),
       execute: async ({ edits }) => {
+        const gate = mustReadFirst(); if (gate) return gate;
         const nb = await load();
         let src = nb?.working_source ?? "";
         const results: Array<{ find: string; success: boolean; error?: string }> = [];
