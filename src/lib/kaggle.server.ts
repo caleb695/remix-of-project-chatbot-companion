@@ -290,6 +290,12 @@ export function buildKaggleTools(
     return await kaggleFetch(username, key, path);
   };
 
+  // Models sometimes guess `find` anchors from memory and call an edit tool
+  // before ever reading the notebook. Every such edit fails and burns a turn,
+  // so gate the write tools on at least one read_notebook in this run.
+  let hasRead = false;
+  const mustReadFirst = () =>
+    hasRead ? null : { error: "You have not read the notebook yet in this run. Call read_notebook first so your find/replace anchors match the real source, then retry the edit." };
 
   const readOnly = {
     read_notebook: tool({
