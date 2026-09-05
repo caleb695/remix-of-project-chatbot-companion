@@ -626,24 +626,26 @@ export const Route = createFileRoute("/api/chat")({
           onFinish: async ({ messages: finalMessages }) => {
 
             const assistant = finalMessages[finalMessages.length - 1];
-            if (assistant?.role === "assistant") {
-              // Kaggle runs stream in-page (no GitHub Actions runner), so the
-              // final assistant turn is what the user sees after the run. Tag it
-              // with a `data-run` part so the transcript renders a clickable card
-              // ("What it did") that opens the model's thoughts and actions — the
-              // same experience GitHub runs get from the Action runner.
-              // For Kaggle, drop the streamed tool-call parts (the chatter of
-              // "Wrote/Read/Checked" the model emitted while working) and keep
-              // only the summary text + the run card. The full thought/action
-              // breakdown lives in agent_events, surfaced by the RunCard.
-              // But keep tool-result parts so the UI knows what edits happened.
-              const parts = isKaggle
-                ? [...assistant.parts.filter((p) => {
+            // A run that died on a provider error has no real reply — persist
+            // the error text itself so the chat shows what went wrong instead
+            // of an empty bubble, and don't pretend the agent "only replied".
+            const runError = streamError;
+            if (assistant?.role === "assistant" || runError) {
+              const baseParts = assistant?.role === "assistant" ? assistant.parts : [];
+              const filtered = isKaggle
+                ? baseParts.filter((p) => {
                     const type = String(p.type ?? "");
                     // Drop tool-call parts but keep text, tool-results, and other content
                     return !type.startsWith("tool-call");
-                  }), { type: "data-run", data: { jobId: kaggleJobId ?? undefined, taskId, kaggle: true } }]
-                : assistant.parts;
+                  })
+                : [...baseParts];
+              const hasText = filtered.some((p) => p.type === "text" && (p as { text?: string }).text?.trim());
+              if (runError && !hasText) {
+                filtered.push({ type: "text", text: `❌ The run stopped: ${runError}` } as never);
+              }
+              const parts = isKaggle
+                ? [...filtered, { type: "data-run", data: { jobId: kaggleJobId ?? undefined, taskId, kaggle: true, status: runError ? "failed" : "completed" } }]
+                : filtered;
               await supa.from("chat_messages").insert({
                 thread_id: threadId,
                 user_id: userId,
@@ -652,19 +654,24 @@ export const Route = createFileRoute("/api/chat")({
               });
               await supa.from("chat_threads").update({ updated_at: new Date().toISOString() }).eq("id", threadId);
             }
-            await logEvent(
-              "status",
-              sawWrite
-                ? "Finished the task and staged the changes."
-                : mode === "plan"
-                  ? "Finished."
-                  : `Finished without changing ${isKaggle ? "the notebook" : "any file"} — the agent only replied. Try again with a more specific instruction.`,
-              PHASE.done,
-            );
+            if (!runError) {
+              await logEvent(
+                "status",
+                sawWrite
+                  ? "Finished the task and staged the changes."
+                  : mode === "plan"
+                    ? "Finished."
+                    : `Finished without changing ${isKaggle ? "the notebook" : "any file"} — the agent only replied. Try again with a more specific instruction.`,
+                PHASE.done,
+              );
+            }
             if (isKaggle && kaggleJobId) {
               await supa.from("coding_jobs").update({
-                status: "completed",
-                summary: sawWrite ? "Finished and staged the notebook changes." : "Finished without changing the notebook.",
+                status: runError ? "failed" : "completed",
+                error: runError ? runError.slice(0, 500) : null,
+                summary: runError
+                  ? null
+                  : sawWrite ? "Finished and staged the notebook changes." : "Finished without changing the notebook.",
                 finished_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               }).eq("id", kaggleJobId);
@@ -675,19 +682,13 @@ export const Route = createFileRoute("/api/chat")({
           onError: (error) => {
             const msg = describeError(error);
             console.error("[chat] stream error:", msg, error);
+            // The same error surfaces once per teed branch — log it once.
+            if (streamError === msg) return msg;
+            streamError = msg;
             // Log the failure at the `done` phase so the process indicator stops
             // on a terminal state instead of freezing on a stale planning phase.
             void logEvent("error", msg, PHASE.done);
-            if (isKaggle && kaggleJobId) {
-              void supa.from("coding_jobs").update({
-                status: "failed",
-                error: msg.slice(0, 500),
-                finished_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              }).eq("id", kaggleJobId);
-            }
             clearWatchdog();
-            stopHeartbeat();
             return msg;
           },
         });
