@@ -639,7 +639,8 @@ export const Route = createFileRoute("/api/chat")({
             stopHeartbeat();
           },
           onError: (error) => {
-            const msg = error instanceof Error ? error.message : String(error);
+            const msg = describeError(error);
+            console.error("[chat] stream error:", msg, error);
             // Log the failure at the `done` phase so the process indicator stops
             // on a terminal state instead of freezing on a stale planning phase.
             void logEvent("error", msg, PHASE.done);
