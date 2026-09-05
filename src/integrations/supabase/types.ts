@@ -224,7 +224,7 @@ export type Database = {
           progress_current: number | null
           progress_total: number | null
           prompt: string
-          repo_selection_id: string
+          repo_selection_id: string | null
           review_branch: string | null
           status: string
           summary: string | null
@@ -255,7 +255,7 @@ export type Database = {
           progress_current?: number | null
           progress_total?: number | null
           prompt: string
-          repo_selection_id: string
+          repo_selection_id?: string | null
           review_branch?: string | null
           status?: string
           summary?: string | null
@@ -286,7 +286,7 @@ export type Database = {
           progress_current?: number | null
           progress_total?: number | null
           prompt?: string
-          repo_selection_id?: string
+          repo_selection_id?: string | null
           review_branch?: string | null
           status?: string
           summary?: string | null

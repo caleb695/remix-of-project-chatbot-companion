@@ -1,0 +1,1 @@
+ALTER TABLE public.coding_jobs ALTER COLUMN repo_selection_id DROP NOT NULL;
