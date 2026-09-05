@@ -304,6 +304,7 @@ export function buildKaggleTools(
         const nb = await load();
         if (!nb) return { error: "Notebook not found" };
         if (!nb.working_source) return { error: "Notebook not synced yet. Ask the user to press Sync on the Account tab." };
+        hasRead = true;
         return { notebook: `${nb.owner}/${nb.slug}`, language: nb.language, source: nb.working_source.slice(0, 120_000) };
       },
     }),
