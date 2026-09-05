@@ -46,6 +46,40 @@ function modePrompts(isKaggle: boolean): Record<Mode, string> {
 const PHASE = { planning: "planning", coding: "coding", checking: "checking", debugging: "debugging", done: "done" } as const;
 
 /**
+ * Turn whatever the provider/SDK threw into a readable message. Providers
+ * often emit in-stream errors as plain objects (`{ message, code, type }` or
+ * `{ error: { message } }`) rather than Error instances, which `String()`
+ * renders as "[object Object]".
+ */
+function describeError(error: unknown, depth = 0): string {
+  if (error == null) return "Unknown error";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) {
+    const e = error as Error & { responseBody?: unknown; statusCode?: number; cause?: unknown };
+    let msg = e.message || e.name;
+    if (typeof e.responseBody === "string" && e.responseBody && !msg.includes(e.responseBody.slice(0, 40))) {
+      msg += ` — ${e.responseBody.slice(0, 600)}`;
+    }
+    if (e.cause && depth < 2) {
+      const c = describeError(e.cause, depth + 1);
+      if (c && c !== "Unknown error" && !msg.includes(c)) msg += ` (cause: ${c})`;
+    }
+    return msg;
+  }
+  if (typeof error === "object") {
+    const o = error as Record<string, unknown>;
+    if (typeof o.message === "string" && o.message) {
+      const code = o.code ?? o.type ?? o.status;
+      return code ? `${o.message} (${String(code)})` : o.message;
+    }
+    if (o.error && depth < 2) return describeError(o.error, depth + 1);
+    if (typeof o.detail === "string") return o.detail;
+    try { return JSON.stringify(error).slice(0, 800); } catch { /* fall through */ }
+  }
+  return String(error);
+}
+
+/**
  * Interleave SSE comment lines (`: keepalive\n\n`) into a streaming Response
  * body while the model is silent. Comments are ignored by SSE clients but keep
  * the connection alive so a slow first token (reasoning models, large context)
