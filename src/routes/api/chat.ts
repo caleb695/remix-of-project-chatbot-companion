@@ -46,6 +46,40 @@ function modePrompts(isKaggle: boolean): Record<Mode, string> {
 const PHASE = { planning: "planning", coding: "coding", checking: "checking", debugging: "debugging", done: "done" } as const;
 
 /**
+ * Turn whatever the provider/SDK threw into a readable message. Providers
+ * often emit in-stream errors as plain objects (`{ message, code, type }` or
+ * `{ error: { message } }`) rather than Error instances, which `String()`
+ * renders as "[object Object]".
+ */
+function describeError(error: unknown, depth = 0): string {
+  if (error == null) return "Unknown error";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) {
+    const e = error as Error & { responseBody?: unknown; statusCode?: number; cause?: unknown };
+    let msg = e.message || e.name;
+    if (typeof e.responseBody === "string" && e.responseBody && !msg.includes(e.responseBody.slice(0, 40))) {
+      msg += ` — ${e.responseBody.slice(0, 600)}`;
+    }
+    if (e.cause && depth < 2) {
+      const c = describeError(e.cause, depth + 1);
+      if (c && c !== "Unknown error" && !msg.includes(c)) msg += ` (cause: ${c})`;
+    }
+    return msg;
+  }
+  if (typeof error === "object") {
+    const o = error as Record<string, unknown>;
+    if (typeof o.message === "string" && o.message) {
+      const code = o.code ?? o.type ?? o.status;
+      return code ? `${o.message} (${String(code)})` : o.message;
+    }
+    if (o.error && depth < 2) return describeError(o.error, depth + 1);
+    if (typeof o.detail === "string") return o.detail;
+    try { return JSON.stringify(error).slice(0, 800); } catch { /* fall through */ }
+  }
+  return String(error);
+}
+
+/**
  * Interleave SSE comment lines (`: keepalive\n\n`) into a streaming Response
  * body while the model is silent. Comments are ignored by SSE clients but keep
  * the connection alive so a slow first token (reasoning models, large context)
@@ -336,6 +370,29 @@ export const Route = createFileRoute("/api/chat")({
               await sleep(Math.min(20_000, 2000 * transient));
               continue;
             }
+            // Some providers (NVIDIA NIM, a few OpenRouter upstreams) answer a
+            // streaming request with HTTP 200 and a JSON `{ "error": ... }`
+            // body — often a concurrency/rate limit. The SDK then surfaces the
+            // raw error object mid-stream ("[object Object]") and the run dies
+            // in half a second. Detect that shape and turn it into a real
+            // error status so the retry/reporting logic below handles it.
+            if (res.ok) {
+              const ctype = res.headers.get("content-type") ?? "";
+              if (!/text\/event-stream/i.test(ctype)) {
+                const text = await res.clone().text();
+                let errObj: Record<string, unknown> | null = null;
+                try {
+                  const parsed = JSON.parse(text) as Record<string, unknown>;
+                  if (parsed && typeof parsed === "object" && "error" in parsed && !("choices" in parsed)) errObj = parsed;
+                } catch { /* not JSON — let the SDK handle it */ }
+                if (errObj) {
+                  const inner = errObj.error as Record<string, unknown> | string;
+                  const code = typeof inner === "object" && inner ? Number(inner.code ?? inner.status ?? errObj.status) : NaN;
+                  const status = Number.isFinite(code) && code >= 400 && code < 600 ? code : 502;
+                  res = new Response(text, { status, headers: { "content-type": "application/json" } });
+                }
+              }
+            }
             if (res.status !== 429) {
               // Retry transient server errors so a provider hiccup doesn't fail the run.
               if ((res.status === 408 || res.status >= 500) && ++transient <= 4) {
@@ -345,13 +402,15 @@ export const Route = createFileRoute("/api/chat")({
               return res;
             }
             const text = await res.clone().text();
-            const isRpm = /per.?minute|rpm|requests per|rate.?limit/i.test(text) || !/quota|credit|balance|billing/i.test(text);
+            const isRpm = /per.?minute|rpm|requests per|rate.?limit|too many|concurren/i.test(text) || !/quota|credit|balance|billing/i.test(text);
             if (!isRpm) return res;
-            await logEvent("status", "Rate limited — waiting 10s and retrying.", PHASE.coding);
+            await logEvent("status", "Rate limited by the model provider — waiting 10s and retrying.", PHASE.coding);
             await sleep(10_000);
             if (++rpmWaits > 200) return res;
           }
         };
+        // Set by onError so onFinish knows the run died instead of "only replied".
+        let streamError: string | null = null;
 
         const provider = createOpenAICompatible({
           name: route.name,
@@ -592,24 +651,26 @@ export const Route = createFileRoute("/api/chat")({
           onFinish: async ({ messages: finalMessages }) => {
 
             const assistant = finalMessages[finalMessages.length - 1];
-            if (assistant?.role === "assistant") {
-              // Kaggle runs stream in-page (no GitHub Actions runner), so the
-              // final assistant turn is what the user sees after the run. Tag it
-              // with a `data-run` part so the transcript renders a clickable card
-              // ("What it did") that opens the model's thoughts and actions — the
-              // same experience GitHub runs get from the Action runner.
-              // For Kaggle, drop the streamed tool-call parts (the chatter of
-              // "Wrote/Read/Checked" the model emitted while working) and keep
-              // only the summary text + the run card. The full thought/action
-              // breakdown lives in agent_events, surfaced by the RunCard.
-              // But keep tool-result parts so the UI knows what edits happened.
-              const parts = isKaggle
-                ? [...assistant.parts.filter((p) => {
+            // A run that died on a provider error has no real reply — persist
+            // the error text itself so the chat shows what went wrong instead
+            // of an empty bubble, and don't pretend the agent "only replied".
+            const runError = streamError;
+            if (assistant?.role === "assistant" || runError) {
+              const baseParts = assistant?.role === "assistant" ? assistant.parts : [];
+              const filtered = isKaggle
+                ? baseParts.filter((p) => {
                     const type = String(p.type ?? "");
                     // Drop tool-call parts but keep text, tool-results, and other content
                     return !type.startsWith("tool-call");
-                  }), { type: "data-run", data: { jobId: kaggleJobId ?? undefined, taskId, kaggle: true } }]
-                : assistant.parts;
+                  })
+                : [...baseParts];
+              const hasText = filtered.some((p) => p.type === "text" && (p as { text?: string }).text?.trim());
+              if (runError && !hasText) {
+                filtered.push({ type: "text", text: `❌ The run stopped: ${runError}` } as never);
+              }
+              const parts = isKaggle
+                ? [...filtered, { type: "data-run", data: { jobId: kaggleJobId ?? undefined, taskId, kaggle: true, status: runError ? "failed" : "completed" } }]
+                : filtered;
               await supa.from("chat_messages").insert({
                 thread_id: threadId,
                 user_id: userId,
@@ -618,19 +679,24 @@ export const Route = createFileRoute("/api/chat")({
               });
               await supa.from("chat_threads").update({ updated_at: new Date().toISOString() }).eq("id", threadId);
             }
-            await logEvent(
-              "status",
-              sawWrite
-                ? "Finished the task and staged the changes."
-                : mode === "plan"
-                  ? "Finished."
-                  : `Finished without changing ${isKaggle ? "the notebook" : "any file"} — the agent only replied. Try again with a more specific instruction.`,
-              PHASE.done,
-            );
+            if (!runError) {
+              await logEvent(
+                "status",
+                sawWrite
+                  ? "Finished the task and staged the changes."
+                  : mode === "plan"
+                    ? "Finished."
+                    : `Finished without changing ${isKaggle ? "the notebook" : "any file"} — the agent only replied. Try again with a more specific instruction.`,
+                PHASE.done,
+              );
+            }
             if (isKaggle && kaggleJobId) {
               await supa.from("coding_jobs").update({
-                status: "completed",
-                summary: sawWrite ? "Finished and staged the notebook changes." : "Finished without changing the notebook.",
+                status: runError ? "failed" : "completed",
+                error: runError ? runError.slice(0, 500) : null,
+                summary: runError
+                  ? null
+                  : sawWrite ? "Finished and staged the notebook changes." : "Finished without changing the notebook.",
                 finished_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               }).eq("id", kaggleJobId);
@@ -639,20 +705,15 @@ export const Route = createFileRoute("/api/chat")({
             stopHeartbeat();
           },
           onError: (error) => {
-            const msg = error instanceof Error ? error.message : String(error);
+            const msg = describeError(error);
+            console.error("[chat] stream error:", msg, error);
+            // The same error surfaces once per teed branch — log it once.
+            if (streamError === msg) return msg;
+            streamError = msg;
             // Log the failure at the `done` phase so the process indicator stops
             // on a terminal state instead of freezing on a stale planning phase.
             void logEvent("error", msg, PHASE.done);
-            if (isKaggle && kaggleJobId) {
-              void supa.from("coding_jobs").update({
-                status: "failed",
-                error: msg.slice(0, 500),
-                finished_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              }).eq("id", kaggleJobId);
-            }
             clearWatchdog();
-            stopHeartbeat();
             return msg;
           },
         });

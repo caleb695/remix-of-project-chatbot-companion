@@ -290,6 +290,12 @@ export function buildKaggleTools(
     return await kaggleFetch(username, key, path);
   };
 
+  // Models sometimes guess `find` anchors from memory and call an edit tool
+  // before ever reading the notebook. Every such edit fails and burns a turn,
+  // so gate the write tools on at least one read_notebook in this run.
+  let hasRead = false;
+  const mustReadFirst = () =>
+    hasRead ? null : { error: "You have not read the notebook yet in this run. Call read_notebook first so your find/replace anchors match the real source, then retry the edit." };
 
   const readOnly = {
     read_notebook: tool({
@@ -304,6 +310,7 @@ export function buildKaggleTools(
         const nb = await load();
         if (!nb) return { error: "Notebook not found" };
         if (!nb.working_source) return { error: "Notebook not synced yet. Ask the user to press Sync on the Account tab." };
+        hasRead = true;
         return { notebook: `${nb.owner}/${nb.slug}`, language: nb.language, source: nb.working_source.slice(0, 120_000) };
       },
     }),
@@ -475,12 +482,13 @@ export function buildKaggleTools(
     write_notebook: tool({
       description: "Replace the entire notebook source. Pass the COMPLETE new source. Staged only — not pushed to Kaggle until the user commits.",
       inputSchema: z.object({ source: lStr }),
-      execute: async ({ source }) => save(source),
+      execute: async ({ source }) => mustReadFirst() ?? save(source),
     }),
     edit_notebook: tool({
       description: "Replace an exact substring inside the notebook source. Prefer this for targeted edits.",
       inputSchema: z.object({ find: lStr, replace: lStr, replace_all: lBool.optional() }),
       execute: async ({ find, replace, replace_all }) => {
+        const gate = mustReadFirst(); if (gate) return gate;
         const nb = await load();
         const src = nb?.working_source ?? "";
         if (!src.includes(find)) {
@@ -499,6 +507,7 @@ export function buildKaggleTools(
       description: "Apply multiple find/replace edits to the notebook source in a single operation. More efficient than calling edit_notebook repeatedly for multiple changes.",
       inputSchema: z.object({ edits: lArray(z.object({ find: lStr, replace: lStr, replace_all: lBool.optional() })) }),
       execute: async ({ edits }) => {
+        const gate = mustReadFirst(); if (gate) return gate;
         const nb = await load();
         let src = nb?.working_source ?? "";
         const results: Array<{ find: string; success: boolean; error?: string }> = [];
