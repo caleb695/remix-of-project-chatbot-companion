@@ -195,22 +195,53 @@ async function kaggleFetch(
   username: string, key: string, path: string,
   init?: { method?: string; body?: unknown },
 ) {
-  const res = await fetch(`${API}${path}`, {
-    method: init?.method ?? "GET",
-    headers: kaggleHeaders(username, key),
-    ...(init?.body ? { body: JSON.stringify(init.body) } : {}),
-    signal: AbortSignal.timeout(30000) // 30 second timeout for Kaggle API calls
-  });
+  // Kaggle's API drops connections and 5xx's fairly often; a single blip used to
+  // surface to the user as a bare "network error" and kill the whole edit.
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  let res: Response | null = null;
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      res = await fetch(`${API}${path}`, {
+        method: init?.method ?? "GET",
+        headers: kaggleHeaders(username, key),
+        ...(init?.body ? { body: JSON.stringify(init.body) } : {}),
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch (e) {
+      lastErr = e;
+      res = null;
+      if (attempt === 4) break;
+      await sleep(Math.min(8000, 1000 * attempt * attempt));
+      continue;
+    }
+    if ((res.status === 408 || res.status === 429 || res.status >= 500) && attempt < 4) {
+      await sleep(Math.min(8000, 1000 * attempt * attempt));
+      continue;
+    }
+    break;
+  }
+  if (!res) {
+    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr ?? "unknown");
+    throw new Error(
+      /timeout|abort/i.test(msg)
+        ? "Kaggle did not respond in time (it can be slow on big notebooks). Try again in a moment."
+        : `Could not reach Kaggle after several attempts: ${msg}`,
+    );
+  }
   const text = await res.text();
   if (!res.ok) {
     throw new Error(
       res.status === 401 || res.status === 403
         ? "Kaggle rejected your credentials. Check your username and API key on the Account tab."
-        : `Kaggle ${res.status}: ${text.slice(0, 300)}`,
+        : res.status === 429
+          ? "Kaggle is rate limiting the API right now. Wait a minute and try again."
+          : `Kaggle ${res.status}: ${text.slice(0, 300)}`,
     );
   }
   try { return JSON.parse(text); } catch { return text as unknown; }
 }
+
 
 export type KaggleKernel = { ref: string; title: string; lastRunTime?: string; isPrivate?: boolean };
 
@@ -263,7 +294,28 @@ export async function pushKernel(username: string, key: string, nb: {
 type Sb = SupabaseClient<any, any, any>;
 
 /** Agent tools for a single Kaggle notebook (one source document + a checker). */
+/**
+ * Any error thrown inside a tool aborts the whole model stream, which the user
+ * sees as a raw "network error". Turn thrown errors into a normal tool result
+ * so the agent can read the message and retry.
+ */
+function safeTools<T extends Record<string, { execute?: (...a: never[]) => unknown }>>(tools: T): T {
+  for (const t of Object.values(tools)) {
+    const orig = t.execute;
+    if (typeof orig !== "function") continue;
+    t.execute = async (...args: never[]) => {
+      try {
+        return await (orig as (...a: never[]) => Promise<unknown>)(...args);
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : String(e) };
+      }
+    };
+  }
+  return tools;
+}
+
 export function buildKaggleTools(
+
   ctx: { sb: Sb; notebookId: string },
   opts: { allowWrites: boolean },
 ) {
@@ -461,7 +513,7 @@ export function buildKaggleTools(
   };
 
 
-  if (!opts.allowWrites) return readOnly;
+  if (!opts.allowWrites) return safeTools(readOnly);
 
   // `update` reports no error when it matches no row (a wrong id, or a row the
   // caller cannot write under RLS), so ask for the row back and treat an empty
