@@ -18,5 +18,8 @@ export async function authJobRequest(request: Request) {
   const { data: job, error } = await sb.from("coding_jobs").select("*").eq("id", jobId).maybeSingle();
   if (error || !job) throw new Response("no job", { status: 404 });
   if (job.hmac_secret !== secret) throw new Response("bad secret", { status: 401 });
-  return { job, sb };
+  // Only GitHub Actions runners authenticate this way; Kaggle runs (no repo)
+  // stream in-page and never call these endpoints.
+  if (!job.repo_selection_id) throw new Response("job has no repo", { status: 400 });
+  return { job: { ...job, repo_selection_id: job.repo_selection_id }, sb };
 }

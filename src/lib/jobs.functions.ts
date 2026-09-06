@@ -344,6 +344,7 @@ export const approveJob = createServerFn({ method: "POST" })
       .eq("id", data.id).single();
     if (error) throw error;
     if (!job.review_branch) throw new Error("This run has nothing to approve");
+    if (!job.repo_selection_id) throw new Error("This run is not a GitHub run");
 
     const { data: sel } = await context.supabase
       .from("repo_selections").select("owner, name, working_branch").eq("id", job.repo_selection_id).single();
@@ -392,6 +393,7 @@ export const discardJob = createServerFn({ method: "POST" })
     const { data: job, error } = await context.supabase
       .from("coding_jobs").select("id, review_branch, repo_selection_id").eq("id", data.id).single();
     if (error) throw error;
+    if (!job.repo_selection_id) throw new Error("This run is not a GitHub run");
     const { data: sel } = await context.supabase
       .from("repo_selections").select("owner, name").eq("id", job.repo_selection_id).single();
     const { data: conn } = await context.supabase
