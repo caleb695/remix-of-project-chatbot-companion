@@ -492,7 +492,7 @@ export function buildKaggleTools(
   };
 
 
-  if (!opts.allowWrites) return readOnly;
+  if (!opts.allowWrites) return safeTools(readOnly);
 
   // `update` reports no error when it matches no row (a wrong id, or a row the
   // caller cannot write under RLS), so ask for the row back and treat an empty
