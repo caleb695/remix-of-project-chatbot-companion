@@ -294,7 +294,28 @@ export async function pushKernel(username: string, key: string, nb: {
 type Sb = SupabaseClient<any, any, any>;
 
 /** Agent tools for a single Kaggle notebook (one source document + a checker). */
+/**
+ * Any error thrown inside a tool aborts the whole model stream, which the user
+ * sees as a raw "network error". Turn thrown errors into a normal tool result
+ * so the agent can read the message and retry.
+ */
+function safeTools<T extends Record<string, { execute?: (...a: never[]) => unknown }>>(tools: T): T {
+  for (const t of Object.values(tools)) {
+    const orig = t.execute;
+    if (typeof orig !== "function") continue;
+    t.execute = async (...args: never[]) => {
+      try {
+        return await (orig as (...a: never[]) => Promise<unknown>)(...args);
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : String(e) };
+      }
+    };
+  }
+  return tools;
+}
+
 export function buildKaggleTools(
+
   ctx: { sb: Sb; notebookId: string },
   opts: { allowWrites: boolean },
 ) {
