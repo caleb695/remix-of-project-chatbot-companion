@@ -210,7 +210,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         let rows = data ?? [];
         
         // Update cache
-        fileListCache.set(cacheKey, { data: rows, timestamp: now });
+        fileListCache.set(cacheKey, rows);
         
         if (rows.length === 0) {
           return {
@@ -232,7 +232,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         let rows: Array<{ path: string; status: string }>;
         const cached = fileListCache.get(cacheKey);
         if (cached && now - cached.timestamp < 30_000) {
-          rows = cached.data as typeof rows;
+          rows = cached.data;
         } else {
           const { data, error } = await sb
             .from("working_files")
@@ -242,7 +242,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
             .order("path");
           if (error) return { error: error.message };
           rows = data ?? [];
-          fileListCache.set(cacheKey, { data: rows, timestamp: now });
+          fileListCache.set(cacheKey, rows);
         }
         const re = globToRegex(String(pattern || ""));
         const matched = rows.filter((r) => re.test(r.path));
@@ -261,7 +261,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         const cacheKey = `file:${repoId}:${path}`;
         const cached = fileContentCache.get(cacheKey);
         if (cached) {
-          const content = cached.content ?? "";
+          const content = cached.data.content ?? "";
           return { path, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ, cached: true };
         }
         const { data, error } = await sb
@@ -291,7 +291,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           const cacheKey = `file:${repoId}:${p}`;
           const cached = fileContentCache.get(cacheKey);
           if (cached && cached.status !== "deleted") {
-            const content = cached.content ?? "";
+            const content = cached.data.content ?? "";
             results.push({ path: p, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ, cached: true });
           } else {
             uncachedPaths.push(p);

@@ -103,9 +103,10 @@ export async function retryWithBackoff<T>(
 
 /**
  * Simple in-memory cache with TTL
+ * Entry structure: { data: T, timestamp: number } for compatibility with existing code
  */
 export class SimpleCache<T = unknown> {
-  private cache = new Map<string, { value: T; expires: number }>();
+  private cache = new Map<string, { data: T; timestamp: number }>();
   private ttlMs: number;
   private maxSize: number;
 
@@ -114,19 +115,19 @@ export class SimpleCache<T = unknown> {
     this.maxSize = maxSize;
   }
 
-  get(key: string): T | undefined {
+  get(key: string): { data: T; timestamp: number } | undefined {
     const entry = this.cache.get(key);
     if (!entry) return undefined;
 
-    if (Date.now() > entry.expires) {
+    if (Date.now() - entry.timestamp > this.ttlMs) {
       this.cache.delete(key);
       return undefined;
     }
 
-    return entry.value;
+    return entry;
   }
 
-  set(key: string, value: T): void {
+  set(key: string, data: T): void {
     // Evict oldest if at capacity
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
@@ -134,8 +135,8 @@ export class SimpleCache<T = unknown> {
     }
 
     this.cache.set(key, {
-      value,
-      expires: Date.now() + this.ttlMs,
+      data,
+      timestamp: Date.now(),
     });
   }
 
@@ -154,14 +155,20 @@ export class SimpleCache<T = unknown> {
   get size(): number {
     return this.cache.size;
   }
+
+  // Expose keys for invalidation
+  keys(): IterableIterator<string> {
+    return this.cache.keys();
+  }
 }
 
 // Global cache instances with appropriate TTLs
-// File content cache (5 minutes)
+// File content cache (5 minutes) - stores { content: string; status: string }
 export const fileContentCache = new SimpleCache<{ content: string; status: string }>(5 * 60 * 1000, 500);
 
-// Search code cache (2 minutes)
-export const searchCodeCache = new SimpleCache<{ count: number; hits: Array<{ path: string; line: number; text: string }> }>(2 * 60 * 1000, 200);
+// Search code cache (2 minutes) - stores search results
+// Note: Type adjusted to match actual usage in search_code tool
+export const searchCodeCache = new SimpleCache<any>(2 * 60 * 1000, 200);
 
 // Web search cache (10 minutes)
 export const webSearchCache = new SimpleCache<string>(10 * 60 * 1000, 100);
@@ -169,11 +176,11 @@ export const webSearchCache = new SimpleCache<string>(10 * 60 * 1000, 100);
 // URL fetch cache (10 minutes)
 export const fetchUrlCache = new SimpleCache<string>(10 * 60 * 1000, 200);
 
-// File list cache (30 seconds)
-export const fileListCache = new SimpleCache<Array<{ path: string; status: string }>>(30_000, 100);
+// File list cache (30 seconds) - stores array of { path: string; status: string }
+export const fileListCache = new SimpleCache<any[]>(30_000, 100);
 
 // Embedding cache (5 minutes)
-export const embeddingCache = new SimpleCache<Float32Array>(5 * 60 * 1000, 50);
+export const embeddingCache = new SimpleCache<any>(5 * 60 * 1000, 50);
 
 /**
  * Generate a consistent cache key from various inputs
