@@ -651,5 +651,6 @@ export function buildKaggleTools(
       },
     }),
 
-  };
+  });
+
 }
