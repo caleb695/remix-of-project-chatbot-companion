@@ -74,15 +74,19 @@ export interface GhRepo {
 export async function listAllRepos(token: string): Promise<GhRepo[]> {
   const all: GhRepo[] = [];
   for (let page = 1; page <= 5; page++) {
-    const rows = await ghFetch<GhRepo[]>(
+    const rows = await ghFetch<GhRepo[] | null>(
       `/user/repos?per_page=100&sort=updated&page=${page}&affiliation=owner,collaborator`,
       token,
     );
+    // GitHub can answer with an empty body (204/no content) or an object
+    // envelope; either used to blow up with "rows is not iterable".
+    if (!Array.isArray(rows)) break;
     all.push(...rows);
     if (rows.length < 100) break;
   }
   return all;
 }
+
 
 const SKIP_DIRS = new Set([
   "node_modules", ".git", ".next", "dist", "build", ".turbo", ".cache",
