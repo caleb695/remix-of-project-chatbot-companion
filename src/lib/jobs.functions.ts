@@ -82,8 +82,19 @@ const RUNNER_PATH = "scripts/lovable-coder/runner.mjs";
  * the default branch as well as the branch the job checks out.
  */
 function installBranches(defaultBranch: string, workingBranch: string) {
-  const branches = [defaultBranch || workingBranch];
-  if (workingBranch && workingBranch !== branches[0]) branches.push(workingBranch);
+  const branches = [];
+  
+  // Always write to default branch if we know it (required for dispatch to actually work)
+  if (defaultBranch) {
+    branches.push(defaultBranch);
+  }
+  
+  // Additionally write to working branch if we know it and it's different from default
+  // (needed for job checkout when branches differ)
+  if (workingBranch && workingBranch !== defaultBranch) {
+    branches.push(workingBranch);
+  }
+  
   return branches;
 }
 
