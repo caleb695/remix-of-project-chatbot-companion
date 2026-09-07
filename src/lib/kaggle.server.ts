@@ -3,6 +3,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { lArray, lBool, lNum, lStr } from "./zod-lenient";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Timer, withTimeout, retryWithBackoff } from "@/lib/performance";
 
 const API = "https://www.kaggle.com/api/v1";
 
@@ -24,6 +25,7 @@ export function kaggleHeaders(username: string, key: string) {
     Authorization: `Basic ${basic}`,
     "Content-Type": "application/json",
     "User-Agent": "coderbot-app",
+    "Connection": "keep-alive",
   };
 }
 
@@ -33,10 +35,14 @@ async function fetchUrl(url: string): Promise<string> {
   if (!u) return "fetch_url requires a ?url=";
   if (!/^https?:\/\//i.test(u)) return "URL must start with http:// or https://";
   try {
-    const res = await fetch(u, { 
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; Coderbot/1.0)" }, 
-      signal: AbortSignal.timeout(15000) 
-    });
+    const res = await withTimeout(
+      () => fetch(u, { 
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; Coderbot/1.0)", "Connection": "keep-alive" }, 
+        signal: AbortSignal.timeout(15000) 
+      }),
+      15000,
+      `fetchUrl timed out: ${u}`
+    );
     if (!res.ok) return `HTTP ${res.status}`;
     const text = await res.text();
     return text.slice(0, 50_000) + (text.length > 50_000 ? "\n\n[...truncated]" : "");
@@ -195,41 +201,46 @@ async function kaggleFetch(
   username: string, key: string, path: string,
   init?: { method?: string; body?: unknown },
 ) {
+  const timer = new Timer(`kaggleFetch:${path}`);
   // Kaggle's API drops connections and 5xx's fairly often; a single blip used to
   // surface to the user as a bare "network error" and kill the whole edit.
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   let res: Response | null = null;
   let lastErr: unknown = null;
-  for (let attempt = 1; attempt <= 4; attempt++) {
-    try {
-      res = await fetch(`${API}${path}`, {
-        method: init?.method ?? "GET",
-        headers: kaggleHeaders(username, key),
-        ...(init?.body ? { body: JSON.stringify(init.body) } : {}),
-        signal: AbortSignal.timeout(60_000),
-      });
-    } catch (e) {
-      lastErr = e;
-      res = null;
-      if (attempt === 4) break;
-      await sleep(Math.min(8000, 1000 * attempt * attempt));
-      continue;
+  
+  // Use retryWithBackoff for better retry logic with jitter
+  const result = await retryWithBackoff(
+    async () => {
+      res = await withTimeout(
+        () => fetch(`${API}${path}`, {
+          method: init?.method ?? "GET",
+          headers: kaggleHeaders(username, key),
+          ...(init?.body ? { body: JSON.stringify(init.body) } : {}),
+          signal: AbortSignal.timeout(60_000),
+        }),
+        60_000,
+        `Kaggle fetch timed out: ${path}`
+      );
+      
+      if (res.status === 408 || res.status === 429 || res.status >= 500) {
+        throw new Error(`Kaggle ${res.status}`);
+      }
+      
+      return res;
+    },
+    {
+      maxRetries: 3,
+      baseDelay: 1000,
+      maxDelay: 8000,
+      shouldRetry: (e) => {
+        const msg = String(e);
+        return /timeout|abort|429|50[0-9]/i.test(msg);
+      },
     }
-    if ((res.status === 408 || res.status === 429 || res.status >= 500) && attempt < 4) {
-      await sleep(Math.min(8000, 1000 * attempt * attempt));
-      continue;
-    }
-    break;
-  }
-  if (!res) {
-    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr ?? "unknown");
-    throw new Error(
-      /timeout|abort/i.test(msg)
-        ? "Kaggle did not respond in time (it can be slow on big notebooks). Try again in a moment."
-        : `Could not reach Kaggle after several attempts: ${msg}`,
-    );
-  }
+  );
+  
+  res = result as Response;
   const text = await res.text();
+  
   if (!res.ok) {
     throw new Error(
       res.status === 401 || res.status === 403
@@ -239,6 +250,8 @@ async function kaggleFetch(
           : `Kaggle ${res.status}: ${text.slice(0, 300)}`,
     );
   }
+  
+  timer.log();
   try { return JSON.parse(text); } catch { return text as unknown; }
 }
 
@@ -246,8 +259,10 @@ async function kaggleFetch(
 export type KaggleKernel = { ref: string; title: string; lastRunTime?: string; isPrivate?: boolean };
 
 export async function listKernels(username: string, key: string) {
+  const timer = new Timer("listKernels");
   const rows = (await kaggleFetch(username, key,
     `/kernels/list?user=${encodeURIComponent(username)}&page_size=100&sort_by=dateRun`)) as KaggleKernel[];
+  timer.log();
   return Array.isArray(rows) ? rows : [];
 }
 
@@ -260,8 +275,11 @@ export type KaggleBlob = {
 };
 
 export async function pullKernel(username: string, key: string, owner: string, slug: string) {
-  return (await kaggleFetch(username, key,
-    `/kernels/pull?user_name=${encodeURIComponent(owner)}&kernel_slug=${encodeURIComponent(slug)}`)) as KaggleBlob;
+  const timer = new Timer(`pullKernel:${owner}/${slug}`);
+  const result = await kaggleFetch(username, key,
+    `/kernels/pull?user_name=${encodeURIComponent(owner)}&kernel_slug=${encodeURIComponent(slug)}`) as KaggleBlob;
+  timer.log();
+  return result;
 }
 
 export async function pushKernel(username: string, key: string, nb: {
@@ -269,7 +287,8 @@ export async function pushKernel(username: string, key: string, nb: {
   kernelType: string; isPrivate: boolean; enableGpu: boolean; enableInternet: boolean;
   datasetSources: string[];
 }) {
-  return await kaggleFetch(username, key, "/kernels/push", {
+  const timer = new Timer(`pushKernel:${nb.owner}/${nb.slug}`);
+  const result = await kaggleFetch(username, key, "/kernels/push", {
     method: "POST",
     body: {
       id: null,
@@ -287,6 +306,8 @@ export async function pushKernel(username: string, key: string, nb: {
       categoryIds: [],
     },
   });
+  timer.log();
+  return result;
 }
 
 /* ------------------------------------------------------------------ tools */
@@ -320,23 +341,50 @@ export function buildKaggleTools(
   opts: { allowWrites: boolean },
 ) {
   const { sb, notebookId } = ctx;
+  
+  // Cache for notebook data to avoid repeated DB queries
+  let notebookCache: { data: any; timestamp: number } | null = null;
+  const CACHE_TTL = 30_000; // 30 seconds
+  
   const load = async () => {
-    const { data, error } = await sb.from("kaggle_notebooks")
-      .select("owner, slug, title, language, kernel_type, is_private, enable_gpu, enable_internet, dataset_sources, working_source, original_source, status")
-      .eq("id", notebookId).maybeSingle();
+    const now = Date.now();
+    if (notebookCache && (now - notebookCache.timestamp) < CACHE_TTL) {
+      return notebookCache.data;
+    }
+    const { data, error } = await withTimeout(
+      () => sb.from("kaggle_notebooks")
+        .select("owner, slug, title, language, kernel_type, is_private, enable_gpu, enable_internet, dataset_sources, working_source, original_source, status")
+        .eq("id", notebookId).maybeSingle(),
+      10000,
+      "Notebook load timed out"
+    );
     if (error) throw new Error(error.message);
+    notebookCache = { data, timestamp: now };
     return data;
   };
 
   /** Kaggle credentials for live API calls (search datasets, run status, output). */
+  let credsCache: { username: string; key: string; timestamp: number } | null = null;
+  
   const apiCreds = async () => {
-    const { data } = await sb.from("openrouter_settings")
-      .select("kaggle_username, kaggle_key").maybeSingle();
+    const now = Date.now();
+    if (credsCache && (now - credsCache.timestamp) < CACHE_TTL) {
+      return credsCache;
+    }
+    const { data } = await withTimeout(
+      () => sb.from("openrouter_settings")
+        .select("kaggle_username, kaggle_key").maybeSingle(),
+      5000,
+      "Credentials load timed out"
+    );
     if (!data?.kaggle_username || !data?.kaggle_key) {
       throw new Error("Kaggle credentials are not set. Tell the user to add them on the Account tab.");
     }
-    return { username: data.kaggle_username as string, key: data.kaggle_key as string };
+    const result = { username: data.kaggle_username as string, key: data.kaggle_key as string, timestamp: now };
+    credsCache = result;
+    return result;
   };
+  
   const api = async (path: string) => {
     const { username, key } = await apiCreds();
     return await kaggleFetch(username, key, path);
@@ -359,10 +407,12 @@ export function buildKaggleTools(
       // least one optional property so the schema is always valid.
       inputSchema: z.object({ reason: z.string().optional().describe("Optional note about why you are reading it") }),
       execute: async () => {
-        const nb = await load();
+        const timer = new Timer("read_notebook");
+        const nb = await withTimeout(load, 10000, "read_notebook load timed out");
         if (!nb) return { error: "Notebook not found" };
         if (!nb.working_source) return { error: "Notebook not synced yet. Ask the user to press Sync on the Account tab." };
         hasRead = true;
+        timer.log();
         return { notebook: `${nb.owner}/${nb.slug}`, language: nb.language, source: nb.working_source.slice(0, 120_000) };
       },
     }),
@@ -384,7 +434,8 @@ export function buildKaggleTools(
       description: "Search the notebook source for a string or regex. Returns matching line numbers.",
       inputSchema: z.object({ query: lStr, regex: lBool.optional() }),
       execute: async ({ query, regex }) => {
-        const nb = await load();
+        const timer = new Timer("search_notebook");
+        const nb = await withTimeout(load, 10000, "search_notebook load timed out");
         const src = nb?.working_source ?? "";
         let re: RegExp;
         try { re = regex ? new RegExp(query, "i") : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"); }
@@ -393,6 +444,7 @@ export function buildKaggleTools(
         src.split("\n").forEach((l: string, i: number) => {
           if (hits.length < 60 && re.test(l)) hits.push({ line: i + 1, text: l.slice(0, 200) });
         });
+        timer.log();
         return { count: hits.length, hits };
       },
     }),
@@ -401,7 +453,8 @@ export function buildKaggleTools(
         "Static review of the notebook source: unbalanced brackets, merge markers, obviously broken Python indentation, leftover TODO/FIXME, empty source. Call after editing and fix anything reported, then check again until clean.",
       inputSchema: z.object({ reason: z.string().optional().describe("Optional note about why you are checking") }),
       execute: async () => {
-        const nb = await load();
+        const timer = new Timer("check_code");
+        const nb = await withTimeout(load, 10000, "check_code load timed out");
         const src = nb?.working_source ?? "";
         const problems: Array<{ issue: string; severity: "error" | "warning"; line?: number }> = [];
         const suggestions: Array<{ type: string; message: string; line?: number }> = [];
@@ -440,6 +493,7 @@ export function buildKaggleTools(
             problems.push({ issue: `Line ${i + 1}: Uses deprecated .ix[] indexer - use .loc[] or .iloc[] instead`, severity: "warning", line: i + 1 });
           }
         });
+        timer.log();
         return { problems, suggestions, clean: problems.length === 0 };
       },
     }),
@@ -447,8 +501,10 @@ export function buildKaggleTools(
       description: "Read the notebook's Kaggle settings: title, language, kernel type, private flag, GPU, internet and attached dataset sources.",
       inputSchema: z.object({ reason: z.string().optional() }),
       execute: async () => {
-        const nb = await load();
+        const timer = new Timer("get_notebook_settings");
+        const nb = await withTimeout(load, 10000, "get_notebook_settings load timed out");
         if (!nb) return { error: "Notebook not found" };
+        timer.log();
         return {
           notebook: `${nb.owner}/${nb.slug}`,
           title: nb.title, language: nb.language, kernel_type: nb.kernel_type,
@@ -461,9 +517,15 @@ export function buildKaggleTools(
       description: "Search public Kaggle datasets by keyword. Returns dataset refs (owner/slug) you can attach with attach_dataset.",
       inputSchema: z.object({ query: lStr, max_results: lNum.optional() }),
       execute: async ({ query, max_results }) => {
+        const timer = new Timer("search_datasets");
         try {
-          const rows = (await api(`/datasets/list?search=${encodeURIComponent(query ?? "")}`)) as Array<Record<string, unknown>>;
+          const rows = (await withTimeout(
+            () => api(`/datasets/list?search=${encodeURIComponent(query ?? "")}`),
+            30000,
+            "search_datasets timed out"
+          )) as Array<Record<string, unknown>>;
           const limit = Math.min(Math.max(Math.floor(max_results ?? 10), 1), 30);
+          timer.log();
           return {
             results: (Array.isArray(rows) ? rows : []).slice(0, limit).map((d) => ({
               ref: d["ref"], title: d["title"], size: d["totalBytes"], downloads: d["downloadCount"],
@@ -476,10 +538,16 @@ export function buildKaggleTools(
       description: "List the files inside a Kaggle dataset (ref = owner/slug) so you can reference exact paths in the notebook.",
       inputSchema: z.object({ ref: lStr.describe("Dataset ref, e.g. zynicide/wine-reviews") }),
       execute: async ({ ref }) => {
+        const timer = new Timer("list_dataset_files");
         const clean = String(ref ?? "").trim().replace(/^\/+|\/+$/g, "");
         if (!/^[^/]+\/[^/]+$/.test(clean)) return { error: "ref must look like owner/slug" };
         try {
-          const res = (await api(`/datasets/list/files/${clean}`)) as { datasetFiles?: Array<{ name?: string; totalBytes?: number }> };
+          const res = (await withTimeout(
+            () => api(`/datasets/list/files/${clean}`),
+            30000,
+            "list_dataset_files timed out"
+          )) as { datasetFiles?: Array<{ name?: string; totalBytes?: number }> };
+          timer.log();
           return { files: (res?.datasetFiles ?? []).slice(0, 200).map((f) => ({ name: f.name, bytes: f.totalBytes })) };
         } catch (e) { return { error: String(e) }; }
       },
@@ -488,10 +556,17 @@ export function buildKaggleTools(
       description: "Check the status of the latest Kaggle run of this notebook (queued/running/complete/error).",
       inputSchema: z.object({ reason: z.string().optional() }),
       execute: async () => {
-        const nb = await load();
+        const timer = new Timer("notebook_run_status");
+        const nb = await withTimeout(load, 10000, "notebook_run_status load timed out");
         if (!nb) return { error: "Notebook not found" };
         try {
-          return await api(`/kernels/status?user_name=${encodeURIComponent(nb.owner)}&kernel_slug=${encodeURIComponent(nb.slug)}`);
+          const result = await withTimeout(
+            () => api(`/kernels/status?user_name=${encodeURIComponent(nb.owner)}&kernel_slug=${encodeURIComponent(nb.slug)}`),
+            30000,
+            "notebook_run_status API timed out"
+          );
+          timer.log();
+          return result;
         } catch (e) { return { error: String(e) }; }
       },
     }),
@@ -499,13 +574,19 @@ export function buildKaggleTools(
       description: "Read the log/output of the last Kaggle run of this notebook. Use it to debug errors after the user pushes and runs it.",
       inputSchema: z.object({ reason: z.string().optional() }),
       execute: async () => {
-        const nb = await load();
+        const timer = new Timer("notebook_run_output");
+        const nb = await withTimeout(load, 10000, "notebook_run_output load timed out");
         if (!nb) return { error: "Notebook not found" };
         try {
-          const res = (await api(`/kernels/output?user_name=${encodeURIComponent(nb.owner)}&kernel_slug=${encodeURIComponent(nb.slug)}`)) as {
+          const res = (await withTimeout(
+            () => api(`/kernels/output?user_name=${encodeURIComponent(nb.owner)}&kernel_slug=${encodeURIComponent(nb.slug)}`),
+            30000,
+            "notebook_run_output API timed out"
+          )) as {
             log?: string; files?: Array<{ fileName?: string }>;
           };
           const log = typeof res?.log === "string" ? res.log : JSON.stringify(res?.log ?? "");
+          timer.log();
           return { log: log.slice(-20_000), files: (res?.files ?? []).map((f) => f.fileName).slice(0, 50) };
         } catch (e) { return { error: String(e) }; }
       },
@@ -519,11 +600,17 @@ export function buildKaggleTools(
   // caller cannot write under RLS), so ask for the row back and treat an empty
   // result as a failure instead of telling the model the edit was staged.
   const save = async (source: string) => {
-    const { data, error } = await sb.from("kaggle_notebooks")
-      .update({ working_source: source, status: "modified", updated_at: new Date().toISOString() })
-      .eq("id", notebookId)
-      .select("id")
-      .maybeSingle();
+    const timer = new Timer("save_notebook");
+    const { data, error } = await withTimeout(
+      () => sb.from("kaggle_notebooks")
+        .update({ working_source: source, status: "modified", updated_at: new Date().toISOString() })
+        .eq("id", notebookId)
+        .select("id")
+        .maybeSingle(),
+      15000,
+      "save_notebook timed out"
+    );
+    timer.log();
     if (error) return { error: error.message };
     if (!data) return { error: "The notebook could not be saved — it was not found for this account. Tell the user to re-add or re-sync the notebook on the Account tab." };
     return { ok: true, bytes: source.length };
@@ -535,14 +622,20 @@ export function buildKaggleTools(
     write_notebook: tool({
       description: "Replace the entire notebook source. Pass the COMPLETE new source. Staged only — not pushed to Kaggle until the user commits.",
       inputSchema: z.object({ source: lStr }),
-      execute: async ({ source }) => mustReadFirst() ?? save(source),
+      execute: async ({ source }) => {
+        const timer = new Timer("write_notebook");
+        const result = mustReadFirst() ?? await save(source);
+        timer.log();
+        return result;
+      },
     }),
     edit_notebook: tool({
       description: "Replace an exact substring inside the notebook source. Prefer this for targeted edits.",
       inputSchema: z.object({ find: lStr, replace: lStr, replace_all: lBool.optional() }),
       execute: async ({ find, replace, replace_all }) => {
+        const timer = new Timer("edit_notebook");
         const gate = mustReadFirst(); if (gate) return gate;
-        const nb = await load();
+        const nb = await withTimeout(load, 10000, "edit_notebook load timed out");
         const src = nb?.working_source ?? "";
         if (!src.includes(find)) {
           const tokens = find.split(/\s+/).filter((t) => t.length >= 4).sort((a, b) => b.length - a.length);
@@ -553,7 +646,9 @@ export function buildKaggleTools(
           }
           return { error: "The `find` text does not appear in the notebook. Read it again." };
         }
-        return save(replace_all ? src.split(find).join(replace) : src.replace(find, replace));
+        const result = await save(replace_all ? src.split(find).join(replace) : src.replace(find, replace));
+        timer.log();
+        return result;
       },
     }),
     batch_edit_notebook: tool({
@@ -582,7 +677,9 @@ export function buildKaggleTools(
           src = edit.replace_all ? src.split(edit.find).join(edit.replace) : src.replace(edit.find, edit.replace);
           results.push({ find: edit.find.slice(0, 50), success: true });
         }
+        const timer = new Timer("batch_edit_notebook");
         const saveResult = await save(src);
+        timer.log();
         if (saveResult.error) return { error: saveResult.error };
         const succeeded = results.filter(r => r.success).length;
         return { total: unique.length, succeeded, failed: unique.length - succeeded, results, bytes: src.length };
@@ -599,6 +696,7 @@ export function buildKaggleTools(
         language: lStr.optional().describe("'python' or 'r'"),
       }),
       execute: async (args) => {
+        const timer = new Timer("update_notebook_settings");
         const patch: Record<string, unknown> = {};
         if (args.title !== undefined) patch["title"] = args.title;
         if (args.enable_gpu !== undefined) patch["enable_gpu"] = args.enable_gpu;
@@ -609,8 +707,13 @@ export function buildKaggleTools(
         if (!Object.keys(patch).length) return { error: "Nothing to change" };
         patch["status"] = "modified";
         patch["updated_at"] = new Date().toISOString();
-        const { data, error } = await sb.from("kaggle_notebooks")
-          .update(patch).eq("id", notebookId).select("id").maybeSingle();
+        const { data, error } = await withTimeout(
+          () => sb.from("kaggle_notebooks")
+            .update(patch).eq("id", notebookId).select("id").maybeSingle(),
+          10000,
+          "update_notebook_settings timed out"
+        );
+        timer.log();
         if (error) return { error: error.message };
         if (!data) return { error: "Notebook not found for this account." };
         return { ok: true, changed: patch };
@@ -620,15 +723,21 @@ export function buildKaggleTools(
       description: "Attach a Kaggle dataset (ref = owner/slug) as a data source for this notebook, so its files appear under /kaggle/input.",
       inputSchema: z.object({ ref: lStr }),
       execute: async ({ ref }) => {
+        const timer = new Timer("attach_dataset");
         const clean = String(ref ?? "").trim().replace(/^\/+|\/+$/g, "");
         if (!/^[^/]+\/[^/]+$/.test(clean)) return { error: "ref must look like owner/slug" };
-        const nb = await load();
+        const nb = await withTimeout(load, 10000, "attach_dataset load timed out");
         const current: string[] = Array.isArray(nb?.dataset_sources) ? (nb!.dataset_sources as string[]) : [];
         if (current.includes(clean)) return { ok: true, dataset_sources: current, note: "Already attached" };
         const next = [...current, clean];
-        const { data, error } = await sb.from("kaggle_notebooks")
-          .update({ dataset_sources: next, status: "modified", updated_at: new Date().toISOString() })
-          .eq("id", notebookId).select("id").maybeSingle();
+        const { data, error } = await withTimeout(
+          () => sb.from("kaggle_notebooks")
+            .update({ dataset_sources: next, status: "modified", updated_at: new Date().toISOString() })
+            .eq("id", notebookId).select("id").maybeSingle(),
+          10000,
+          "attach_dataset save timed out"
+        );
+        timer.log();
         if (error) return { error: error.message };
         if (!data) return { error: "Notebook not found for this account." };
         return { ok: true, dataset_sources: next, input_path: `/kaggle/input/${clean.split("/")[1]}` };
@@ -638,14 +747,20 @@ export function buildKaggleTools(
       description: "Remove a dataset source (owner/slug) from this notebook.",
       inputSchema: z.object({ ref: lStr }),
       execute: async ({ ref }) => {
+        const timer = new Timer("detach_dataset");
         const clean = String(ref ?? "").trim();
-        const nb = await load();
+        const nb = await withTimeout(load, 10000, "detach_dataset load timed out");
         const current: string[] = Array.isArray(nb?.dataset_sources) ? (nb!.dataset_sources as string[]) : [];
         const next = current.filter((r) => r !== clean);
         if (next.length === current.length) return { error: `"${clean}" is not attached. Current: ${current.join(", ") || "none"}` };
-        const { error } = await sb.from("kaggle_notebooks")
-          .update({ dataset_sources: next, status: "modified", updated_at: new Date().toISOString() })
-          .eq("id", notebookId);
+        const { error } = await withTimeout(
+          () => sb.from("kaggle_notebooks")
+            .update({ dataset_sources: next, status: "modified", updated_at: new Date().toISOString() })
+            .eq("id", notebookId),
+          10000,
+          "detach_dataset save timed out"
+        );
+        timer.log();
         if (error) return { error: error.message };
         return { ok: true, dataset_sources: next };
       },
