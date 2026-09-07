@@ -703,11 +703,24 @@ async function callModel(spec, messages, opts = {}) {
       throw new Error("Still rate limited after 50 minutes of retrying. Stopping — try again later or use a model with a higher rate limit.");
     }
     if (res.status >= 500 || res.status === 408) {
-      if (++transient > 6) throw new Error("Provider error " + res.status + ": " + text);
-      await event("status", "Provider error " + res.status + " — retrying.", undefined, opts.agent);
-      await sleep(Math.min(30000, 2000 * transient));
+      // 503 / "overloaded" means the provider is busy, not broken: retry longer.
+      const overloaded = res.status === 503 || /overload|capacity|busy|temporarily unavailable|no healthy|try again/i.test(text);
+      const cap = overloaded ? 15 : 6;
+      if (++transient > cap) {
+        throw new Error(overloaded
+          ? "The model provider stayed overloaded (" + res.status + ") through " + cap + " retries. Try again shortly or switch models. Provider said: " + text
+          : "Provider error " + res.status + ": " + text);
+      }
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const wait = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(60000, retryAfter * 1000)
+        : Math.min(45000, 2000 * Math.pow(2, transient - 1)) + Math.floor(Math.random() * 1000);
+      await event("status", (overloaded ? "Provider overloaded (" + res.status + ")" : "Provider error " + res.status)
+        + " — waiting " + Math.round(wait / 1000) + "s and retrying (" + transient + "/" + cap + ").", undefined, opts.agent);
+      await sleep(wait);
       continue;
     }
+
     throw new Error("Provider error " + res.status + ": " + text);
   }
 }
