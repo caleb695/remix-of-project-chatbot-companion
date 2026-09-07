@@ -39,7 +39,7 @@ export async function ghFetch<T = unknown>(
       if (res.ok) {
         // 204 No Content (e.g. a no-op merge) has an empty body.
         if (res.status === 204) return null as T;
-        if (Number(res.headers.get("content-length") ?? 0) === 0) return null as T;
+        // For 200/201 responses, always parse JSON. Some endpoints return [] or {}.
         return (await res.json()) as T;
       }
       const text = await res.text();
