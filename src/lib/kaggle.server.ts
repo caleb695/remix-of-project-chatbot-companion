@@ -529,8 +529,9 @@ export function buildKaggleTools(
     return { ok: true, bytes: source.length };
   };
 
-  return {
+  return safeTools({
     ...readOnly,
+
     write_notebook: tool({
       description: "Replace the entire notebook source. Pass the COMPLETE new source. Staged only — not pushed to Kaggle until the user commits.",
       inputSchema: z.object({ source: lStr }),
@@ -650,5 +651,6 @@ export function buildKaggleTools(
       },
     }),
 
-  };
+  });
+
 }
