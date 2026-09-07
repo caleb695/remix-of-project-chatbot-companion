@@ -394,10 +394,34 @@ export const Route = createFileRoute("/api/chat")({
               }
             }
             if (res.status !== 429) {
-              // Retry transient server errors so a provider hiccup doesn't fail the run.
-              if ((res.status === 408 || res.status >= 500) && ++transient <= 4) {
-                await sleep(Math.min(20_000, 2000 * transient));
-                continue;
+              // Transient server errors. 503 / "overloaded" is a capacity signal:
+              // the provider is up but busy, so retry patiently (with jitter and
+              // Retry-After) instead of failing the run after a few seconds.
+              if (res.status === 408 || res.status >= 500) {
+                const body = await res.clone().text().catch(() => "");
+                const overloaded = res.status === 503 || /overload|capacity|busy|temporarily unavailable|no healthy|try again/i.test(body);
+                const cap = overloaded ? 12 : 4;
+                if (++transient <= cap) {
+                  const retryAfter = Number(res.headers.get("retry-after"));
+                  const wait = Number.isFinite(retryAfter) && retryAfter > 0
+                    ? Math.min(30_000, retryAfter * 1000)
+                    : Math.min(30_000, 1500 * 2 ** (transient - 1)) + Math.floor(Math.random() * 750);
+                  if (overloaded && (transient === 1 || transient % 3 === 0)) {
+                    await logEvent(
+                      "status",
+                      `The model provider is overloaded (${res.status}) — waiting ${Math.round(wait / 1000)}s and retrying.`,
+                      PHASE.coding,
+                    );
+                  }
+                  await sleep(wait);
+                  continue;
+                }
+                if (overloaded) {
+                  return new Response(
+                    JSON.stringify({ error: { message: `The model provider is overloaded (${res.status}) and stayed busy through ${cap} retries. Try again shortly, or pick a different model on the Account tab.` } }),
+                    { status: res.status, headers: { "content-type": "application/json" } },
+                  );
+                }
               }
               return res;
             }
@@ -407,6 +431,7 @@ export const Route = createFileRoute("/api/chat")({
             await logEvent("status", "Rate limited by the model provider — waiting 10s and retrying.", PHASE.coding);
             await sleep(10_000);
             if (++rpmWaits > 200) return res;
+
           }
         };
         // Set by onError so onFinish knows the run died instead of "only replied".
