@@ -210,7 +210,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         let rows = data ?? [];
         
         // Update cache
-        fileListCache.set(cacheKey, rows);
+        fileListCache.set(cacheKey, { data: rows, timestamp: now });
         
         if (rows.length === 0) {
           return {
@@ -242,7 +242,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
             .order("path");
           if (error) return { error: error.message };
           rows = data ?? [];
-          fileListCache.set(cacheKey, rows);
+          fileListCache.set(cacheKey, { data: rows, timestamp: now });
         }
         const re = globToRegex(String(pattern || ""));
         const matched = rows.filter((r) => re.test(r.path));
@@ -290,7 +290,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         for (const p of paths) {
           const cacheKey = `file:${repoId}:${p}`;
           const cached = fileContentCache.get(cacheKey);
-          if (cached && cached.status !== "deleted") {
+          if (cached && cached.data.status !== "deleted") {
             const content = cached.data.content ?? "";
             results.push({ path: p, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ, cached: true });
           } else {
@@ -336,7 +336,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       execute: async ({ query, regex, max_results }) => {
         const cacheKey = `search:${repoId}:${query}:${regex}:${max_results ?? 40}`;
         const cached = searchCodeCache.get(cacheKey);
-        if (cached) return { ...cached, cached: true };
+        if (cached) return { ...cached.data, cached: true };
         
         const { data, error } = await sb
           .from("working_files")
@@ -378,7 +378,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       execute: async ({ query, max_results }) => {
         const cacheKey = `web:${query}:${max_results ?? 6}`;
         const cached = webSearchCache.get(cacheKey);
-        if (cached) return cached;
+        if (cached) return cached.data;
         const result = await webSearch(query ?? "", max_results ?? 6);
         webSearchCache.set(cacheKey, result);
         return result;
@@ -395,7 +395,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         
         const cacheKey = `fetch:${u}`;
         const cached = fetchUrlCache.get(cacheKey);
-        if (cached) return cached;
+        if (cached) return cached.data;
         
         try {
           const res = await fetch(u, { 
