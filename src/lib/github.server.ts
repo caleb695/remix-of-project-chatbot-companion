@@ -1,5 +1,7 @@
 // GitHub REST + Git Data API helpers. Server-only.
 
+import { Timer, withTimeout } from "@/lib/performance";
+
 const API = "https://api.github.com";
 
 export function ghHeaders(token: string) {
@@ -8,6 +10,7 @@ export function ghHeaders(token: string) {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "coderbot-app",
+    "Connection": "keep-alive",
   };
 }
 
@@ -32,10 +35,15 @@ export async function ghFetch<T = unknown>(
   // Some completion/merge calls take a while on large repos; give them room
   // while still bounding a stuck connection so the request does not hang.
   const timeoutMs = init.method && init.method !== "GET" ? 60_000 : 30_000;
+  const timer = new Timer(`ghFetch:${path}`);
   let lastError: unknown;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const res = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) });
+      const res = await withTimeout(
+        () => fetch(url, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) }),
+        timeoutMs,
+        `GitHub fetch timed out: ${path}`
+      );
       if (res.ok) {
         // 204 No Content (e.g. a no-op merge) has an empty body.
         if (res.status === 204) return null as T;
@@ -59,6 +67,9 @@ export async function ghFetch<T = unknown>(
   throw lastError instanceof Error ? lastError : new Error("GitHub request failed after retries");
 }
 
+// Wrap listAllRepos with timeout
+
+
 export interface GhRepo {
   id: number;
   name: string;
@@ -72,18 +83,29 @@ export interface GhRepo {
 }
 
 export async function listAllRepos(token: string): Promise<GhRepo[]> {
+  const timer = new Timer("listAllRepos");
   const all: GhRepo[] = [];
-  for (let page = 1; page <= 5; page++) {
-    const rows = await ghFetch<GhRepo[] | null>(
-      `/user/repos?per_page=100&sort=updated&page=${page}&affiliation=owner,collaborator`,
-      token,
-    );
+  
+  // Parallel pagination for faster repo listing
+  const pages = Array.from({ length: 5 }, (_, i) => i + 1);
+  const results = await Promise.all(
+    pages.map(async (page) => {
+      return await ghFetch<GhRepo[] | null>(
+        `/user/repos?per_page=100&sort=updated&page=${page}&affiliation=owner,collaborator`,
+        token,
+      );
+    })
+  );
+  
+  for (const rows of results) {
     // GitHub can answer with an empty body (204/no content) or an object
     // envelope; either used to blow up with "rows is not iterable".
     if (!Array.isArray(rows)) break;
     all.push(...rows);
     if (rows.length < 100) break;
   }
+  
+  timer.log();
   return all;
 }
 
@@ -117,17 +139,31 @@ export async function pullRepoFiles(
   branch: string,
   token: string,
 ): Promise<Array<{ path: string; content: string; sha: string }>> {
-  const ref = await ghFetch<{ object: { sha: string } }>(
-    `/repos/${owner}/${name}/git/refs/heads/${encodeURIComponent(branch)}`,
-    token,
+  const timer = new Timer(`pullRepoFiles:${owner}/${name}`);
+  
+  const ref = await withTimeout(
+    () => ghFetch<{ object: { sha: string } }>(
+      `/repos/${owner}/${name}/git/refs/heads/${encodeURIComponent(branch)}`,
+      token,
+    ),
+    30000,
+    `pullRepoFiles ref fetch timed out`
   );
-  const commit = await ghFetch<{ tree: { sha: string } }>(
-    `/repos/${owner}/${name}/git/commits/${ref.object.sha}`,
-    token,
+  const commit = await withTimeout(
+    () => ghFetch<{ tree: { sha: string } }>(
+      `/repos/${owner}/${name}/git/commits/${ref.object.sha}`,
+      token,
+    ),
+    30000,
+    `pullRepoFiles commit fetch timed out`
   );
-  const tree = await ghFetch<{ tree: TreeItem[]; truncated: boolean }>(
-    `/repos/${owner}/${name}/git/trees/${commit.tree.sha}?recursive=1`,
-    token,
+  const tree = await withTimeout(
+    () => ghFetch<{ tree: TreeItem[]; truncated: boolean }>(
+      `/repos/${owner}/${name}/git/trees/${commit.tree.sha}?recursive=1`,
+      token,
+    ),
+    30000,
+    `pullRepoFiles tree fetch timed out`
   );
 
   const blobs = tree.tree.filter(
@@ -135,16 +171,20 @@ export async function pullRepoFiles(
   ).slice(0, MAX_FILES);
 
   const out: Array<{ path: string; content: string; sha: string }> = [];
-  const CONCURRENCY = 8;
+  const CONCURRENCY = 16; // Increased for better parallel fetching
   let i = 0;
   async function worker() {
     while (i < blobs.length) {
       const idx = i++;
       const b = blobs[idx];
       try {
-        const blob = await ghFetch<{ content: string; encoding: string }>(
-          `/repos/${owner}/${name}/git/blobs/${b.sha}`,
-          token,
+        const blob = await withTimeout(
+          () => ghFetch<{ content: string; encoding: string }>(
+            `/repos/${owner}/${name}/git/blobs/${b.sha}`,
+            token,
+          ),
+          30000,
+          `pullRepoFiles blob fetch timed out: ${b.path}`
         );
         if (blob.encoding !== "base64") continue;
         const buf = Buffer.from(blob.content, "base64");
@@ -169,74 +209,110 @@ export async function commitChanges(
   changes: Array<{ path: string; content: string | null }>,
   message: string,
 ): Promise<{ sha: string }> {
+  const timer = new Timer(`commitChanges:${owner}/${name}`);
+  
   // Get current head
-  const ref = await ghFetch<{ object: { sha: string } }>(
-    `/repos/${owner}/${name}/git/refs/heads/${encodeURIComponent(branch)}`,
-    token,
+  const ref = await withTimeout(
+    () => ghFetch<{ object: { sha: string } }>(
+      `/repos/${owner}/${name}/git/refs/heads/${encodeURIComponent(branch)}`,
+      token,
+    ),
+    30000,
+    `commitChanges ref fetch timed out`
   );
   const parentSha = ref.object.sha;
-  const parentCommit = await ghFetch<{ tree: { sha: string } }>(
-    `/repos/${owner}/${name}/git/commits/${parentSha}`,
-    token,
+  const parentCommit = await withTimeout(
+    () => ghFetch<{ tree: { sha: string } }>(
+      `/repos/${owner}/${name}/git/commits/${parentSha}`,
+      token,
+    ),
+    30000,
+    `commitChanges parentCommit fetch timed out`
   );
 
   // Create blobs for additions/modifications. Blobs are independent, so push
   // them in parallel instead of one-by-one when there are several changes.
+  // Batch processing for better performance
+  const BATCH_SIZE = 20;
   const treeEntries: Array<{ path: string; mode: "100644"; type: "blob"; sha: string | null }> = [];
-  await Promise.all(changes.map(async (change, index) => {
+  
+  // Process changes in batches
+  for (let i = 0; i < changes.length; i += BATCH_SIZE) {
+    const batch = changes.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map(async (change, batchIndex) => {
     if (change.content === null) {
       // deletion: sha=null
       treeEntries[index] = { path: change.path, mode: "100644", type: "blob", sha: null };
       return;
     }
-    const blob = await ghFetch<{ sha: string }>(
-      `/repos/${owner}/${name}/git/blobs`,
+    const blob = await withTimeout(
+      () => ghFetch<{ sha: string }>(
+        `/repos/${owner}/${name}/git/blobs`,
+        token,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: Buffer.from(change.content, "utf8").toString("base64"),
+            encoding: "base64",
+          }),
+        },
+      ),
+      60000,
+      `commitChanges blob creation timed out: ${change.path}`
+    );
+    treeEntries[i + batchIndex] = { path: change.path, mode: "100644", type: "blob", sha: blob.sha };
+  }))
+  }
+
+  const newTree = await withTimeout(
+    () => ghFetch<{ sha: string }>(
+      `/repos/${owner}/${name}/git/trees`,
       token,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: Buffer.from(change.content, "utf8").toString("base64"),
-          encoding: "base64",
-        }),
+        body: JSON.stringify({ base_tree: parentCommit.tree.sha, tree: treeEntries }),
       },
-    );
-    treeEntries[index] = { path: change.path, mode: "100644", type: "blob", sha: blob.sha };
-  }));
-
-  const newTree = await ghFetch<{ sha: string }>(
-    `/repos/${owner}/${name}/git/trees`,
-    token,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ base_tree: parentCommit.tree.sha, tree: treeEntries }),
-    },
+    ),
+    60000,
+    `commitChanges tree creation timed out`
   );
 
-  const newCommit = await ghFetch<{ sha: string }>(
-    `/repos/${owner}/${name}/git/commits`,
-    token,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        tree: newTree.sha,
-        parents: [parentSha],
-      }),
-    },
+  const newCommit = await withTimeout(
+    () =>
+      ghFetch<{ sha: string }>(
+        `/repos/${owner}/${name}/git/commits`,
+        token,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message,
+            tree: newTree.sha,
+            parents: [parentSha],
+          }),
+        },
+      ),
+    60000,
+    `commitChanges commit creation timed out`
   );
 
-  await ghFetch(
-    `/repos/${owner}/${name}/git/refs/heads/${encodeURIComponent(branch)}`,
-    token,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sha: newCommit.sha }),
-    },
+  await withTimeout(
+    () =>
+      ghFetch(
+        `/repos/${owner}/${name}/git/refs/heads/${encodeURIComponent(branch)}`,
+        token,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sha: newCommit.sha }),
+        },
+      ),
+    60000,
+    `commitChanges ref update timed out`
   );
 
+  timer.log();
   return { sha: newCommit.sha };
 }

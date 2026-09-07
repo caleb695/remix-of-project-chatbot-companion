@@ -4,6 +4,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { lArray, lBool, lNum, lStr } from "./zod-lenient";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fileContentCache, searchCodeCache, webSearchCache, fetchUrlCache, fileListCache, Timer, withTimeout, processInBatches, batchArray } from "@/lib/performance";
 
 type Sb = SupabaseClient<any, any, any>;
 
@@ -32,58 +33,12 @@ async function findReferenceRepo(sb: Sb, userId: string, repo: string) {
 }
 
 /* ---- Caching layer for file reads, searches, and web fetches ---- */
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
-class LRUCache<T> {
-  private cache = new Map<string, CacheEntry<T>>();
-  private maxSize: number;
-  private ttlMs: number;
-
-  constructor(maxSize: number = 1000, ttlMs: number = 5 * 60 * 1000) {
-    this.maxSize = maxSize;
-    this.ttlMs = ttlMs;
-  }
-
-  get(key: string): T | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    if (Date.now() - entry.timestamp > this.ttlMs) {
-      this.cache.delete(key);
-      return null;
-    }
-    // Move to end (most recently used)
-    this.cache.delete(key);
-    this.cache.set(key, entry);
-    return entry.data;
-  }
-
-  set(key: string, data: T): void {
-    if (this.cache.size >= this.maxSize) {
-      // Remove oldest (first entry)
-      const firstKey = this.cache.keys().next().value;
-      if (firstKey) this.cache.delete(firstKey);
-    }
-    this.cache.set(key, { data, timestamp: Date.now() });
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-
-  // Expose keys for invalidation
-  keys(): IterableIterator<string> {
-    return this.cache.keys();
-  }
-}
-
-// Cache instances with appropriate TTLs
-const fileContentCache = new LRUCache<{ content: string; status: string }>(500, 5 * 60 * 1000); // 5 min
-const searchCodeCache = new LRUCache<{ count: number; hits: Array<{ path: string; line: number; text: string }> }>(200, 2 * 60 * 1000); // 2 min
-const webSearchCache = new LRUCache<string>(100, 10 * 60 * 1000); // 10 min
-const fetchUrlCache = new LRUCache<string>(200, 10 * 60 * 1000); // 10 min
+// Using global caches from performance.ts
+// const fileContentCache = new LRUCache<{ content: string; status: string }>(500, 5 * 60 * 1000); // 5 min
+// const searchCodeCache = new LRUCache<{ count: number; hits: Array<{ path: string; line: number; text: string }> }>(200, 2 * 60 * 1000); // 2 min
+// const webSearchCache = new LRUCache<string>(100, 10 * 60 * 1000); // 10 min
+// const fetchUrlCache = new LRUCache<string>(200, 10 * 60 * 1000); // 10 min
+// const fileListCache = new Map<string, { data: any[]; timestamp: number }>();
 
 /* ---- Web search helpers (DuckDuckGo HTML with Bing fallback, no API key) ---- */
 function stripHtml(s: string): string {
@@ -212,8 +167,8 @@ function globToRegex(pattern: string): RegExp {
 }
 
 // Cache for frequently accessed file lists (per-repo, short-lived)
-const fileListCache = new Map<string, { data: any[]; timestamp: number }>();
-const CACHE_TTL_MS = 30_000; // 30 seconds
+// Using global fileListCache from performance.ts
+// const fileListCache = new Map<string, { data: any[]; timestamp: number }>();
 
 export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
   const { sb, userId, repoId } = ctx;
@@ -232,7 +187,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         const cached = fileListCache.get(cacheKey);
         
         // Use cache if valid and not forcing refresh
-        if (!force_refresh && cached && (now - cached.timestamp) < CACHE_TTL_MS) {
+        if (!force_refresh && cached && (now - cached.timestamp) < 30_000) {
           let rows = cached.data;
           if (prefix) rows = rows.filter((r) => r.path.includes(prefix));
           if (rows.length === 0) {
@@ -276,7 +231,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         const now = Date.now();
         let rows: Array<{ path: string; status: string }>;
         const cached = fileListCache.get(cacheKey);
-        if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+        if (cached && now - cached.timestamp < 30_000) {
           rows = cached.data as typeof rows;
         } else {
           const { data, error } = await sb
