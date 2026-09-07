@@ -48,16 +48,17 @@ export const listUserRepos = createServerFn({ method: "GET" })
     if (!conn) throw new Error("Connect GitHub first");
     const { listAllRepos } = await import("./github.server");
     const repos = await listAllRepos(conn.access_token);
-    return repos.map((r) => ({
+    return (repos ?? []).filter(Boolean).map((r) => ({
       id: r.id,
       name: r.name,
       full_name: r.full_name,
-      owner: r.owner.login,
+      owner: r.owner?.login ?? r.full_name?.split("/")[0] ?? "",
       private: r.private,
-      default_branch: r.default_branch,
+      default_branch: r.default_branch ?? "main",
       description: r.description,
       updated_at: r.updated_at,
     }));
+
   });
 
 export const addRepoSelection = createServerFn({ method: "POST" })
