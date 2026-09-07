@@ -28,7 +28,9 @@ export const Route = createFileRoute("/api/github/callback")({
               client_id: clientId,
               client_secret: clientSecret,
               code,
-              redirect_uri: `${url.protocol}//${url.host}/api/github/callback`,
+              redirect_uri:
+                process.env.GITHUB_REDIRECT_URI?.trim() ||
+                `${url.protocol}//${url.host}/api/github/callback`,
             }),
           });
           const tok = (await tokenRes.json()) as {

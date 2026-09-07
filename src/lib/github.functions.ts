@@ -11,7 +11,10 @@ export const startGithubOAuth = createServerFn({ method: "POST" })
     const { signState } = await import("./oauth-state.server");
     const state = signState({ uid: context.userId, n: crypto.randomUUID() });
     const requestUrl = new URL(getRequest().url);
-    const redirect = `${requestUrl.protocol}//${requestUrl.host}/api/github/callback`;
+    const override = process.env.GITHUB_REDIRECT_URI?.trim();
+    const redirect = override && override.length > 0
+      ? override
+      : `${requestUrl.protocol}//${requestUrl.host}/api/github/callback`;
     const url = new URL("https://github.com/login/oauth/authorize");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirect);
