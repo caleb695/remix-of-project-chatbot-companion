@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { unifiedDiff, diffStats } from "@/lib/diff";
 
 export const startGithubOAuth = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -157,12 +158,32 @@ export const syncRepoFromGithub = createServerFn({ method: "POST" })
       status: "unchanged" as const,
     }));
 
-    // Insert in chunks
-    for (let i = 0; i < rows.length; i += 100) {
-      const chunk = rows.slice(i, i + 100);
+    // Insert in chunks bounded by SIZE, not just row count: rows carry full
+    // file contents (up to 300KB each), so 100 rows could be a ~30MB request
+    // body that PostgREST rejects with 413 — which used to leave the working
+    // copy half-empty after the delete above.
+    const MAX_CHUNK_ROWS = 50;
+    const MAX_CHUNK_BYTES = 2 * 1024 * 1024;
+    let chunk: typeof rows = [];
+    let chunkBytes = 0;
+    const flush = async () => {
+      if (!chunk.length) return;
       const { error } = await context.supabase.from("working_files").insert(chunk);
-      if (error) throw error;
+      if (error) {
+        throw new Error(`Sync failed while writing ${chunk.length} file(s) (${error.message}). Press Sync again to retry — the working copy may be incomplete.`);
+      }
+      chunk = [];
+      chunkBytes = 0;
+    };
+    for (const row of rows) {
+      const rowBytes = (row.content?.length ?? 0) * 2 + 200; // rough UTF-8 estimate
+      if (chunk.length && (chunk.length >= MAX_CHUNK_ROWS || chunkBytes + rowBytes > MAX_CHUNK_BYTES)) {
+        await flush();
+      }
+      chunk.push(row);
+      chunkBytes += rowBytes;
     }
+    await flush();
 
     await context.supabase
       .from("repo_selections")
@@ -203,29 +224,104 @@ export const commitAndPush = createServerFn({ method: "POST" })
       sel.owner, sel.name, sel.working_branch, conn.access_token, changes, data.message,
     );
 
-    // Reset statuses locally
+    // Reset local state for EXACTLY the files that were committed.
+    // The old reset did two full-table passes (set original_content = null on
+    // every changed row, then rewrite it row-by-row for every row in the repo —
+    // hundreds of sequential queries, and a crash in between left nulls).
+    const committed = new Set(files.map((f) => f.path));
+    const changedRows = files.filter((f) => f.status !== "deleted");
+    // Delete rows the commit removed from the repo.
     await context.supabase
       .from("working_files")
       .delete()
       .eq("repo_selection_id", data.repoId)
       .eq("status", "deleted");
+    // Mark every remaining staged row unchanged.
     await context.supabase
       .from("working_files")
-      .update({ status: "unchanged", original_content: null })
+      .update({ status: "unchanged" })
       .eq("repo_selection_id", data.repoId)
       .neq("status", "unchanged");
-    // Then set original_content = content
-    const { data: touched } = await context.supabase
+    // Sync original_content to the committed content for the committed files,
+    // in small parallel batches (per-row values can't be expressed in one
+    // PostgREST update).
+    const byPath = new Map(changedRows.map((f) => [f.path, f.content ?? ""]));
+    const touched = (await context.supabase
       .from("working_files")
-      .select("id, content")
-      .eq("repo_selection_id", data.repoId);
-    if (touched) {
-      for (const t of touched) {
-        await context.supabase.from("working_files").update({ original_content: t.content }).eq("id", t.id);
-      }
+      .select("id, path")
+      .eq("repo_selection_id", data.repoId)
+      .in("path", [...committed])).data ?? [];
+    const CHUNK = 20;
+    for (let i = 0; i < touched.length; i += CHUNK) {
+      const batch = touched.slice(i, i + CHUNK);
+      await Promise.all(batch.map((t) =>
+        context.supabase
+          .from("working_files")
+          .update({ original_content: byPath.get(t.path) ?? "" })
+          .eq("id", t.id),
+      ));
     }
 
     return { sha: result.sha, count: files.length };
+  });
+
+/** Unified diff (original vs staged content) of one working file, for review. */
+export const getWorkingFileDiff = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .validator((i: unknown) => z.object({ repoId: z.string().uuid(), path: z.string().max(400) }).parse(i))
+  .handler(async ({ context, data }) => {
+    const { data: row, error } = await context.supabase
+      .from("working_files")
+      .select("path, status, content, original_content")
+      .eq("repo_selection_id", data.repoId)
+      .eq("path", data.path)
+      .maybeSingle();
+    if (error) throw error;
+    if (!row) return { path: data.path, status: "missing", patch: "", added: 0, removed: 0 };
+    const before = row.status === "added" ? "" : (row.original_content ?? "");
+    const after = row.status === "deleted" ? "" : (row.content ?? "");
+    const patch = unifiedDiff(before, after, { maxLines: 300 });
+    const stats = diffStats(before, after);
+    return { path: row.path, status: row.status, patch, added: stats.added, removed: stats.removed };
+  });
+
+/** Throw away staged changes (all of them, or one file) without committing. */
+export const discardStagedChanges = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((i: unknown) => z.object({ repoId: z.string().uuid(), path: z.string().max(400).optional() }).parse(i))
+  .handler(async ({ context, data }) => {
+    const staged = await context.supabase
+      .from("working_files")
+      .select("id, path, status, original_content")
+      .eq("repo_selection_id", data.repoId)
+      .neq("status", "unchanged");
+    if (staged.error) throw staged.error;
+    let rows = staged.data ?? [];
+    if (data.path) rows = rows.filter((r) => r.path === data.path);
+    if (rows.length === 0) return { ok: true, discarded: 0 };
+
+    // Added files: the row is the staging area itself — remove it entirely.
+    const addedIds = rows.filter((r) => r.status === "added").map((r) => r.id);
+    for (let i = 0; i < addedIds.length; i += 50) {
+      const { error } = await context.supabase
+        .from("working_files")
+        .delete()
+        .in("id", addedIds.slice(i, i + 50));
+      if (error) throw error;
+    }
+    // Modified files: restore the last-synced content.
+    const restored = rows.filter((r) => r.status === "modified" || r.status === "deleted");
+    const CHUNK = 20;
+    for (let i = 0; i < restored.length; i += CHUNK) {
+      const batch = restored.slice(i, i + CHUNK);
+      await Promise.all(batch.map((r) =>
+        context.supabase
+          .from("working_files")
+          .update({ content: r.original_content ?? "", status: "unchanged", updated_at: new Date().toISOString() })
+          .eq("id", r.id),
+      ));
+    }
+    return { ok: true, discarded: rows.length };
   });
 
 export const listWorkingFiles = createServerFn({ method: "GET" })

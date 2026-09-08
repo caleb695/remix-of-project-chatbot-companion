@@ -23,6 +23,23 @@ function escapeIlike(s: string): string {
   return s.replace(/[\\%_]/g, (ch) => "\\" + ch);
 }
 
+/** Reject AI-generated paths that would escape the working copy or break the
+ * tree/commit flow later: backslashes, leading slashes, `..` segments,
+ * control characters, empty segments. Returns a short error message or null. */
+function badRepoPath(p: string): string | null {
+  const path = String(p ?? "");
+  if (!path.trim()) return "path is empty";
+  if (path.length > 400) return "path is too long (max 400 chars)";
+  if (path.includes("\\")) return "path contains a backslash — use forward slashes";
+  if (path.startsWith("/")) return "path must be relative (no leading /)";
+  if (/[\u0000-\u001f]/.test(path)) return "path contains control characters";
+  const segments = path.split("/");
+  if (segments.some((s) => s === "" || s === "." || s === "..")) {
+    return `path has an empty, '.' or '..' segment: ${path}`;
+  }
+  return null;
+}
+
 async function findReferenceRepo(sb: Sb, userId: string, repo: string) {
   const [owner, name] = repo.split("/");
   if (!owner || !name) return { error: "Use repo as owner/name" } as const;
@@ -623,6 +640,8 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         "Create or overwrite a file in the working copy. Always pass the COMPLETE new file contents. Staged only — not pushed to GitHub until the user commits.",
       inputSchema: z.object({ path: lStr, content: lStr }),
       execute: async ({ path, content }) => {
+        const bad = badRepoPath(path);
+        if (bad) return { error: `Invalid path: ${bad}` };
         const { data: existing } = await sb
           .from("working_files")
           .select("id, original_content")
@@ -662,6 +681,8 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         replace_all: lBool.optional(),
       }),
       execute: async ({ path, find, replace, replace_all }) => {
+        const bad = badRepoPath(path);
+        if (bad) return { error: `Invalid path: ${bad}` };
         const { data: row } = await sb
           .from("working_files")
           .select("id, content")
@@ -697,14 +718,21 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         const results: Array<{ path: string; success: boolean; error?: string }> = [];
         // One round-trip for every file instead of one query per file.
         const uniquePaths = [...new Set(paths)];
+        for (const p of uniquePaths) {
+          const bad = badRepoPath(p);
+          if (bad) {
+            results.push({ path: p, success: false, error: `Invalid path: ${bad}` });
+          }
+        }
+        const editable = uniquePaths.filter((p) => !badRepoPath(p));
         const { data: rows, error: fetchError } = await sb
           .from("working_files")
           .select("id, path, content")
           .eq("repo_selection_id", repoId)
-          .in("path", uniquePaths);
+          .in("path", editable.length ? editable : ["__none__"]);
         if (fetchError) return { error: fetchError.message };
         const byPath = new Map((rows ?? []).map((r) => [r.path, r]));
-        for (const path of uniquePaths) {
+        for (const path of editable) {
           const row = byPath.get(path);
           if (!row) {
             results.push({ path, success: false, error: "Not found" });
@@ -736,6 +764,8 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       description: "Mark a file as deleted in the working copy.",
       inputSchema: z.object({ path: lStr }),
       execute: async ({ path }) => {
+        const bad = badRepoPath(path);
+        if (bad) return { error: `Invalid path: ${bad}` };
         const { data: row } = await sb
           .from("working_files")
           .select("id, status")

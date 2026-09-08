@@ -52,8 +52,18 @@ export async function ghFetch<T = unknown>(
       }
       const text = await res.text();
       // Retry transient responses; everything else is a real API error.
-      if (res.status === 408 || res.status === 429 || res.status >= 500) {
+      // GitHub also signals (secondary) rate limits with 403 + exhausted
+      // x-ratelimit-remaining — retry those like 429s instead of failing.
+      const rateLimited = res.status === 429 ||
+        (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0");
+      if (res.status === 408 || rateLimited || res.status >= 500) {
         lastError = new Error(`GitHub ${res.status}: ${text.slice(0, 300)}`);
+        // A rate-limited response tells us exactly how long to wait.
+        const retryAfter = Number(res.headers.get("retry-after"));
+        if (Number.isFinite(retryAfter) && retryAfter > 0) {
+          await sleep(Math.min(60_000, retryAfter * 1000));
+          continue;
+        }
       } else {
         throw new Error(`GitHub ${res.status}: ${text.slice(0, 300)}`);
       }
@@ -85,26 +95,31 @@ export interface GhRepo {
 export async function listAllRepos(token: string): Promise<GhRepo[]> {
   const timer = new Timer("listAllRepos");
   const all: GhRepo[] = [];
-  
-  // Parallel pagination for faster repo listing
-  const pages = Array.from({ length: 5 }, (_, i) => i + 1);
-  const results = await Promise.all(
-    pages.map(async (page) => {
-      return await ghFetch<GhRepo[] | null>(
-        `/user/repos?per_page=100&sort=updated&page=${page}&affiliation=owner,collaborator`,
-        token,
-      );
-    })
-  );
-  
-  for (const rows of results) {
-    // GitHub can answer with an empty body (204/no content) or an object
-    // envelope; either used to blow up with "rows is not iterable".
-    if (!Array.isArray(rows)) break;
-    all.push(...rows);
-    if (rows.length < 100) break;
+
+  // Fetch the first pages in parallel for speed, then keep paginating (a few
+  // pages at a time) while pages come back full — users with more than ~500
+  // repos used to silently miss the rest.
+  const PER_PAGE = 100;
+  const fetchPage = (page: number) =>
+    ghFetch<GhRepo[] | null>(
+      `/user/repos?per_page=${PER_PAGE}&sort=updated&page=${page}&affiliation=owner,collaborator`,
+      token,
+    );
+
+  outer:
+  for (let base = 1; base <= 20; base += 5) {
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, i) => fetchPage(base + i)),
+    );
+    for (const rows of results) {
+      // GitHub can answer with an empty body (204/no content) or an object
+      // envelope; either used to blow up with "rows is not iterable".
+      if (!Array.isArray(rows)) break outer;
+      all.push(...rows);
+      if (rows.length < PER_PAGE) break outer;
+    }
   }
-  
+
   timer.log();
   return all;
 }
@@ -201,6 +216,23 @@ export async function pullRepoFiles(
   return out;
 }
 
+/** Reject AI-generated paths that would be misinterpreted by the Git tree API
+ * or escape the repository root (backslashes, leading slashes, `..` segments,
+ * control characters, or empty segments). */
+export function validateRepoPath(p: string): string {
+  const path = String(p ?? "").trim();
+  if (!path) throw new Error("Empty file path");
+  if (path.length > 400) throw new Error(`Path too long: ${path.slice(0, 60)}…`);
+  if (path.includes("\\")) throw new Error(`Backslash not allowed in path (use /): ${path}`);
+  if (path.startsWith("/")) throw new Error(`Path must be relative: ${path}`);
+  if (/[\u0000-\u001f]/.test(path)) throw new Error(`Control characters in path: ${JSON.stringify(path.slice(0, 60))}`);
+  const segments = path.split("/");
+  if (segments.some((s) => s === "" || s === "." || s === "..")) {
+    throw new Error(`Invalid path segment in: ${path}`);
+  }
+  return path;
+}
+
 export async function commitChanges(
   owner: string,
   name: string,
@@ -234,6 +266,9 @@ export async function commitChanges(
   // them in parallel instead of one-by-one when there are several changes.
   // Batch processing for better performance
   const BATCH_SIZE = 20;
+  // Validate every path up front so one bad AI-generated path fails before any
+  // blob is created, not mid-commit.
+  for (const change of changes) validateRepoPath(change.path);
   const treeEntries: Array<{ path: string; mode: "100644"; type: "blob"; sha: string | null }> = [];
   
   // Process changes in batches

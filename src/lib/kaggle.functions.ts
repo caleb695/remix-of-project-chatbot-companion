@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { unifiedDiff } from "@/lib/diff";
 
 async function creds(sb: { from: (t: string) => any }) {
   const { data } = await sb.from("openrouter_settings")
@@ -72,6 +73,7 @@ export const addKaggleNotebook = createServerFn({ method: "POST" })
     const { pullKernel } = await import("./kaggle.server");
     const pulled = await pullKernel(username, key, owner, slug);
     const source = pulled.blob?.source ?? "";
+    if (!source.trim()) throw new Error("Kaggle returned no source for that notebook. Check the ref (it must be username/slug) and that the notebook exists.");
     const md = pulled.metadata ?? {};
     const { data: row, error } = await context.supabase.from("kaggle_notebooks").upsert({
       user_id: context.userId,
@@ -113,6 +115,7 @@ export const syncKaggleNotebook = createServerFn({ method: "POST" })
     const { pullKernel } = await import("./kaggle.server");
     const pulled = await pullKernel(username, key, nb.owner, nb.slug);
     const source = pulled.blob?.source ?? "";
+    if (!source) throw new Error("Kaggle returned an empty notebook — refusing to wipe the working copy. The notebook may have been deleted or made private.");
     const { error } = await context.supabase.from("kaggle_notebooks").update({
       original_source: source, working_source: source, status: "unchanged",
       last_synced_at: new Date().toISOString(),
@@ -130,11 +133,40 @@ export const getKaggleStaged = createServerFn({ method: "GET" })
       .select("id, owner, slug, title, status, working_source, original_source")
       .eq("id", data.id).maybeSingle();
     if (!nb) return null;
+    const sourceDirty = nb.status === "modified" && nb.working_source !== nb.original_source;
     return {
       id: nb.id, ref: `${nb.owner}/${nb.slug}`, title: nb.title,
-      dirty: nb.status === "modified" && nb.working_source !== nb.original_source,
+      // Settings-only changes (GPU/internet/datasets/title) also stage a push,
+      // so "dirty" must include them — source-only comparison hid the bar and
+      // the user had no way to push staged settings.
+      dirty: nb.status === "modified",
+      sourceDirty,
       bytes: (nb.working_source ?? "").length,
+      // Unified patch of the staged source, computed server-side so the client
+      // never downloads both full sources.
+      patch: sourceDirty ? unifiedDiff(nb.original_source ?? "", nb.working_source ?? "", { maxLines: 300 }) : "",
     };
+  });
+
+/** Throw away staged notebook edits: reset the working copy to the last synced source. */
+export const discardKaggleStaged = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ context, data }) => {
+    const { data: nb, error: e } = await context.supabase
+      .from("kaggle_notebooks")
+      .select("original_source, status")
+      .eq("id", data.id).maybeSingle();
+    if (e) throw e;
+    if (!nb) throw new Error("Notebook not found");
+    if (nb.status !== "modified") return { ok: true, discarded: false };
+    const { error } = await context.supabase.from("kaggle_notebooks").update({
+      working_source: nb.original_source ?? "",
+      status: "unchanged",
+      updated_at: new Date().toISOString(),
+    }).eq("id", data.id);
+    if (error) throw error;
+    return { ok: true, discarded: true };
   });
 
 /** Push the staged notebook source back to Kaggle (a new version). */
@@ -148,15 +180,27 @@ export const pushKaggleNotebook = createServerFn({ method: "POST" })
     if (!nb.working_source) throw new Error("Nothing to push — the notebook is not synced.");
     const { username, key } = await creds(context.supabase as never);
     const { pushKernel } = await import("./kaggle.server");
-    await pushKernel(username, key, {
+    const result = await pushKernel(username, key, {
       owner: nb.owner, slug: nb.slug, title: nb.title, source: nb.working_source,
       language: nb.language, kernelType: nb.kernel_type, isPrivate: nb.is_private,
       enableGpu: nb.enable_gpu, enableInternet: nb.enable_internet,
       datasetSources: (nb.dataset_sources as string[] | null) ?? [],
     });
+    // Kaggle's kernels/push answers HTTP 200 even when it REJECTS the version
+    // (validation errors ride in the body as `error` / isComplete=false).
+    // Marking the notebook "unchanged" before checking this used to make the
+    // app believe the push landed when it didn't.
+    const body = (result ?? {}) as { error?: unknown; isComplete?: boolean; version?: number; invalid?: boolean };
+    const errText = typeof body.error === "string" && body.error.trim()
+      ? body.error
+      : body.error ? JSON.stringify(body.error).slice(0, 300) : null;
+    if (errText) throw new Error(`Kaggle rejected the push: ${errText}`);
+    if (body.isComplete === false || body.invalid === true) {
+      throw new Error("Kaggle did not accept the new version (the run was not queued). Check the notebook settings and try again.");
+    }
     await context.supabase.from("kaggle_notebooks").update({
       original_source: nb.working_source, status: "unchanged",
       last_synced_at: new Date().toISOString(),
     }).eq("id", data.id);
-    return { ok: true, url: `https://www.kaggle.com/code/${nb.owner}/${nb.slug}` };
+    return { ok: true, version: typeof body.version === "number" ? body.version : null, url: `https://www.kaggle.com/code/${nb.owner}/${nb.slug}` };
   });

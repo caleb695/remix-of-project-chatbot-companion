@@ -11,8 +11,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getThreadMessages, listThreads, createThread, deleteThread, getThread, updateThread } from "@/lib/threads.functions";
-import { listRepoSelections, commitAndPush } from "@/lib/github.functions";
-import { getKaggleStaged, pushKaggleNotebook, listKaggleNotebooks } from "@/lib/kaggle.functions";
+import { listRepoSelections, commitAndPush, getWorkingFileDiff, discardStagedChanges } from "@/lib/github.functions";
+import { getKaggleStaged, pushKaggleNotebook, listKaggleNotebooks, discardKaggleStaged } from "@/lib/kaggle.functions";
 import { listOpenrouterModels, getOpenrouterSettings } from "@/lib/openrouter.functions";
 import { enqueueCodingJob, listJobsForThread, getJob, cancelJob, getJobDiff, approveJob, discardJob } from "@/lib/jobs.functions";
 import { listAgentEvents, getStagedChanges, setThreadMode, branchThread } from "@/lib/agent.functions";
@@ -870,12 +870,33 @@ function ActivitySheet({ open, onOpenChange, events, phase, busy }: {
 
 /* ------------------------------- commit bar ------------------------------- */
 
+/** Colored unified-diff body shared by both commit bars. */
+function PatchView({ patch }: { patch: string }) {
+  if (!patch) return null;
+  return (
+    <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono text-[10px] leading-snug">
+      {patch.split("\n").map((line, i) => (
+        <span key={i} className={
+          line.startsWith("+") && !line.startsWith("+++") ? "block text-emerald-600 dark:text-emerald-400"
+          : line.startsWith("-") && !line.startsWith("---") ? "block text-destructive"
+          : line.startsWith("@@") ? "block text-primary"
+          : "block"
+        }>{line}</span>
+      ))}
+    </pre>
+  );
+}
+
 function CommitBar({ repoId, busy, branch }: { repoId: string; busy: boolean; branch: string }) {
   const stagedFn = useServerFn(getStagedChanges);
   const commitFn = useServerFn(commitAndPush);
+  const diffFn = useServerFn(getWorkingFileDiff);
+  const discardFn = useServerFn(discardStagedChanges);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const staged = useQuery({
     queryKey: ["staged", repoId],
@@ -887,6 +908,20 @@ function CommitBar({ repoId, busy, branch }: { repoId: string; busy: boolean; br
     onSuccess: (r) => {
       toast.success(`Pushed ${r.count} file(s) to ${branch}`);
       setOpen(false); setMessage("");
+      qc.invalidateQueries({ queryKey: ["staged", repoId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const diffQuery = useQuery({
+    queryKey: ["staged-diff", repoId, expanded],
+    queryFn: () => diffFn({ data: { repoId, path: expanded! } }),
+    enabled: Boolean(open && expanded),
+  });
+  const discardMut = useMutation({
+    mutationFn: () => discardFn({ data: { repoId } }),
+    onSuccess: (r) => {
+      toast.success(`Discarded ${r.discarded} staged change(s)`);
+      setConfirmDiscard(false);
       qc.invalidateQueries({ queryKey: ["staged", repoId] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -921,23 +956,53 @@ function CommitBar({ repoId, busy, branch }: { repoId: string; busy: boolean; br
           </SheetHeader>
           <div className="flex-1 overflow-y-auto p-3">
             {rows.map((f) => (
-              <div key={f.path} className="flex items-center gap-2 border-b border-border/40 py-2 font-mono text-[11px]">
-                <span className={`w-14 shrink-0 uppercase ${
-                  f.status === "added" ? "text-emerald-500" : f.status === "deleted" ? "text-destructive" : "text-amber-500"
-                }`}>{f.status}</span>
-                <span className="truncate">{f.path}</span>
+              <div key={f.path} className="border-b border-border/40 py-1.5 font-mono text-[11px]">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 text-left"
+                  onClick={() => setExpanded(expanded === f.path ? null : f.path)}
+                >
+                  <span className={`w-14 shrink-0 uppercase ${
+                    f.status === "added" ? "text-emerald-500" : f.status === "deleted" ? "text-destructive" : "text-amber-500"
+                  }`}>{f.status}</span>
+                  <span className="truncate">{f.path}</span>
+                  <span className="ml-auto shrink-0 text-muted-foreground">{expanded === f.path ? "−" : "+"}</span>
+                </button>
+                {expanded === f.path && (
+                  diffQuery.isLoading
+                    ? <div className="grid place-items-center py-3"><Loader2 className="h-3.5 w-3.5 animate-spin" /></div>
+                    : diffQuery.data?.patch
+                      ? <PatchView patch={diffQuery.data.patch} />
+                      : <div className="py-2 text-muted-foreground">(no textual diff available)</div>
+                )}
               </div>
             ))}
           </div>
           <div className="space-y-2 border-t border-border/60 p-3">
             <Input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Commit message (optional)" />
-            <Button
-              className="w-full"
-              disabled={commitMut.isPending}
-              onClick={() => commitMut.mutate(message.trim() || `Coderbot: update ${rows.length} file(s)`)}
-            >
-              {commitMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : `Commit & push to ${branch}`}
-            </Button>
+            <div className="flex gap-2">
+              {confirmDiscard ? (
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  disabled={discardMut.isPending}
+                  onClick={() => discardMut.mutate()}
+                >
+                  {discardMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : `Really discard all ${rows.length}?`}
+                </Button>
+              ) : (
+                <Button variant="outline" className="flex-1" onClick={() => setConfirmDiscard(true)}>
+                  Discard
+                </Button>
+              )}
+              <Button
+                className="flex-[2]"
+                disabled={commitMut.isPending}
+                onClick={() => commitMut.mutate(message.trim() || `Coderbot: update ${rows.length} file(s)`)}
+              >
+                {commitMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : `Commit & push to ${branch}`}
+              </Button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
@@ -950,7 +1015,10 @@ function CommitBar({ repoId, busy, branch }: { repoId: string; busy: boolean; br
 function KaggleCommitBar({ notebookId, busy }: { notebookId: string; busy: boolean }) {
   const stagedFn = useServerFn(getKaggleStaged);
   const pushFn = useServerFn(pushKaggleNotebook);
+  const discardFn = useServerFn(discardKaggleStaged);
   const qc = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const staged = useQuery({
     queryKey: ["kaggle_staged", notebookId],
     queryFn: () => stagedFn({ data: { id: notebookId } }),
@@ -958,8 +1026,19 @@ function KaggleCommitBar({ notebookId, busy }: { notebookId: string; busy: boole
   });
   const pushMut = useMutation({
     mutationFn: () => pushFn({ data: { id: notebookId } }),
+    onSuccess: (r) => {
+      toast.success(r.version ? `Pushed version ${r.version} to Kaggle` : "Pushed a new notebook version to Kaggle");
+      setExpanded(false);
+      qc.invalidateQueries({ queryKey: ["kaggle_staged", notebookId] });
+      qc.invalidateQueries({ queryKey: ["kaggle_notebooks"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const discardMut = useMutation({
+    mutationFn: () => discardFn({ data: { id: notebookId } }),
     onSuccess: () => {
-      toast.success("Pushed a new notebook version to Kaggle");
+      toast.success("Discarded staged notebook edits");
+      setConfirmDiscard(false); setExpanded(false);
       qc.invalidateQueries({ queryKey: ["kaggle_staged", notebookId] });
       qc.invalidateQueries({ queryKey: ["kaggle_notebooks"] });
     },
@@ -967,17 +1046,45 @@ function KaggleCommitBar({ notebookId, busy }: { notebookId: string; busy: boole
   });
   if (!staged.data?.dirty) return null;
   return (
-    <div className="flex items-center gap-2 border-b border-border/60 bg-primary/5 px-3 py-1.5">
-      <FileDiff className="h-3.5 w-3.5 text-primary" />
-      <span className="truncate text-[11px]">
-        Staged notebook edits · <span className="font-mono">{staged.data.ref}</span>
-      </span>
-      <Button
-        size="sm" className="ml-auto h-7 px-2.5 text-[11px]"
-        disabled={pushMut.isPending} onClick={() => pushMut.mutate()}
-      >
-        {pushMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Commit to Kaggle"}
-      </Button>
+    <div className="border-b border-border/60 bg-primary/5 px-3 py-1.5">
+      <div className="flex items-center gap-2">
+        <FileDiff className="h-3.5 w-3.5 shrink-0 text-primary" />
+        <span className="truncate text-[11px]">
+          Staged notebook edits · <span className="font-mono">{staged.data.ref}</span>
+          {!staged.data.sourceDirty && " (settings only)"}
+        </span>
+        <Button
+          size="sm" variant="ghost" className="ml-auto h-7 px-2 text-[11px]"
+          disabled={!staged.data.sourceDirty}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "Hide diff" : "Review"}
+        </Button>
+        {confirmDiscard ? (
+          <Button
+            size="sm" variant="destructive" className="h-7 px-2.5 text-[11px]"
+            disabled={discardMut.isPending}
+            onClick={() => discardMut.mutate()}
+          >
+            {discardMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Really discard?"}
+          </Button>
+        ) : (
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => setConfirmDiscard(true)}>
+            Discard
+          </Button>
+        )}
+        <Button
+          size="sm" className="h-7 px-2.5 text-[11px]"
+          disabled={pushMut.isPending} onClick={() => pushMut.mutate()}
+        >
+          {pushMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Commit to Kaggle"}
+        </Button>
+      </div>
+      {expanded && (
+        staged.data.patch
+          ? <PatchView patch={staged.data.patch} />
+          : <div className="py-2 font-mono text-[10px] text-muted-foreground">The notebook source is unchanged — only settings (GPU / internet / datasets / title) are staged.</div>
+      )}
     </div>
   );
 }
