@@ -16,13 +16,15 @@ export const Route = createFileRoute("/api/public/jobs/new-messages")({
       return Response.json({ newMessages: [] });
     }
 
-    // Fetch all user messages from the thread
+    // Fetch all user messages from the thread (capped — the runner only needs
+    // the recent tail, and unbounded queries grow with long-running sessions)
     const { data: allMessages } = await sb
       .from("chat_messages")
       .select("role, parts, created_at")
       .eq("thread_id", job.thread_id)
       .eq("role", "user")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .limit(500);
 
     if (!allMessages || allMessages.length === 0) {
       return Response.json({ newMessages: [] });
@@ -34,7 +36,10 @@ export const Route = createFileRoute("/api/public/jobs/new-messages")({
       return parts.map((p: { type?: string; text?: string }) => p?.type === "text" ? (p.text ?? "") : "").join("");
     };
 
-    const allUserMessages = allMessages.map((m) => ({
+    // The query fetched newest-first for the cap; restore chronological order
+    // so `.slice(lastMessageCount)` keeps meaning "everything after the count
+    // of user messages the runner started with".
+    const allUserMessages = allMessages.slice().reverse().map((m) => ({
       content: parseContent(m.parts),
       created_at: m.created_at,
     }));

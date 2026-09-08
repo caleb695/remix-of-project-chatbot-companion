@@ -439,8 +439,11 @@ export const cancelJob = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ context, data }) => {
+    // Invalidating the runner secret matters: without it the dispatched GitHub
+    // Actions run kept going and its final `complete` call overwrote the
+    // cancellation, resurrecting the job the user just cancelled.
     await context.supabase.from("coding_jobs")
-      .update({ status: "failed", error: "cancelled by user", finished_at: new Date().toISOString() })
+      .update({ status: "failed", error: "cancelled by user", hmac_secret: null, finished_at: new Date().toISOString() })
       .eq("id", data.id).in("status", ["queued", "running"]);
     return { ok: true };
   });

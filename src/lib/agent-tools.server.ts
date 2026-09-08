@@ -4,7 +4,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { lArray, lBool, lNum, lStr } from "./zod-lenient";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fileContentCache, searchCodeCache, webSearchCache, fetchUrlCache, fileListCache, Timer, withTimeout, processInBatches, batchArray } from "@/lib/performance";
+import { fileContentCache, searchCodeCache, webSearchCache, fetchUrlCache, fileListCache } from "@/lib/performance";
 
 type Sb = SupabaseClient<any, any, any>;
 
@@ -16,6 +16,12 @@ export interface ToolCtx {
 
 const MAX_READ = 40_000;
 const MAX_BATCH_READ = 10; // Max files for batch operations
+
+/* Escape a literal string for use inside a PostgREST `ilike` pattern
+ * (% and _ are wildcards, backslash is the escape character). */
+function escapeIlike(s: string): string {
+  return s.replace(/[\\%_]/g, (ch) => "\\" + ch);
+}
 
 async function findReferenceRepo(sb: Sb, userId: string, repo: string) {
   const [owner, name] = repo.split("/");
@@ -182,12 +188,14 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         force_refresh: lBool.optional().describe("Skip cache and fetch fresh data"),
       }),
       execute: async ({ prefix, force_refresh }) => {
-        const cacheKey = `files:${repoId}:${prefix || ""}`;
+        // One shared, unfiltered cache entry per repo — caching per-prefix
+        // snapshots stored the same full row set once per distinct prefix.
+        const cacheKey = `files:${repoId}:`;
         const now = Date.now();
         const cached = fileListCache.get(cacheKey);
         
         // Use cache if valid and not forcing refresh
-        if (!force_refresh && cached && (now - cached.timestamp) < 30_000) {
+        if (!force_refresh && cached) {
           let rows = cached.data;
           if (prefix) rows = rows.filter((r) => r.path.includes(prefix));
           if (rows.length === 0) {
@@ -210,8 +218,9 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         let rows = data ?? [];
         
         // Update cache
-        fileListCache.set(cacheKey, { data: rows, timestamp: now });
+        fileListCache.set(cacheKey, rows); // store the raw rows — SimpleCache.set takes data, not an entry wrapper
         
+        if (prefix) rows = rows.filter((r) => r.path.includes(prefix));
         if (rows.length === 0) {
           return {
             files: [],
@@ -242,7 +251,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
             .order("path");
           if (error) return { error: error.message };
           rows = data ?? [];
-          fileListCache.set(cacheKey, { data: rows, timestamp: now });
+          fileListCache.set(cacheKey, rows); // store the raw rows — SimpleCache.set takes data, not an entry wrapper
         }
         const re = globToRegex(String(pattern || ""));
         const matched = rows.filter((r) => re.test(r.path));
@@ -261,6 +270,8 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         const cacheKey = `file:${repoId}:${path}`;
         const cached = fileContentCache.get(cacheKey);
         if (cached) {
+          // Honour deletions: a stale cache entry must not resurrect a deleted file.
+          if (cached.data.status === "deleted") return { error: `Not found: ${path}` };
           const content = cached.data.content ?? "";
           return { path, content: content.slice(0, MAX_READ), truncated: content.length > MAX_READ, cached: true };
         }
@@ -338,11 +349,17 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         const cached = searchCodeCache.get(cacheKey);
         if (cached) return { ...cached.data, cached: true };
         
-        const { data, error } = await sb
+        // For literal (non-regex) queries, prefilter rows server-side with
+        // `ilike` so only files containing the needle are transferred. Regex
+        // searches still scan the full working copy.
+        let q = sb
           .from("working_files")
           .select("path, content")
           .eq("repo_selection_id", repoId)
           .neq("status", "deleted");
+        const literal = !regex && query.length >= 3 && query.length <= 200;
+        if (literal) q = q.ilike("content", `%${escapeIlike(query)}%`);
+        const { data, error } = await q;
         if (error) return { error: error.message };
         let re: RegExp;
         try {
@@ -403,6 +420,12 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
             signal: AbortSignal.timeout(15000) 
           });
           if (!res.ok) return `HTTP ${res.status}`;
+          // Skip binary payloads — decoding them wastes bandwidth and returns
+          // garbage to the model.
+          const ct = res.headers.get("content-type") ?? "";
+          if (ct && !/^(text\/|application\/(json|xml|javascript|typescript|x-sh))/i.test(ct) && !/html|plain|markdown/i.test(ct)) {
+            return `Content-Type ${ct.split(";")[0]} — binary content, not readable as text`;
+          }
           const text = await res.text();
           const result = text.slice(0, 50_000) + (text.length > 50_000 ? "\n\n[...truncated]" : "");
           fetchUrlCache.set(cacheKey, result);
@@ -672,13 +695,17 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
       }),
       execute: async ({ paths, find, replace, replace_all }) => {
         const results: Array<{ path: string; success: boolean; error?: string }> = [];
-        for (const path of paths) {
-          const { data: row } = await sb
-            .from("working_files")
-            .select("id, content")
-            .eq("repo_selection_id", repoId)
-            .eq("path", path)
-            .maybeSingle();
+        // One round-trip for every file instead of one query per file.
+        const uniquePaths = [...new Set(paths)];
+        const { data: rows, error: fetchError } = await sb
+          .from("working_files")
+          .select("id, path, content")
+          .eq("repo_selection_id", repoId)
+          .in("path", uniquePaths);
+        if (fetchError) return { error: fetchError.message };
+        const byPath = new Map((rows ?? []).map((r) => [r.path, r]));
+        for (const path of uniquePaths) {
+          const row = byPath.get(path);
           if (!row) {
             results.push({ path, success: false, error: "Not found" });
             continue;

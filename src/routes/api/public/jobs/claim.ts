@@ -9,10 +9,14 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
 
     // Load thread messages, openrouter key, gh token
     const isIndex = job.job_type === "index";
-    const [{ data: msgs }, { data: or }, { data: gh }, { data: sel }, { data: thr }, { data: atts }] = await Promise.all([
+    const [{ data: msgs }, { data: or }, { data: gh }, { data: sel }, { data: thr }, { data: atts }, { count: userMessageCount }, { data: indexedRows }] = await Promise.all([
       isIndex
         ? Promise.resolve({ data: [] as { role: string; parts: unknown }[] })
-        : sb.from("chat_messages").select("role, parts").eq("thread_id", job.thread_id!).order("created_at"),
+        // Newest-first + cap: a long-running debug thread can hold thousands of
+        // messages and none of that history helps the model beyond its context
+        // window (the runner compacts anyway).
+        : sb.from("chat_messages").select("role, parts").eq("thread_id", job.thread_id!)
+            .order("created_at", { ascending: false }).limit(400),
       sb.from("openrouter_settings")
         .select("api_key, mistral_api_key, groq_api_key, nvidia_api_key, embedding_provider, embedding_model")
         .eq("user_id", job.user_id).maybeSingle(),
@@ -24,6 +28,17 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       isIndex || !job.thread_id
         ? Promise.resolve({ data: [] as Array<{ name: string; mime_type: string | null; storage_path: string; code_only: boolean }> })
         : sb.from("chat_attachments").select("name, mime_type, storage_path, code_only").eq("thread_id", job.thread_id),
+      // The runner polls /new-messages with this count to detect messages the
+      // user sends while the job runs. It must be the count of USER messages
+      // (the endpoint slices that same sequence) — messages.length was wrong.
+      isIndex || !job.thread_id
+        ? Promise.resolve({ count: 0 as number | null })
+        : sb.from("chat_messages").select("id", { count: "exact", head: true }).eq("thread_id", job.thread_id!).eq("role", "user"),
+      // For index jobs: what is already indexed (path -> content sha) so the
+      // runner can skip unchanged files and re-indexing is incremental.
+      isIndex
+        ? sb.from("repo_files").select("path, sha").eq("repo_selection_id", job.repo_selection_id).limit(20000)
+        : Promise.resolve({ data: [] as { path: string; sha: string }[] }),
     ]);
     if (!gh?.access_token) return new Response("no github token", { status: 400 });
 
@@ -77,14 +92,15 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       .neq("id", job.repo_selection_id)
       .order("owner");
 
-    // Signed URLs so the runner can pull uploaded files into the checkout.
+    // Signed URLs so the runner can pull uploaded files into the checkout —
+    // signed in parallel; a thread with many attachments used to serialize.
     const attachments: Array<{ name: string; mime_type: string | null; code_only: boolean; url: string }> = [];
-    for (const a of atts ?? []) {
+    (await Promise.all((atts ?? []).map(async (a) => {
       const { data: signed } = await sb.storage.from("attachments").createSignedUrl(a.storage_path, 60 * 60 * 6);
-      if (signed?.signedUrl) {
-        attachments.push({ name: a.name, mime_type: a.mime_type, code_only: a.code_only, url: signed.signedUrl });
-      }
-    }
+      return signed?.signedUrl
+        ? { name: a.name, mime_type: a.mime_type, code_only: a.code_only, url: signed.signedUrl }
+        : null;
+    }))).forEach((a) => { if (a) attachments.push(a); });
 
     const system = [
       "You are Coderbot, an autonomous coding agent running inside GitHub Actions in the repo " + sel!.owner + "/" + sel!.name + ".",
@@ -124,6 +140,11 @@ export const Route = createFileRoute("/api/public/jobs/claim")({
       checkpoint: job.checkpoint ?? null,
       prompt: job.prompt,
       model: job.model,
+      // Count of user messages in the thread at claim time — the baseline the
+      // runner uses with /new-messages to pick up mid-run user feedback.
+      user_message_count: userMessageCount ?? 0,
+      // path -> sha of the current index, for incremental index jobs.
+      indexed_shas: Object.fromEntries((indexedRows ?? []).map((r) => [r.path, r.sha])),
       openrouter_key: or?.api_key ?? null,
       mistral_key: or.mistral_api_key,
       groq_key: or.groq_api_key,

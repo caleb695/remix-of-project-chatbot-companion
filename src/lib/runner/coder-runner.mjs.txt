@@ -30,7 +30,10 @@ async function api(p, body) {
   let lastError;
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
-      const r = await fetch(APP_URL + p, { method: "POST", headers: HEAD, body: JSON.stringify(body ?? {}) });
+      /* A hard per-request timeout matters: without it a hung connection (the
+       * app restarting, a dropped socket) would stall the retry loop forever
+       * and silently kill the run at the 6h wall with nothing saved. */
+      const r = await fetch(APP_URL + p, { method: "POST", headers: HEAD, body: JSON.stringify(body ?? {}), signal: AbortSignal.timeout(60000) });
       if (r.ok) return r.json();
       const text = await r.text();
       const error = new Error(p + " " + r.status + " " + text);
@@ -74,7 +77,7 @@ const TIME_LIMIT_MS = 1000 * 60 * 60 * 5.2; // checkpoint well before the 6h wal
 
 // Mode-specific limits: build stops after task completion, debug/improve run long-term
 function getStepLimit(mode) {
-  if (mode === \"debug\" || mode === \"improve\") return Infinity; // long-running modes
+  if (mode === "debug" || mode === "improve") return Infinity; // long-running modes
   return 200; // build/plan modes have fixed limits
 }
 
@@ -134,8 +137,11 @@ function readFileSafe(p) {
 function writeFileSafe(p, content) {
   fs.mkdirSync(path.dirname(p) || ".", { recursive: true });
   fs.writeFileSync(p, content, "utf8");
-  // Invalidate cache for this file
+  // Invalidate caches for this file: the content cache would otherwise serve
+  // the pre-write contents (keyed by the old mtime), and a NEW file would be
+  // missing from the 30s walk cache used by list_files/glob.
   fileContentCache.delete(p);
+  invalidateWalkCache();
 }
 
 let TODOS = [];
@@ -508,7 +514,14 @@ async function execTool(name, args) {
       }).join("\n\n");
     }
     if (name === "search_code") {
-      let re; try { re = new RegExp(args.query, "i"); } catch (e) { return "ERR: bad pattern " + e.message; }
+      let re;
+      try { re = new RegExp(args.query, "i"); }
+      catch (e) {
+        // Models often send literal text with regex metacharacters. Escape and
+        // retry as a literal search instead of failing the call.
+        try { re = new RegExp(String(args.query).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"); }
+        catch { return "ERR: bad pattern " + e.message; }
+      }
       const limit = Math.min(args.max_results || 60, 200);
       const ctx = Math.min(Math.max(args.context || 0, 0), 4);
       const hits = [];
@@ -576,12 +589,14 @@ async function execTool(name, args) {
       if (successCount === 0) return "ERR: no edits succeeded. Failures: " + failedPaths.join("; ");
       return "OK edited " + successCount + "/" + paths.length + " files. Failures: " + (failedPaths.length ? failedPaths.join("; ") : "none");
     }
-    if (name === "delete_file") { fs.unlinkSync(args.path); return "OK deleted " + args.path; }
+    if (name === "delete_file") { fs.unlinkSync(args.path); fileContentCache.delete(args.path); invalidateWalkCache(); return "OK deleted " + args.path; }
     if (name === "move_file") {
       const c = readFileSafe(args.from);
       if (c == null) return "ERR: not found: " + args.from;
       writeFileSafe(args.to, c);
       fs.unlinkSync(args.from);
+      fileContentCache.delete(args.from);
+      invalidateWalkCache();
       return "OK moved " + args.from + " → " + args.to;
     }
     if (name === "run_shell") {
@@ -594,8 +609,17 @@ async function execTool(name, args) {
       return ((out || "(no tracked changes)") + (untracked ? "\n\nUntracked files:\n" + untracked : "")).slice(0, 30000);
     }
     if (name === "fetch_url") {
-      const res = await fetch(String(args.url), { headers: { "User-Agent": "coderbot-runner" } });
-      const text = await res.text();
+      // Bounded + status-checked: an unbounded fetch could hang a whole step,
+      // and error pages were previously returned as if they were content.
+      const res = await fetch(String(args.url), {
+        headers: { "User-Agent": "coderbot-runner" },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) return "HTTP " + res.status + " — the URL could not be fetched";
+      const ct = res.headers.get("content-type") || "";
+      const text = ct && !/^(text\/|application\/(json|xml|javascript|typescript|x-sh))/i.test(ct) && !/html|plain|markdown/i.test(ct)
+        ? "(binary content of type " + ct + " — not readable as text)"
+        : await res.text();
       const clean = text
         .replace(/<script[\s\S]*?<\/script>/gi, "")
         .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -624,6 +648,25 @@ function chatRoute(spec, model) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* Cumulative token/call usage for this run, reported in the activity log and
+ * with the final job completion so users can see what a run consumed. */
+const USAGE = { calls: 0, prompt_tokens: 0, completion_tokens: 0 };
+function trackUsage(body) {
+  try {
+    const u = body && body.usage;
+    USAGE.calls += 1;
+    if (u) {
+      USAGE.prompt_tokens += Number(u.prompt_tokens) || 0;
+      USAGE.completion_tokens += Number(u.completion_tokens) || 0;
+    }
+    if (USAGE.calls % 25 === 0) log(usageLine() + " so far");
+  } catch { /* usage tracking must never break a run */ }
+}
+function usageLine() {
+  return "[usage] " + USAGE.calls + " model call" + (USAGE.calls === 1 ? "" : "s") + " · " +
+    USAGE.prompt_tokens + " prompt / " + USAGE.completion_tokens + " completion tokens";
+}
 
 /* Upper bound for one (non-streamed) completion request. */
 const MODEL_TIMEOUT_MS = 1000 * 60 * 30;
@@ -681,7 +724,7 @@ async function callModel(spec, messages, opts = {}) {
     }
     if (res.ok) {
       const body = await res.json().catch(() => null);
-      if (body && body.choices && body.choices.length) return body;
+      if (body && body.choices && body.choices.length) { trackUsage(body); return body; }
       if (body && body.error) throw new Error("Provider error: " + JSON.stringify(body.error).slice(0, 600));
       if (++transient > 6) throw new Error("The model returned an empty response repeatedly.");
       await sleep(2000 * transient);
@@ -801,6 +844,7 @@ function trimForCheckpoint(messages) {
 function verb(name, args) {
   if (name === "read_file") return "Read " + args.path;
   if (name === "read_files") return "Read " + (args.paths || []).join(", ").slice(0, 120);
+  if (name === "batch_read_files") return "Read " + (args.paths || []).length + " files in one batch";
   if (name === "list_files") return "Listed the repository files";
   if (name === "glob") return "Looked for files matching " + args.pattern;
   if (name === "search_code") return 'Searched for "' + String(args.query || "").slice(0, 60) + '"';
@@ -869,7 +913,7 @@ async function fetchAttachments(spec) {
       const a = list[index];
       const safe = safeUploadPath(a.name);
       try {
-        const res = await fetch(a.url);
+        const res = await fetch(a.url, { signal: AbortSignal.timeout(120000) });
         if (!res.ok) throw new Error("download " + res.status);
         const buf = Buffer.from(await res.arrayBuffer());
         const target = path.join("uploads", safe);
@@ -926,9 +970,27 @@ async function runSubAgent(spec, agent, task, ownFiles) {
     { role: "user", content: task },
   ];
   await event("status", "Started on: " + String(task).slice(0, 160), "coding", agent);
+  let modelFailures = 0;
   for (let step = 0; step < 80; step++) {
     messages = await compactIfNeeded(spec, messages, agent);
-    const body = await callModel(spec, messages, { model: agent.model, tools: subTools, agent: scopedAgent });
+    let body;
+    try {
+      body = await callModel(spec, messages, { model: agent.model, tools: subTools, agent: scopedAgent });
+    } catch (e) {
+      // One provider hiccup must not kill the whole delegated workstream.
+      // Retry briefly; if the provider stays down, hand back a partial report
+      // so the main agent can re-delegate or absorb the remaining work.
+      modelFailures += 1;
+      const emsg = String((e && e.message) || e).slice(0, 300);
+      if (modelFailures >= 3) {
+        await event("error", "Kept failing to reach the model: " + emsg, undefined, agent);
+        return "Sub-agent " + agent.id + " stopped after repeated model errors: " + emsg + ". Its partial work is on disk; verify before relying on it.";
+      }
+      await event("status", "Model call failed (" + modelFailures + "/3) — retrying.", undefined, agent);
+      await sleep(5000 * modelFailures);
+      continue;
+    }
+    modelFailures = 0;
     const msg = body.choices && body.choices[0] && body.choices[0].message;
     if (!msg) return "Sub-agent " + agent.id + " returned no message.";
     messages.push(sanitizeAssistant(msg));
@@ -938,8 +1000,13 @@ async function runSubAgent(spec, agent, task, ownFiles) {
       await event("status", "Finished its part.", "done", agent);
       return String(msg.content || "Done.").slice(0, 6000);
     }
-    const results = await runToolCalls(calls, scopedAgent, () => {});
-    for (const c of calls) messages.push({ role: "tool", tool_call_id: c.id, content: results.get(c.id) });
+    let results;
+    try {
+      results = await runToolCalls(calls, scopedAgent, () => {});
+    } catch (e) {
+      results = new Map(calls.map((c) => [c.id, "ERR: " + String((e && e.message) || e).slice(0, 300)]));
+    }
+    for (const c of calls) messages.push({ role: "tool", tool_call_id: c.id, content: results.get(c.id) ?? "ERR: tool did not run" });
   }
   await event("status", "Hit its step limit.", "done", agent);
   return "Sub-agent " + agent.id + " hit its step limit; check its work.";
@@ -1046,6 +1113,13 @@ async function main() {
   let sawWrite = false;
   let noProgress = 0;
   let redelegateNote = null;
+  /* Tool calls from the current assistant message that have not been answered
+   * with a tool result yet. If the step throws mid-way these MUST be closed
+   * with synthetic results, otherwise the next provider request carries an
+   * assistant tool_calls message with no matching tool messages and is
+   * rejected with a 400 — which used to cascade into the "same error three
+   * times" shutdown of an otherwise healthy run. */
+  let pendingCallIds = new Set();
   // Guard against a degenerate loop where the model keeps invoking the exact
   // same tool call (e.g. re-reading one file or re-running one command) without
   // making progress. Interrupt with a nudge so the run doesn't burn steps.
@@ -1063,7 +1137,7 @@ async function main() {
   const stepLimit = getStepLimit(mode);
   let brainstormingPhase = false;
   let ideasExhausted = false;
-  let lastMessageCount = messages.length;
+  let lastMessageCount = Number(spec.user_message_count) || 0;
 
   // Poll for new user messages during long-running sessions (debug/improve modes)
   async function checkForNewMessages() {
@@ -1073,6 +1147,7 @@ async function main() {
         method: "POST",
         headers: HEAD,
         body: JSON.stringify({ lastMessageCount }),
+        signal: AbortSignal.timeout(30000),
       });
       if (r.ok) {
         const data = await r.json();
@@ -1105,6 +1180,7 @@ async function main() {
     const msg = body.choices && body.choices[0] && body.choices[0].message;
     if (!msg) throw new Error("The model returned no message");
     messages.push(sanitizeAssistant(msg));
+    pendingCallIds = new Set(((msg.tool_calls || []).map((c) => c && c.id)).filter(Boolean));
 
     if (msg.content && String(msg.content).trim()) {
       await event("thought", String(msg.content).trim().slice(0, 800));
@@ -1125,9 +1201,9 @@ async function main() {
         if (!brainstormingPhase && !ideasExhausted) {
           // Enter brainstorming phase to find more improvements/bugs
           brainstormingPhase = true;
-          const prompt = mode === \"debug\"
-            ? \"You have not identified any more bugs to fix. Take a systematic approach: review the codebase for potential issues like error handling gaps, edge cases, performance bottlenecks, security concerns, or logic errors. List specific files and line numbers where problems might exist, then investigate and fix them. Only call finish when you've thoroughly checked and found nothing else to debug.\"
-            : \"You have not identified any more improvements. Brainstorm systematically: review the codebase for optimization opportunities, code quality improvements, missing features that would add value, refactoring chances to reduce duplication, better patterns to adopt, or hardening of weak spots. List specific improvements with file locations, then implement them. Only call finish when you've exhausted meaningful improvements.\";
+          const prompt = mode === "debug"
+            ? "You have not identified any more bugs to fix. Take a systematic approach: review the codebase for potential issues like error handling gaps, edge cases, performance bottlenecks, security concerns, or logic errors. List specific files and line numbers where problems might exist, then investigate and fix them. Only call finish when you've thoroughly checked and found nothing else to debug."
+            : "You have not identified any more improvements. Brainstorm systematically: review the codebase for optimization opportunities, code quality improvements, missing features that would add value, refactoring chances to reduce duplication, better patterns to adopt, or hardening of weak spots. List specific improvements with file locations, then implement them. Only call finish when you've exhausted meaningful improvements.";
           messages.push({ role: "user", content: prompt });
           continue;
         }
@@ -1193,6 +1269,8 @@ async function main() {
         }
       }));
       sawWrite = true;
+      brainstormingPhase = false;
+      ideasExhausted = false;
       sawCheck = false; // sub-agent work must be verified by the main agent
       const idle = subAgents.map((a) => a.id + " (" + a.label + ")").join(", ");
       const pending = TODOS.filter((t) => t.status !== "done").map((t) => t.title).join("; ");
@@ -1208,7 +1286,13 @@ async function main() {
 
     const results = others.length
       ? await runToolCalls(others, undefined, (name, args) => {
-          if (WRITE_TOOLS.has(name)) sawWrite = true;
+          if (WRITE_TOOLS.has(name)) {
+            sawWrite = true;
+            // Real progress in a long-running mode ends any brainstorm/exhausted
+            // state, so the next natural stop gets its full round of nudges again.
+            brainstormingPhase = false;
+            ideasExhausted = false;
+          }
           if (name === "check_code") sawCheck = true;
           PHASE = phaseFor(name, sawCheck);
         })
@@ -1235,6 +1319,7 @@ async function main() {
 
     for (const c of calls) {
       const name = c.function.name;
+      pendingCallIds.delete(c.id);
       if (name === "finish") continue;
       if (name === "delegate") {
         messages.push({ role: "tool", tool_call_id: c.id, content: delegateResults.get(c.id) ?? "ERR: delegation did not run" });
@@ -1262,11 +1347,13 @@ async function main() {
         sawCheck = true;
         await event("action", "Checked the code I changed for problems", "checking");
         const result = runCheckCode();
+        pendingCallIds.delete(finishCall.id);
         messages.push({ role: "tool", tool_call_id: finishCall.id, content: "Before finishing, verification ran automatically: " + JSON.stringify(result).slice(0, 8000) + (result.clean ? "\nClean — you may call finish again." : "\nFix these problems, then call check_code again.") });
         if (!result.clean) await event("status", "Found problems — fixing them.", "debugging");
         continue;
       }
       done = { summary: args.summary, commit_message: args.commit_message };
+      pendingCallIds.delete(finishCall.id);
       messages.push({ role: "tool", tool_call_id: finishCall.id, content: "ok" });
       break;
     }
@@ -1286,6 +1373,17 @@ async function main() {
       // the retries were exhausted, so it is a real, persistent problem — treat
       // it as one.
       const exhaustedRateLimit = /rate.?limit|per.?minute|429|too many requests|quota|credit|billing/i.test(errText);
+
+      // Close any tool calls the interrupted step never answered. Without
+      // this, the next request violates the tool protocol (assistant
+      // tool_calls with no tool results) and fails with a 400 even though the
+      // original error was transient.
+      if (pendingCallIds.size) {
+        for (const id of pendingCallIds) {
+          messages.push({ role: "tool", tool_call_id: id, content: "ERR: this tool call never ran because the step was interrupted (" + errText.slice(0, 300) + "). Continue — retry the tool or take a different approach." });
+        }
+        pendingCallIds = new Set();
+      }
 
       if (errorStreak >= 3 || exhaustedRateLimit) {
         const why = exhaustedRateLimit
@@ -1378,14 +1476,15 @@ async function commitAndComplete(done) {
         base_branch: BASE_BRANCH,
         changed_files: files,
         diff: patch,
+        usage: usageLine(),
       });
     } else {
       await event("status", "Finished — no file changes were needed.", "done");
-      await api("/api/public/jobs/complete", { status: "completed", summary: done.summary || "No changes." });
+      await api("/api/public/jobs/complete", { status: "completed", summary: done.summary || "No changes.", usage: usageLine() });
     }
   } catch (e) {
     await event("error", "Push failed: " + ((e && e.message) || e), "done");
-    await api("/api/public/jobs/complete", { status: "failed", error: String((e && e.message) || e) });
+    await api("/api/public/jobs/complete", { status: "failed", error: String((e && e.message) || e), usage: usageLine() });
     process.exit(1);
   }
 }
@@ -1446,7 +1545,7 @@ async function saveProgressAndNotify(messages, reason) {
   const checkpoint = { messages: trimForCheckpoint(messages), todos: TODOS };
   try { await api("/api/public/jobs/checkpoint", { checkpoint }); } catch {}
   const userMsg = ("❌ The GitHub Actions run stopped due to an error that kept recurring:\n\n" + text).slice(0, 3000);
-  try { await api("/api/public/jobs/complete", { status: "failed", summary: userMsg, error: text }); } catch {}
+  try { await api("/api/public/jobs/complete", { status: "failed", summary: userMsg, error: text, usage: usageLine() }); } catch {}
   await log("ABORT " + text);
   process.exit(1);
 }
@@ -1481,76 +1580,201 @@ async function embedBatch(spec, inputs) {
     : spec.embedding_provider === "nvidia" ? "https://integrate.api.nvidia.com/v1"
     : "https://openrouter.ai/api/v1";
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(base + "/embeddings", {
+    try {
+      const res = await fetch(base + "/embeddings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + spec.embedding_key },
+        // Bounded: a hung embedding socket used to stall the whole index run.
+        signal: AbortSignal.timeout(120000),
+        body: JSON.stringify({ model: spec.embedding_model, input: inputs }),
+      });
+      if (res.ok) { const body = await res.json(); return body.data.map((d) => d.embedding); }
+      const text = (await res.text()).slice(0, 300);
+      const retryAfter = Number(res.headers.get("retry-after"));
+      if (res.status === 429 && attempt < 120) {
+        // Keep the app-side job from looking dead while we wait out a rate limit.
+        if (attempt % 20 === 0) await log("embedding rate limited — waiting (attempt " + (attempt + 1) + "/120)");
+        await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(60000, retryAfter * 1000) : 10000);
+        continue;
+      }
+      throw new Error(spec.embedding_provider + " embed " + res.status + " " + text);
+    } catch (e) {
+      // Timeouts/aborts are transient: retry a couple of times before giving up.
+      const transient = e && (e.name === "AbortError" || e.name === "TimeoutError");
+      if (transient && attempt < 3) { await sleep(3000 * (attempt + 1)); continue; }
+      throw e;
+    }
+  }
+}
+
+/* Embed every chunk of a file, running up to 3 batch requests concurrently
+ * instead of strictly one after the other. Order is preserved. */
+async function embedAll(spec, chunks) {
+  const groups = [];
+  for (let i = 0; i < chunks.length; i += 32) groups.push(chunks.slice(i, i + 32));
+  if (groups.length <= 1) return groups.length ? await embedBatch(spec, groups[0]) : [];
+  const out = new Array(groups.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(3, groups.length) }, async () => {
+    for (;;) {
+      const gi = cursor++;
+      if (gi >= groups.length) return;
+      out[gi] = await embedBatch(spec, groups[gi]);
+    }
+  }));
+  return out.flat();
+}
+
+/* Summarise several files in ONE completion (≈4x fewer summary calls than
+ * one-per-file). Returns an array aligned with `files`; null means "no usable
+ * summary for this entry" and the caller falls back to the single-file path. */
+async function summarizeBatch(spec, files) {
+  if (!files.length) return [];
+  const route = chatRoute(spec, spec.model);
+  const listing = files.map((f, i) => "### FILE " + (i + 1) + " PATH: " + f.path + "\n" + String(f.content).slice(0, 5000)).join("\n\n");
+  try {
+    const res = await fetch(route.base + "/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + spec.embedding_key },
-      body: JSON.stringify({ model: spec.embedding_model, input: inputs }),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + route.key, "User-Agent": "coderbot-agent/2 (GitHub Actions)" },
+      signal: AbortSignal.timeout(90000),
+      body: JSON.stringify({
+        model: route.model,
+        messages: [
+          { role: "system", content: "You summarize source files for a code-search index. Reply with EXACTLY one line per file, in the same order as given, formatted: <path> :: <one sentence, max 30 words: purpose + key exports>. No numbering, no markdown, no extra lines." },
+          { role: "user", content: listing },
+        ],
+        max_tokens: 80 * files.length,
+        temperature: 0.2,
+      }),
     });
-    if (res.ok) { const body = await res.json(); return body.data.map((d) => d.embedding); }
-    const text = (await res.text()).slice(0, 300);
-    if (res.status === 429 && attempt < 300) { await sleep(10000); continue; }
-    throw new Error(spec.embedding_provider + " embed " + res.status + " " + text);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    trackUsage(data);
+    const text = ((data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "");
+    const map = new Map();
+    for (const line of text.split("\n")) {
+      const idx = line.indexOf("::");
+      if (idx <= 0) continue;
+      const left = line.slice(0, idx).trim().replace(/^#+\s*/, "").replace(/^\d+[.)]\s*/, "").trim();
+      const right = line.slice(idx + 2).trim().slice(0, 300);
+      if (left && right) map.set(left, right);
+    }
+    return files.map((f) => {
+      if (map.has(f.path)) return map.get(f.path);
+      const base = f.path.split("/").pop();
+      for (const [k, v] of map) if (k === base || k.endsWith("/" + base)) return v;
+      return null;
+    });
+  } catch {
+    return files.map(() => null);
   }
 }
 
 async function summarize(spec, filePath, snippet) {
   const route = chatRoute(spec, spec.model);
-  const res = await fetch(route.base + "/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + route.key },
-    body: JSON.stringify({
-      model: route.model,
-      messages: [
-        { role: "system", content: "You summarize source files in ONE sentence (max 40 words): purpose + key exports. No preamble." },
-        { role: "user", content: "Path: " + filePath + "\n\n" + snippet.slice(0, 6000) },
-      ],
-      max_tokens: 100,
-      temperature: 0.2,
-    }),
-  });
-  if (!res.ok) return "";
-  const body = await res.json();
-  return ((body.choices && body.choices[0] && body.choices[0].message.content) || "").trim().slice(0, 300);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(route.base + "/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + route.key, "User-Agent": "coderbot-agent/2 (GitHub Actions)" },
+        signal: AbortSignal.timeout(60000),
+        body: JSON.stringify({
+          model: route.model,
+          messages: [
+            { role: "system", content: "You summarize source files in ONE sentence (max 40 words): purpose + key exports. No preamble." },
+            { role: "user", content: "Path: " + filePath + "\n\n" + snippet.slice(0, 6000) },
+          ],
+          max_tokens: 100,
+          temperature: 0.2,
+        }),
+      });
+      if (!res.ok) return "";
+      const body = await res.json();
+      trackUsage(body);
+      return ((body.choices && body.choices[0] && body.choices[0].message.content) || "").trim().slice(0, 300);
+    } catch (e) {
+      if (attempt === 1) return "";
+      await sleep(3000);
+    }
+  }
+  return "";
 }
 
 async function runIndex(spec) {
-  const files = walk(process.cwd());
-  await log("Indexing " + files.length + " files with " + spec.embedding_model + "…");
+  /* Incremental indexing: the app sends the path→sha map of what is already
+   * indexed, so an unchanged repo costs one hash pass instead of re-embedding
+   * every file again. */
+  const known = (spec.indexed_shas && typeof spec.indexed_shas === "object") ? spec.indexed_shas : {};
+  const walked = walk(process.cwd());
+  await api("/api/public/jobs/index-progress", { current: 0, total: walked.length });
+  const files = [];
+  let skipped = 0;
+  for (const f of walked) {
+    try {
+      const sha = sha1(fs.readFileSync(f.path, "utf8"));
+      if (known[f.path] && known[f.path] === sha) { skipped += 1; continue; }
+      files.push({ path: f.path, size: f.size, sha });
+    } catch { /* unreadable — skip */ }
+  }
+  await log("Indexing " + files.length + " new/changed file(s) with " + spec.embedding_model + "…" + (skipped ? " (" + skipped + " unchanged file(s) already indexed)" : ""));
+  if (!files.length) {
+    await api("/api/public/jobs/complete", { status: "completed", summary: "Index up to date — all " + skipped + " file(s) were already indexed." });
+    return;
+  }
   await api("/api/public/jobs/index-progress", { current: 0, total: files.length });
   let done = 0;
   // Files are independent, so process them with a small worker pool instead of
   // one-at-a-time. The embeddings API is the bottleneck; a pool of 3 keeps it
   // saturated without hammering the provider's rate limit into a retry spiral.
+  // Each worker takes a BATCH-file slice: embeddings for the batch run
+  // concurrently and the file summaries share one completion.
   const CONCURRENCY = 3;
+  const BATCH = 4;
   let cursor = 0;
   async function worker() {
     for (;;) {
-      const idx = cursor++;
-      if (idx >= files.length) return;
-      const f = files[idx];
-      try {
-        const content = fs.readFileSync(f.path, "utf8");
-        const sha = sha1(content);
-        const chunks = chunkText(content);
-        const embeddings = [];
-        for (let i = 0; i < chunks.length; i += 32) embeddings.push(...(await embedBatch(spec, chunks.slice(i, i + 32))));
-        const summary = await summarize(spec, f.path, content);
-        await api("/api/public/jobs/index-batch", {
-          file: { path: f.path, sha, size: f.size, language: (f.path.split(".").pop() || "").toLowerCase() || null, summary, symbols: extractSymbols(content) },
-          chunks: chunks.map((c, i) => ({ chunk_index: i, content: c, embedding: embeddings[i], token_count: Math.round(c.length / 4) })),
-        });
-      } catch (e) {
-        await log("skip " + f.path + ": " + String((e && e.message) || e).slice(0, 200));
-      }
-      done++;
-      if (done % 5 === 0 || done === files.length) {
-        await api("/api/public/jobs/index-progress", { current: done, total: files.length });
-        await log("indexed " + done + "/" + files.length);
-      }
+      const batch = files.slice(cursor, cursor + BATCH);
+      cursor += BATCH;
+      if (!batch.length) return;
+      // Read + chunk each file (parallel, independent).
+      const prepared = [];
+      await Promise.all(batch.map(async (f) => {
+        try {
+          const content = fs.readFileSync(f.path, "utf8");
+          prepared.push({ f, content, chunks: chunkText(content) });
+        } catch (e) {
+          await log("skip " + f.path + ": " + String((e && e.message) || e).slice(0, 200));
+        }
+      }));
+      if (!prepared.length) { done += batch.length; continue; }
+      // One summary completion for the whole batch; nulls fall back per file.
+      const summaries = await summarizeBatch(spec, prepared);
+      // Embeddings + persistence per file, in parallel across the batch.
+      await Promise.all(prepared.map(async (p, i) => {
+        try {
+          const [embeddings, singleSummary] = await Promise.all([
+            embedAll(spec, p.chunks),
+            summaries[i] == null ? summarize(spec, p.f.path, p.content) : Promise.resolve(null),
+          ]);
+          const summary = summaries[i] != null ? summaries[i] : singleSummary;
+          await api("/api/public/jobs/index-batch", {
+            file: { path: p.f.path, sha: p.f.sha, size: p.f.size, language: (p.f.path.split(".").pop() || "").toLowerCase() || null, summary: summary || "", symbols: extractSymbols(p.content) },
+            chunks: p.chunks.map((c, i2) => ({ chunk_index: i2, content: c, embedding: embeddings[i2], token_count: Math.round(c.length / 4) })),
+          });
+        } catch (e) {
+          await log("skip " + p.f.path + ": " + String((e && e.message) || e).slice(0, 200));
+        }
+      }));
+      done += batch.length;
+      await api("/api/public/jobs/index-progress", { current: Math.min(done, files.length), total: files.length });
+      await log("indexed " + Math.min(done, files.length) + "/" + files.length);
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  await api("/api/public/jobs/complete", { status: "completed", summary: "Indexed " + done + " files." });
+  await api("/api/public/jobs/complete", {
+    status: "completed",
+    summary: "Indexed " + files.length + " file(s)" + (skipped ? "; " + skipped + " unchanged file(s) reused from the previous index" : "") + ". " + usageLine(),
+  });
 }
 
 main().catch(async (e) => {

@@ -11,12 +11,17 @@ export const Route = createFileRoute("/api/public/jobs/complete")({
       status?: "completed" | "failed" | "awaiting_review";
       summary?: string; commit_sha?: string; error?: string;
       review_branch?: string; base_branch?: string;
-      changed_files?: ChangedFile[]; diff?: string;
+      changed_files?: ChangedFile[]; diff?: string; usage?: string;
     };
     const status = body.status === "failed" ? "failed"
       : body.status === "awaiting_review" ? "awaiting_review"
       : "completed";
     const changed = Array.isArray(body.changed_files) ? body.changed_files.slice(0, 500) : [];
+    // Token/call usage reported by the runner is appended to the job log so
+    // users can see what a run consumed (no schema change needed).
+    const usageSuffix = typeof body.usage === "string" && body.usage.trim()
+      ? `\n[${new Date().toISOString().slice(11, 19)}] ${body.usage.trim().slice(0, 300)}`
+      : "";
 
     // Persist the transcript before invalidating the runner secret. Using the
     // job id makes completion idempotent when GitHub retries this request.
@@ -63,6 +68,7 @@ export const Route = createFileRoute("/api/public/jobs/complete")({
       // Approval still needs a live runner secret? No — the app merges through
       // the user's GitHub token, so the runner secret is always invalidated.
       hmac_secret: null,
+      ...(usageSuffix ? { logs: ((job.logs ?? "") + usageSuffix).slice(-200_000) } : {}),
       finished_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq("id", job.id);

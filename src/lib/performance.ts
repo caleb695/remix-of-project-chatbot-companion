@@ -47,15 +47,27 @@ export class Timer {
  * Execute a function with a timeout
  */
 export async function withTimeout<T>(
-  fn: () => Promise<T>,
+  // PromiseLike (e.g. a PostgrestBuilder query) is accepted so call sites can
+  // pass supabase query builders directly.
+  fn: () => T | PromiseLike<T>,
   timeoutMs: number = 30000,
   timeoutMessage: string = `Operation timed out after ${timeoutMs}ms`
 ): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
   });
-
-  return Promise.race([fn(), timeoutPromise]);
+  // If the timeout wins the race, the work promise is still pending; when it
+  // later rejects nobody is listening and Node turns that into a fatal
+  // unhandled rejection. Attach a no-op handler so that can't happen.
+  timeoutPromise.catch(() => {});
+  const work = Promise.resolve().then(fn);
+  work.catch(() => {});
+  try {
+    return await Promise.race([work, timeoutPromise]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 /**

@@ -240,9 +240,9 @@ export async function commitChanges(
   for (let i = 0; i < changes.length; i += BATCH_SIZE) {
     const batch = changes.slice(i, i + BATCH_SIZE);
     await Promise.all(batch.map(async (change, batchIndex) => {
-    if (change.content === null) {
+    if (change.content == null) {
       // deletion: sha=null
-      treeEntries[index] = { path: change.path, mode: "100644", type: "blob", sha: null };
+      treeEntries[i + batchIndex] = { path: change.path, mode: "100644", type: "blob", sha: null };
       return;
     }
     const blob = await withTimeout(
@@ -253,7 +253,7 @@ export async function commitChanges(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            content: Buffer.from(change.content, "utf8").toString("base64"),
+            content: Buffer.from(change.content as string, "utf8").toString("base64"),
             encoding: "base64",
           }),
         },
