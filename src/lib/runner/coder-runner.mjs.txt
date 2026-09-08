@@ -1145,7 +1145,15 @@ async function main() {
         }
       }
       
-      // Build/plan mode or fallback: normal finish behavior
+      // Plan mode: model outputs the plan as text, then should call finish.
+      // Don't auto-finish on text content - nudge to call finish instead.
+      if (mode === "plan") {
+        // If we got text content but no finish call, nudge the model
+        messages.push({ role: "user", content: "You've provided the plan. Now call the finish tool with your summary and commit message to complete the planning phase." });
+        continue;
+      }
+      
+      // Build/improve/debug mode or fallback: normal finish behavior
       if (sawWrite && !sawCheck && noProgress === 0) {
         noProgress++;
         messages.push({ role: "user", content: "You changed files but never ran check_code. Run it now, fix anything it reports, then call finish." });
