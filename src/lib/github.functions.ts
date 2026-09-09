@@ -169,6 +169,11 @@ export const syncRepoFromGithub = createServerFn({ method: "POST" })
       .update({ last_synced_at: new Date().toISOString() })
       .eq("id", data.repoId);
 
+    // Rows were replaced wholesale — drop in-memory caches so the agent's next
+    // read/list/search reflects the freshly synced tree, not the old one.
+    const { invalidateRepoCaches } = await import("./performance");
+    invalidateRepoCaches(data.repoId);
+
     return { count: rows.length };
   });
 
@@ -224,6 +229,11 @@ export const commitAndPush = createServerFn({ method: "POST" })
         await context.supabase.from("working_files").update({ original_content: t.content }).eq("id", t.id);
       }
     }
+
+    // Statuses were reset to "unchanged" — expire cached listings/statuses so
+    // the next run does not report phantom modified/deleted markers.
+    const { invalidateRepoCaches } = await import("./performance");
+    invalidateRepoCaches(data.repoId);
 
     return { sha: result.sha, count: files.length };
   });

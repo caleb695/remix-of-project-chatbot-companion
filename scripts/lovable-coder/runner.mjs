@@ -74,7 +74,7 @@ const TIME_LIMIT_MS = 1000 * 60 * 60 * 5.2; // checkpoint well before the 6h wal
 
 // Mode-specific limits: build stops after task completion, debug/improve run long-term
 function getStepLimit(mode) {
-  if (mode === \"debug\" || mode === \"improve\") return Infinity; // long-running modes
+  if (mode === "debug" || mode === "improve") return Infinity; // long-running modes
   return 200; // build/plan modes have fixed limits
 }
 
@@ -703,11 +703,24 @@ async function callModel(spec, messages, opts = {}) {
       throw new Error("Still rate limited after 50 minutes of retrying. Stopping — try again later or use a model with a higher rate limit.");
     }
     if (res.status >= 500 || res.status === 408) {
-      if (++transient > 6) throw new Error("Provider error " + res.status + ": " + text);
-      await event("status", "Provider error " + res.status + " — retrying.", undefined, opts.agent);
-      await sleep(Math.min(30000, 2000 * transient));
+      // 503 / "overloaded" means the provider is busy, not broken: retry longer.
+      const overloaded = res.status === 503 || /overload|capacity|busy|temporarily unavailable|no healthy|try again/i.test(text);
+      const cap = overloaded ? 15 : 6;
+      if (++transient > cap) {
+        throw new Error(overloaded
+          ? "The model provider stayed overloaded (" + res.status + ") through " + cap + " retries. Try again shortly or switch models. Provider said: " + text
+          : "Provider error " + res.status + ": " + text);
+      }
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const wait = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(60000, retryAfter * 1000)
+        : Math.min(45000, 2000 * Math.pow(2, transient - 1)) + Math.floor(Math.random() * 1000);
+      await event("status", (overloaded ? "Provider overloaded (" + res.status + ")" : "Provider error " + res.status)
+        + " — waiting " + Math.round(wait / 1000) + "s and retrying (" + transient + "/" + cap + ").", undefined, opts.agent);
+      await sleep(wait);
       continue;
     }
+
     throw new Error("Provider error " + res.status + ": " + text);
   }
 }
@@ -1112,9 +1125,9 @@ async function main() {
         if (!brainstormingPhase && !ideasExhausted) {
           // Enter brainstorming phase to find more improvements/bugs
           brainstormingPhase = true;
-          const prompt = mode === \"debug\"
-            ? \"You have not identified any more bugs to fix. Take a systematic approach: review the codebase for potential issues like error handling gaps, edge cases, performance bottlenecks, security concerns, or logic errors. List specific files and line numbers where problems might exist, then investigate and fix them. Only call finish when you've thoroughly checked and found nothing else to debug.\"
-            : \"You have not identified any more improvements. Brainstorm systematically: review the codebase for optimization opportunities, code quality improvements, missing features that would add value, refactoring chances to reduce duplication, better patterns to adopt, or hardening of weak spots. List specific improvements with file locations, then implement them. Only call finish when you've exhausted meaningful improvements.\";
+          const prompt = mode === "debug"
+            ? "You have not identified any more bugs to fix. Take a systematic approach: review the codebase for potential issues like error handling gaps, edge cases, performance bottlenecks, security concerns, or logic errors. List specific files and line numbers where problems might exist, then investigate and fix them. Only call finish when you've thoroughly checked and found nothing else to debug."
+            : "You have not identified any more improvements. Brainstorm systematically: review the codebase for optimization opportunities, code quality improvements, missing features that would add value, refactoring chances to reduce duplication, better patterns to adopt, or hardening of weak spots. List specific improvements with file locations, then implement them. Only call finish when you've exhausted meaningful improvements.";
           messages.push({ role: "user", content: prompt });
           continue;
         }

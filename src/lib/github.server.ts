@@ -240,11 +240,15 @@ export async function commitChanges(
   for (let i = 0; i < changes.length; i += BATCH_SIZE) {
     const batch = changes.slice(i, i + BATCH_SIZE);
     await Promise.all(batch.map(async (change, batchIndex) => {
+    const entryIndex = i + batchIndex;
     if (change.content === null) {
       // deletion: sha=null
-      treeEntries[index] = { path: change.path, mode: "100644", type: "blob", sha: null };
+      treeEntries[entryIndex] = { path: change.path, mode: "100644", type: "blob", sha: null };
       return;
     }
+    // Narrow before entering the fetch closure (TS loses property narrowing
+    // inside callbacks, and Buffer.from() must not receive null).
+    const content: string = change.content;
     const blob = await withTimeout(
       () => ghFetch<{ sha: string }>(
         `/repos/${owner}/${name}/git/blobs`,
@@ -253,7 +257,7 @@ export async function commitChanges(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            content: Buffer.from(change.content, "utf8").toString("base64"),
+            content: Buffer.from(content, "utf8").toString("base64"),
             encoding: "base64",
           }),
         },
@@ -261,7 +265,7 @@ export async function commitChanges(
       60000,
       `commitChanges blob creation timed out: ${change.path}`
     );
-    treeEntries[i + batchIndex] = { path: change.path, mode: "100644", type: "blob", sha: blob.sha };
+    treeEntries[entryIndex] = { path: change.path, mode: "100644", type: "blob", sha: blob.sha };
   }))
   }
 

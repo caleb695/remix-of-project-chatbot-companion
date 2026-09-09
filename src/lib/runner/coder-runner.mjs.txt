@@ -74,7 +74,7 @@ const TIME_LIMIT_MS = 1000 * 60 * 60 * 5.2; // checkpoint well before the 6h wal
 
 // Mode-specific limits: build stops after task completion, debug/improve run long-term
 function getStepLimit(mode) {
-  if (mode === \"debug\" || mode === \"improve\") return Infinity; // long-running modes
+  if (mode === "debug" || mode === "improve") return Infinity; // long-running modes
   return 200; // build/plan modes have fixed limits
 }
 
@@ -1125,9 +1125,9 @@ async function main() {
         if (!brainstormingPhase && !ideasExhausted) {
           // Enter brainstorming phase to find more improvements/bugs
           brainstormingPhase = true;
-          const prompt = mode === \"debug\"
-            ? \"You have not identified any more bugs to fix. Take a systematic approach: review the codebase for potential issues like error handling gaps, edge cases, performance bottlenecks, security concerns, or logic errors. List specific files and line numbers where problems might exist, then investigate and fix them. Only call finish when you've thoroughly checked and found nothing else to debug.\"
-            : \"You have not identified any more improvements. Brainstorm systematically: review the codebase for optimization opportunities, code quality improvements, missing features that would add value, refactoring chances to reduce duplication, better patterns to adopt, or hardening of weak spots. List specific improvements with file locations, then implement them. Only call finish when you've exhausted meaningful improvements.\";
+          const prompt = mode === "debug"
+            ? "You have not identified any more bugs to fix. Take a systematic approach: review the codebase for potential issues like error handling gaps, edge cases, performance bottlenecks, security concerns, or logic errors. List specific files and line numbers where problems might exist, then investigate and fix them. Only call finish when you've thoroughly checked and found nothing else to debug."
+            : "You have not identified any more improvements. Brainstorm systematically: review the codebase for optimization opportunities, code quality improvements, missing features that would add value, refactoring chances to reduce duplication, better patterns to adopt, or hardening of weak spots. List specific improvements with file locations, then implement them. Only call finish when you've exhausted meaningful improvements.";
           messages.push({ role: "user", content: prompt });
           continue;
         }
