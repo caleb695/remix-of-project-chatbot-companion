@@ -670,6 +670,9 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         replace_all: lBool.optional(),
       }),
       execute: async ({ paths, find, replace, replace_all }) => {
+        if (!Array.isArray(paths) || paths.length === 0) {
+          return { error: "No paths were supplied. Pass a `paths` array of file paths." };
+        }
         const results: Array<{ path: string; success: boolean; error?: string }> = [];
         for (const path of paths) {
           const { data: row } = await sb

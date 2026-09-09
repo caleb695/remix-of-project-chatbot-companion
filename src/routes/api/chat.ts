@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { streamText, convertToModelMessages, stepCountIs, consumeStream, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, consumeStream, InvalidToolInputError, type UIMessage } from "ai";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 // Access H3Event via the same global symbol TanStack Start uses internally
@@ -44,6 +44,20 @@ function modePrompts(isKaggle: boolean): Record<Mode, string> {
 }
 
 const PHASE = { planning: "planning", coding: "coding", checking: "checking", debugging: "debugging", done: "done" } as const;
+
+/**
+ * Turn a stream-killing tool-input error into a readable, actionable message.
+ * These are model formatting glitches (arrays/objects passed as mangled JSON
+ * strings) — the run data is safe and the user can simply re-run.
+ */
+function describeToolInputError(message: string): string | null {
+  const m = /Invalid input for tool ([a-zA-Z_]+)/.exec(message);
+  if (!m) return null;
+  const tool = m[1];
+  const tip = "The model sent a tool call with malformed arguments to `" + tool +
+    "`. Nothing was lost — your staged changes are safe. Re-run the request (a fresh, shorter instruction usually avoids it).";
+  return tip;
+}
 
 /**
  * Turn whatever the provider/SDK threw into a readable message. Providers
@@ -546,6 +560,23 @@ export const Route = createFileRoute("/api/chat")({
           system: systemPrompt,
           messages: await convertToModelMessages(messages),
           tools,
+          // A malformed tool call (models pass array arguments as mangled JSON
+          // strings) used to abort the whole run with AI_InvalidToolInputError.
+          // Deterministically repair the common shapes — arrays stringified as
+          // JSON text, extra escaping layers, raw newlines — and re-validate.
+          // If nothing can be fixed, return null so the SDK keeps its default
+          // (feed the error back / fail as before).
+          repairToolCall: async ({ toolCall, error }) => {
+            if (!InvalidToolInputError.isInstance(error)) return null;
+            try {
+              const { repairToolInput } = await import("@/lib/tool-input-repair.server");
+              const fixed = repairToolInput(toolCall.toolName, typeof toolCall.input === "string" ? toolCall.input : "");
+              if (fixed === null) return null;
+              return { ...toolCall, input: fixed };
+            } catch {
+              return null; // repair must never break the run further
+            }
+          },
           stopWhen: stepCountIs(stepLimit),
           // Retry transient tool execution errors
           maxRetries: 2,
@@ -730,10 +761,13 @@ export const Route = createFileRoute("/api/chat")({
             stopHeartbeat();
           },
           onError: (error) => {
-            const msg = describeError(error);
-            console.error("[chat] stream error:", msg, error);
+            const raw = describeError(error);
+            console.error("[chat] stream error:", raw, error);
             // The same error surfaces once per teed branch — log it once.
-            if (streamError === msg) return msg;
+            if (streamError === raw) return raw;
+            // Tool-input errors are model formatting glitches; make the
+            // message actionable instead of a wall of JSON validation noise.
+            const msg = describeToolInputError(raw) ?? raw;
             streamError = msg;
             // Log the failure at the `done` phase so the process indicator stops
             // on a terminal state instead of freezing on a stale planning phase.
