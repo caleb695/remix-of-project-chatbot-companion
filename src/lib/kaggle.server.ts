@@ -231,10 +231,12 @@ async function kaggleFetch(
       maxRetries: 3,
       baseDelay: 1000,
       maxDelay: 8000,
-      shouldRetry: (e) => {
-        const msg = String(e);
-        return /timeout|abort|429|50[0-9]/i.test(msg);
-      },
+      // The closure only throws for retryable classes (timeout/abort/429/5xx);
+      // non-retryable statuses (401/403/404/400) are returned as responses and
+      // surface AFTER the retry loop. A bare "TypeError: fetch failed" (Kaggle
+      // dropping the connection) is exactly the blip we want to retry, so
+      // always retry whatever the closure throws.
+      shouldRetry: () => true,
     }
   );
   
@@ -362,6 +364,12 @@ export function buildKaggleTools(
     notebookCache = { data, timestamp: now };
     return data;
   };
+
+  /* Any successful local write MUST drop the cache: otherwise the next edit
+   * within the TTL reads the PRE-edit source from the cache and saves it,
+   * silently reverting the previous edit (and check_code would validate stale
+   * code). This was a real data-loss bug. */
+  const invalidateNotebookCache = () => { notebookCache = null; };
 
   /** Kaggle credentials for live API calls (search datasets, run status, output). */
   let credsCache: { username: string; key: string; timestamp: number } | null = null;
@@ -613,6 +621,7 @@ export function buildKaggleTools(
     timer.log();
     if (error) return { error: error.message };
     if (!data) return { error: "The notebook could not be saved — it was not found for this account. Tell the user to re-add or re-sync the notebook on the Account tab." };
+    invalidateNotebookCache();
     return { ok: true, bytes: source.length };
   };
 
@@ -678,10 +687,15 @@ export function buildKaggleTools(
           results.push({ find: edit.find.slice(0, 50), success: true });
         }
         const timer = new Timer("batch_edit_notebook");
+        const succeeded = results.filter(r => r.success).length;
+        if (succeeded === 0) {
+          // Nothing changed — don't touch the notebook (saving here would flip
+          // it to "modified" with identical content).
+          return { total: unique.length, succeeded: 0, failed: unique.length, results, error: "No edits matched the notebook source — re-read it and check your find texts." };
+        }
         const saveResult = await save(src);
         timer.log();
         if (saveResult.error) return { error: saveResult.error };
-        const succeeded = results.filter(r => r.success).length;
         return { total: unique.length, succeeded, failed: unique.length - succeeded, results, bytes: src.length };
       },
     }),
@@ -716,6 +730,7 @@ export function buildKaggleTools(
         timer.log();
         if (error) return { error: error.message };
         if (!data) return { error: "Notebook not found for this account." };
+        invalidateNotebookCache();
         return { ok: true, changed: patch };
       },
     }),
@@ -740,6 +755,7 @@ export function buildKaggleTools(
         timer.log();
         if (error) return { error: error.message };
         if (!data) return { error: "Notebook not found for this account." };
+        invalidateNotebookCache();
         return { ok: true, dataset_sources: next, input_path: `/kaggle/input/${clean.split("/")[1]}` };
       },
     }),

@@ -477,13 +477,21 @@ export const Route = createFileRoute("/api/chat")({
             "The user uploaded these files; they are available to the coding runner under uploads/: " +
               attRows.map((a) => `uploads/${a.name}${a.code_only ? " (asset only — contents hidden from you)" : ""}`).join(", ") + ".",
           ];
-          for (const a of attRows) {
-            if (a.code_only || /^image\//.test(a.mime_type ?? "")) continue;
-            const { data: blob } = await supa.storage.from("attachments").download(a.storage_path);
-            if (!blob) continue;
-            const text = (await blob.text()).slice(0, 20000);
-            parts.push(`--- uploads/${a.name} ---\n${text}`);
-          }
+          // Downloads are independent — fetch them concurrently (order is kept
+          // so the prompt stays deterministic) instead of one round-trip at a time.
+          const texts = await Promise.all(
+            attRows.map(async (a) => {
+              if (a.code_only || /^image\//.test(a.mime_type ?? "")) return null;
+              try {
+                const { data: blob } = await supa.storage.from("attachments").download(a.storage_path);
+                if (!blob) return null;
+                return `--- uploads/${a.name} ---\n${(await blob.text()).slice(0, 20000)}`;
+              } catch {
+                return null;
+              }
+            }),
+          );
+          for (const t of texts) if (t) parts.push(t);
           attachmentContext = parts.join("\n\n");
         }
 

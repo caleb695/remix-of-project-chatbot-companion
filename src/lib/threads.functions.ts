@@ -59,13 +59,16 @@ export const getThreadMessages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => z.object({ threadId: z.string().uuid() }).parse(input))
   .handler(async ({ context, data }) => {
+    // Newest-first + cap: a long-running debug thread can hold thousands of
+    // messages; the client only renders recent history anyway.
     const { data: rows, error } = await context.supabase
       .from("chat_messages")
       .select("id, role, parts, created_at")
       .eq("thread_id", data.threadId)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .limit(500);
     if (error) throw error;
-    return (rows ?? []).map((r) => ({
+    return (rows ?? []).reverse().map((r) => ({
       id: r.id,
       role: r.role,
       parts: r.parts,
