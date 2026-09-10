@@ -13,7 +13,8 @@
     "preview": "vite preview",
   "lint": "eslint .",
   "format": "prettier --write .",
-  "verify:runner": "node scripts/verify-runner.mjs"
+  "verify:runner": "node scripts/verify-runner.mjs",
+    "verify:heartbeat": "node scripts/verify-job-heartbeat.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.6",
