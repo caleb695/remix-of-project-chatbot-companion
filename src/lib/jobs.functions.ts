@@ -312,18 +312,20 @@ export const getJob = createServerFn({ method: "GET" })
         .eq("id", job.id);
       return { ...job, status: "failed", error: message };
     }
-    // Kaggle runs stream in-page; if the tab closed the stream is gone. Don't
-    // leave the job spinning forever — staged notebook edits are already saved,
-    // so surface the partial result and let the user re-run if needed.
-    // Heartbeat runs every 30s in chat.ts, so use a longer timeout (15 min)
-    // to account for long model generations without tool calls.
+    // No heartbeat for 15 minutes means the worker may have stopped; it does
+    // not prove that the browser tab was closed. Compare-and-set so a heartbeat
+    // or completion arriving after our SELECT cannot be overwritten as failed.
     if (job && job.job_type === "kaggle" && job.status === "running"
         && Date.now() - new Date(job.updated_at).getTime() > 15 * 60 * 1000) {
-      const message = "The run stopped when the tab was closed. Any notebook edits made so far are staged — review them and re-run if needed.";
-      await context.supabase.from("coding_jobs")
-        .update({ status: "failed", error: message, finished_at: new Date().toISOString() })
-        .eq("id", job.id);
-      return { ...job, status: "failed", error: message };
+      const { expireStaleKaggleJob, KAGGLE_STALE_MESSAGE } = await import("./job-heartbeat.server");
+      if (await expireStaleKaggleJob(context.supabase, job)) {
+        return { ...job, status: "failed", error: KAGGLE_STALE_MESSAGE };
+      }
+      // Another request refreshed or finished the run. Return its current state.
+      const { data: current, error: refreshError } = await context.supabase
+        .from("coding_jobs").select("*").eq("id", job.id).maybeSingle();
+      if (refreshError) throw refreshError;
+      return current;
     }
     return job;
   });
