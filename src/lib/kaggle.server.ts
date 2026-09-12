@@ -664,6 +664,9 @@ export function buildKaggleTools(
       description: "Apply multiple find/replace edits to the notebook source in a single operation. More efficient than calling edit_notebook repeatedly for multiple changes.",
       inputSchema: z.object({ edits: lArray(z.object({ find: lStr, replace: lStr, replace_all: lBool.optional() })) }),
       execute: async ({ edits }) => {
+        if (!Array.isArray(edits) || edits.length === 0) {
+          return { error: "No edits were supplied. Pass an `edits` array of objects, each with a `find` and a `replace` string." };
+        }
         const gate = mustReadFirst(); if (gate) return gate;
         const nb = await load();
         let src = nb?.working_source ?? "";
