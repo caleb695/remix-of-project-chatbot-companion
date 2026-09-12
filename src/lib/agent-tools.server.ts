@@ -4,7 +4,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { lArray, lBool, lNum, lStr } from "./zod-lenient";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fileContentCache, searchCodeCache, webSearchCache, fetchUrlCache, fileListCache } from "@/lib/performance";
+import { fileContentCache, searchCodeCache, webSearchCache, fetchUrlCache, fileListCache, Timer, withTimeout, processInBatches, batchArray, invalidateRepoCaches } from "@/lib/performance";
 
 type Sb = SupabaseClient<any, any, any>;
 
@@ -205,46 +205,39 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         force_refresh: lBool.optional().describe("Skip cache and fetch fresh data"),
       }),
       execute: async ({ prefix, force_refresh }) => {
-        // One shared, unfiltered cache entry per repo — caching per-prefix
-        // snapshots stored the same full row set once per distinct prefix.
+        // One shared cache entry per repo (same key as glob). SimpleCache.set()
+        // already stores { data, timestamp } internally, so pass the rows array
+        // directly — wrapping it here double-nested the value and made every
+        // cache hit crash with "rows.slice is not a function".
         const cacheKey = `files:${repoId}:`;
         const now = Date.now();
         const cached = fileListCache.get(cacheKey);
-        
-        // Use cache if valid and not forcing refresh
-        if (!force_refresh && cached) {
-          let rows = cached.data;
-          if (prefix) rows = rows.filter((r) => r.path.includes(prefix));
-          if (rows.length === 0) {
-            return {
-              files: [],
-              note: "Working copy is empty. Ask the user to press Sync on the Account tab for this repo.",
-              cached: true,
-            };
-          }
-          return { count: rows.length, files: rows.slice(0, 600).map((r) => `${r.path}${r.status !== "unchanged" ? ` (${r.status})` : ""}`), cached: true };
+        let rows: Array<{ path: string; status: string }>;
+        const fromCache = !force_refresh && cached && (now - cached.timestamp) < 30_000;
+        if (fromCache) {
+          rows = cached.data;
+        } else {
+          const { data, error } = await sb
+            .from("working_files")
+            .select("path, status")
+            .eq("repo_selection_id", repoId)
+            .neq("status", "deleted")
+            .order("path");
+          if (error) return { error: error.message };
+          rows = data ?? [];
+          fileListCache.set(cacheKey, rows);
         }
-        
-        const { data, error } = await sb
-          .from("working_files")
-          .select("path, status")
-          .eq("repo_selection_id", repoId)
-          .neq("status", "deleted")
-          .order("path");
-        if (error) return { error: error.message };
-        let rows = data ?? [];
-        
-        // Update cache
-        fileListCache.set(cacheKey, rows); // store the raw rows — SimpleCache.set takes data, not an entry wrapper
-        
+        // Apply the prefix filter on both paths so the first and subsequent
+        // calls return the same result.
         if (prefix) rows = rows.filter((r) => r.path.includes(prefix));
         if (rows.length === 0) {
           return {
             files: [],
             note: "Working copy is empty. Ask the user to press Sync on the Account tab for this repo.",
+            ...(fromCache ? { cached: true } : {}),
           };
         }
-        return { count: rows.length, files: rows.slice(0, 600).map((r) => `${r.path}${r.status !== "unchanged" ? ` (${r.status})` : ""}`) };
+        return { count: rows.length, files: rows.slice(0, 600).map((r) => `${r.path}${r.status !== "unchanged" ? ` (${r.status})` : ""}`), ...(fromCache ? { cached: true } : {}) };
       },
     }),
 
@@ -268,7 +261,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
             .order("path");
           if (error) return { error: error.message };
           rows = data ?? [];
-          fileListCache.set(cacheKey, rows); // store the raw rows — SimpleCache.set takes data, not an entry wrapper
+          fileListCache.set(cacheKey, rows);
         }
         const re = globToRegex(String(pattern || ""));
         const matched = rows.filter((r) => re.test(r.path));
@@ -654,6 +647,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
             .update({ content, status: "modified", updated_at: new Date().toISOString() })
             .eq("id", existing.id);
           if (error) return { error: error.message };
+          invalidateRepoCaches(repoId);
           fileContentCache.set(`file:${repoId}:${path}`, { content, status: "modified" });
           return { ok: true, path, action: "modified", bytes: content.length };
         }
@@ -666,6 +660,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           status: "added",
         });
         if (error) return { error: error.message };
+        invalidateRepoCaches(repoId);
         fileContentCache.set(`file:${repoId}:${path}`, { content, status: "added" });
         return { ok: true, path, action: "added", bytes: content.length };
       },
@@ -701,6 +696,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           .update({ content: next, status: "modified", updated_at: new Date().toISOString() })
           .eq("id", row.id);
         if (error) return { error: error.message };
+        invalidateRepoCaches(repoId);
         fileContentCache.set(`file:${repoId}:${path}`, { content: next, status: "modified" });
         return { ok: true, path, action: "edited" };
       },
@@ -715,6 +711,9 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
         replace_all: lBool.optional(),
       }),
       execute: async ({ paths, find, replace, replace_all }) => {
+        if (!Array.isArray(paths) || paths.length === 0) {
+          return { error: "No paths were supplied. Pass a `paths` array of file paths." };
+        }
         const results: Array<{ path: string; success: boolean; error?: string }> = [];
         // One round-trip for every file instead of one query per file.
         const uniquePaths = [...new Set(paths)];
@@ -751,6 +750,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           if (error) {
             results.push({ path, success: false, error: error.message });
           } else {
+            invalidateRepoCaches(repoId);
             fileContentCache.set(`file:${repoId}:${path}`, { content: next, status: "modified" });
             results.push({ path, success: true });
           }
@@ -778,6 +778,7 @@ export function buildAgentTools(ctx: ToolCtx, opts: { allowWrites: boolean }) {
           .update({ status: "deleted", updated_at: new Date().toISOString() })
           .eq("id", row.id);
         if (error) return { error: error.message };
+        invalidateRepoCaches(repoId);
         fileContentCache.set(`file:${repoId}:${path}`, { content: "", status: "deleted" });
         return { ok: true, path, action: "deleted" };
       },
@@ -807,17 +808,7 @@ export function invalidateFileCache(repoId: string, path?: string): void {
   if (path) {
     fileContentCache.set(`file:${repoId}:${path}`, { content: "", status: "deleted" });
   } else {
-    // Clear all entries for this repo
-    for (const key of fileContentCache.keys()) {
-      if (key.startsWith(`file:${repoId}:`)) {
-        fileContentCache['cache'].delete(key);
-      }
-    }
-    for (const key of searchCodeCache.keys()) {
-      if (key.startsWith(`search:${repoId}:`)) {
-        searchCodeCache['cache'].delete(key);
-      }
-    }
+    invalidateRepoCaches(repoId);
   }
 }
 

@@ -12,4 +12,9 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Dev-only: accept the sandbox/preview hostnames (and any tunnel domain) so
+  // the preview iframe is not rejected with HTTP 403.
+  vite: {
+    server: { allowedHosts: true },
+  },
 });

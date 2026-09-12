@@ -25,6 +25,52 @@ let REVIEW_BRANCH = BRANCH;
 if (!JOB_ID || !JOB_SECRET || !APP_URL) { console.error("missing env"); process.exit(1); }
 
 const HEAD = { "Content-Type": "application/json", "X-Job-Id": JOB_ID, "X-Job-Secret": JOB_SECRET };
+
+/* Models often pass array args (edits/paths) as JSON-encoded strings,
+ * occasionally double-encoded. Normalize so a formatting glitch returns a
+ * clean ERR to the model instead of a silent no-op. */
+function normalizeToolArgs(a) {
+  if (!a || typeof a !== "object" || Array.isArray(a)) return a;
+  const looksJson = (x) => {
+    const c = x.trim().charAt(0);
+    return c === "[" || c === "{" || c === '"';
+  };
+  const unwrap = (txt) => {
+    let cur = txt;
+    for (let i = 0; i < 5; i++) {
+      const t = cur.trim();
+      if (!t || !looksJson(t)) break;
+      let next;
+      try { next = JSON.parse(t); } catch { break; }
+      // Fully unwrapped to a real value (array/object) → done.
+      if (typeof next !== "string") return next;
+      // Parsing produced yet another JSON string → keep unwrapping.
+      cur = next;
+    }
+    return cur;
+  };
+  for (const k of ["edits", "paths"]) {
+    if (typeof a[k] !== "string") continue;
+    const t = a[k].trim();
+    if (!t || !looksJson(t)) continue;
+    try {
+      const parsed = unwrap(t);
+      if (Array.isArray(parsed)) {
+        a[k] = parsed.map((el) => {
+          if (typeof el !== "string") return el;
+          const et = el.trim();
+          if (!looksJson(et)) return el;
+          try { return unwrap(et); } catch { return el; }
+        });
+      } else if (parsed !== null && typeof parsed === "object") {
+        a[k] = [parsed];
+      }
+    } catch { /* leave as-is */ }
+  }
+  return a;
+}
+
+
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function api(p, body) {
   let lastError;
@@ -1017,7 +1063,7 @@ async function runSubAgent(spec, agent, task, ownFiles) {
  * writes to the SAME file are serialized. This enables true parallel sub-agent execution. */
 async function runToolCalls(calls, agent, onTool) {
   const results = new Map();
-  const parse = (c) => { try { return JSON.parse((c.function && c.function.arguments) || "{}"); } catch { return {}; } };
+  const parse = (c) => { try { return normalizeToolArgs(JSON.parse((c.function && c.function.arguments) || "{}")); } catch { return {}; } };
 
   const reads = calls.filter((c) => READ_ONLY_TOOLS.has(c.function.name));
   const writes = calls.filter((c) => !READ_ONLY_TOOLS.has(c.function.name));
@@ -1231,7 +1277,7 @@ async function main() {
       break;
     }
 
-    const parse = (c) => { try { return JSON.parse((c.function && c.function.arguments) || "{}"); } catch { return {}; } };
+    const parse = (c) => { try { return normalizeToolArgs(JSON.parse((c.function && c.function.arguments) || "{}")); } catch { return {}; } };
 
     // Sub-agents delegated in the same turn run concurrently, so several
     // models work on their parts at once instead of queueing behind each other.

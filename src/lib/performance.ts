@@ -44,7 +44,9 @@ export class Timer {
 }
 
 /**
- * Execute a function with a timeout
+ * Execute a function with a timeout.
+ * The callback may return a plain Promise or any thenable (e.g. a Supabase
+ * query builder), so wrapping queries with withTimeout() typechecks.
  */
 export async function withTimeout<T>(
   // PromiseLike (e.g. a PostgrestBuilder query) is accepted so call sites can
@@ -74,7 +76,7 @@ export async function withTimeout<T>(
  * Retry a function with exponential backoff
  */
 export async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
+  fn: () => PromiseLike<T>,
   options: {
     maxRetries?: number;
     baseDelay?: number;
@@ -193,6 +195,21 @@ export const fileListCache = new SimpleCache<any[]>(30_000, 100);
 
 // Embedding cache (5 minutes)
 export const embeddingCache = new SimpleCache<any>(5 * 60 * 1000, 50);
+
+/**
+ * Drop every cached entry that belongs to one repo (file contents, file
+ * listings and code-search results are all keyed with a repo prefix).
+ * Call after writes, syncs or commits so the agent never reads or lists a
+ * stale working copy from a previous run.
+ */
+export function invalidateRepoCaches(repoId: string): void {
+  const prefixes = [`file:${repoId}:`, `files:${repoId}:`, `search:${repoId}:`];
+  for (const cache of [fileContentCache, fileListCache, searchCodeCache]) {
+    for (const key of cache.keys()) {
+      if (prefixes.some((p) => key.startsWith(p))) cache.delete(key);
+    }
+  }
+}
 
 /**
  * Generate a consistent cache key from various inputs
